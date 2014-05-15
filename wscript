@@ -100,6 +100,7 @@ def build(bld):
 		uselib = 'FSLVPUWRAPPER',
 		use = 'imxvpuapi',
 		source = ['example/decode-example.c', 'example/h264_utils.c'],
-		target = 'example/decode-example'
+		target = 'example/decode-example',
+		install_path = None # makes sure the example is not installed
 	)
 
