@@ -80,17 +80,22 @@ def configure(conf):
 
 
 def build(bld):
+	version_node = bld.srcnode.find_node('VERSION')
+	with open(version_node.abspath()) as x:
+		version = x.readline().splitlines()[0]
+
 	bld(
-		features = ['c', 'cstlib'],
+		features = ['c', 'cshlib'],
 		includes = ['.'],
 		uselib = 'FSLVPUWRAPPER',
 		source = bld.path.ant_glob('imxvpuapi/*.c'),
 		name = 'imxvpuapi',
-		target = 'imxvpuapi'
+		target = 'imxvpuapi',
+		vnum = version
 	)
 	bld(
 		features = ['c', 'cprogram'],
-		includes = ['..', 'example'],
+		includes = ['.', 'example'],
 		cflags = ['-std=gnu99'],
 		uselib = 'FSLVPUWRAPPER',
 		use = 'imxvpuapi',
