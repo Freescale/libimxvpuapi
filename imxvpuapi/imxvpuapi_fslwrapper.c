@@ -48,9 +48,15 @@
 #endif
 
 
-static ImxVpuMJpegFormat convert_from_wrapper_mjpg_format(int format)
+static ImxVpuColorFormat convert_from_wrapper_color_format(int format)
 {
-	return (ImxVpuMJpegFormat)format;
+	return (ImxVpuColorFormat)format;
+}
+
+
+static int convert_to_wrapper_color_format(ImxVpuColorFormat format)
+{
+	return (int)format;
 }
 
 
@@ -324,7 +330,7 @@ static void dec_convert_from_wrapper_initial_info(VpuDecInitInfo *wrapper_info, 
 	info->frame_rate_denominator  = wrapper_info->nFrameRateDiv;
 
 	info->min_num_required_framebuffers = wrapper_info->nMinFrameBufferCount + MIN_NUM_FREE_FB_REQUIRED;
-	info->mjpeg_source_format           = convert_from_wrapper_mjpg_format(wrapper_info->nMjpgSourceFormat);
+	info->color_format                  = convert_from_wrapper_color_format(wrapper_info->nMjpgSourceFormat);
 
 	info->interlacing = wrapper_info->nInterlace;
 
@@ -815,21 +821,21 @@ void imx_vpu_dec_calc_framebuffer_sizes(ImxVpuDecInitialInfo *initial_info, unsi
 	calculated_sizes->y_stride = calculated_sizes->aligned_frame_width;
 	calculated_sizes->y_size = calculated_sizes->y_stride * calculated_sizes->aligned_frame_height;
 
-	switch (initial_info->mjpeg_source_format)
+	switch (initial_info->color_format)
 	{
-		case IMX_VPU_MJPEG_FORMAT_YUV420:
+		case IMX_VPU_COLOR_FORMAT_YUV420:
 			calculated_sizes->cbcr_stride = calculated_sizes->y_stride / 2;
 			calculated_sizes->cbcr_size = calculated_sizes->mvcol_size = calculated_sizes->y_size / 4;
 			break;
-		case IMX_VPU_MJPEG_FORMAT_YUV422_HORIZONTAL:
+		case IMX_VPU_COLOR_FORMAT_YUV422_HORIZONTAL:
 			calculated_sizes->cbcr_stride = calculated_sizes->y_stride / 2;
 			calculated_sizes->cbcr_size = calculated_sizes->mvcol_size = calculated_sizes->y_size / 2;
 			break;
-		case IMX_VPU_MJPEG_FORMAT_YUV444:
+		case IMX_VPU_COLOR_FORMAT_YUV444:
 			calculated_sizes->cbcr_stride = calculated_sizes->y_stride;
 			calculated_sizes->cbcr_size = calculated_sizes->mvcol_size = calculated_sizes->y_size;
 			break;
-		case IMX_VPU_MJPEG_FORMAT_YUV400:
+		case IMX_VPU_COLOR_FORMAT_YUV400:
 			/* TODO: check if this is OK */
 			calculated_sizes->cbcr_stride = 0;
 			calculated_sizes->cbcr_size = calculated_sizes->mvcol_size = 0;

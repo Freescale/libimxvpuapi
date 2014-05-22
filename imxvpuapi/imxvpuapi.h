@@ -206,13 +206,13 @@ ImxVpuCodecFormats;
 
 typedef enum
 {
-	IMX_VPU_MJPEG_FORMAT_YUV420            = 0, /* also known as I420 */
-	IMX_VPU_MJPEG_FORMAT_YUV422_HORIZONTAL = 1,
-	IMX_VPU_MJPEG_FORMAT_YUV422_VERTICAL   = 2, /* 4:2:2 vertical, actually 2:2:4 (according to the VPU docs) */
-	IMX_VPU_MJPEG_FORMAT_YUV444            = 3,
-	IMX_VPU_MJPEG_FORMAT_YUV400            = 4  /* 8-bit grayscale */
+	IMX_VPU_COLOR_FORMAT_YUV420            = 0, /* also known as I420 */
+	IMX_VPU_COLOR_FORMAT_YUV422_HORIZONTAL = 1,
+	IMX_VPU_COLOR_FORMAT_YUV422_VERTICAL   = 2, /* 4:2:2 vertical, actually 2:2:4 (according to the VPU docs) */
+	IMX_VPU_COLOR_FORMAT_YUV444            = 3,
+	IMX_VPU_COLOR_FORMAT_YUV400            = 4  /* 8-bit grayscale */
 }
-ImxVpuMJpegFormat;
+ImxVpuColorFormat;
 
 
 /* Framebuffers are picture containers, and are used both for en- and decoding. */
@@ -460,10 +460,10 @@ typedef struct
 	 * with the decoder. */
 	unsigned int min_num_required_framebuffers;
 
-	/* Pixel format of the decoded frames. For codec formats
+	/* Color format of the decoded frames. For codec formats
 	 * other than motion JPEG, this value will always be
-	 * IMX_VPU_MJPEG_FORMAT_YUV420. */
-	ImxVpuMJpegFormat mjpeg_source_format;
+	 * IMX_VPU_COLOR_FORMAT_YUV420. */
+	ImxVpuColorFormat color_format;
 
 	/* 0 = no interlacing, 1 = interlacing. */
 	int interlacing;
