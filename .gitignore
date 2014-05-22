@@ -1,0 +1,3 @@
+/.waf*
+/.lock-waf_linux2_build
+/build
