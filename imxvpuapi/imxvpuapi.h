@@ -276,7 +276,7 @@ typedef struct
 	 * as well as the size of the memory block (in bytes).
 	 * Set pointer and size for every encoded frame when decoding.
 	 * If no such data exists or is required, or if drain mode is enabled,
-	 * the pointer must be NULL, the size must be 0. */
+	 * the pointer must be NULL, the size must be 0. Not used by the encoder. */
 	void *codec_data;
 	unsigned int codec_data_size;
 
@@ -607,6 +607,246 @@ int imx_vpu_dec_get_min_num_free_required(ImxVpuDecoder *decoder);
  *
  * It is safe to mark a framebuffer multiple times. The library will simply ignore the subsequent calls. */
 ImxVpuDecReturnCodes imx_vpu_dec_mark_framebuffer_as_displayed(ImxVpuDecoder *decoder, ImxVpuFramebuffer *framebuffer);
+
+
+
+
+#if 1
+/************************************************/
+/******* ENCODER STRUCTURES AND FUNCTIONS *******/
+/************************************************/
+
+
+/* TODO: overview over how to use the decoder */
+
+
+typedef struct _ImxVpuEncoder ImxVpuEncoder;
+
+
+typedef enum
+{
+	IMX_VPU_ENC_RETURN_CODE_OK = 0,
+	IMX_VPU_ENC_RETURN_CODE_ERROR,
+	IMX_VPU_ENC_RETURN_CODE_INVALID_PARAMS,
+	IMX_VPU_ENC_RETURN_CODE_INVALID_HANDLE,
+	IMX_VPU_ENC_RETURN_CODE_INVALID_FRAMEBUFFER,
+	IMX_VPU_ENC_RETURN_CODE_INSUFFICIENT_FRAMEBUFFERS,
+	IMX_VPU_ENC_RETURN_CODE_INVALID_STRIDE,
+	IMX_VPU_ENC_RETURN_CODE_WRONG_CALL_SEQUENCE,
+	IMX_VPU_ENC_RETURN_CODE_TIMEOUT
+}
+ImxVpuEncReturnCodes;
+
+
+typedef enum
+{
+	IMX_VPU_ENC_OUTPUT_CODE_INPUT_USED                 = (1UL << 0),
+	IMX_VPU_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE    = (1UL << 1),
+	IMX_VPU_ENC_OUTPUT_CODE_NO_ENCODED_FRAME_AVAILABLE = (1UL << 2),
+	IMX_VPU_ENC_OUTPUT_CODE_SEQUENCE_HEADER            = (1UL << 3)
+}
+ImxVpuEncOutputCodes;
+
+
+typedef enum
+{
+	IMX_VPU_ENC_SLICE_SIZE_MODE_BITS = 0,
+	IMX_VPU_ENC_SLICE_SIZE_MODE_MACROBLOCKS
+}
+ImxVpuEncSliceSizeMode;
+
+
+typedef enum
+{
+	IMX_VPU_ENC_RATE_INTERVAL_MODE_NORMAL = 0,
+	IMX_VPU_ENC_RATE_INTERVAL_MODE_FRAME_LEVEL,
+	IMX_VPU_ENC_RATE_INTERVAL_MODE_SLICE_LEVEL,
+	IMX_VPU_ENC_RATE_INTERVAL_MODE_USER_DEFINED_LEVEL
+}
+ImxVpuEncRateIntervalMode;
+
+
+typedef enum
+{
+	IMX_VPU_ENC_ME_SEARCH_RANGE_256x128 = 0,
+	IMX_VPU_ENC_ME_SEARCH_RANGE_128x64,
+	IMX_VPU_ENC_ME_SEARCH_RANGE_64x32,
+	IMX_VPU_ENC_ME_SEARCH_RANGE_32x32
+}
+ImxVpuEncMESearchRanges;
+
+
+typedef struct
+{
+	int multiple_slices_per_picture;
+	ImxVpuEncSliceSizeMode slice_size_mode;
+	unsigned int slice_size;
+}
+ImxVpuEncSliceMode;
+
+
+typedef struct
+{
+	int enable_data_partition;
+	int enable_reversible_vlc;
+	unsigned int intra_dc_vlc_thr;
+	int enable_hec;
+	unsigned int version_id;
+}
+ImxVpuEncMPEG4Params;
+
+
+typedef struct
+{
+	int enable_annex_i;
+	int enable_annex_j;
+	int enable_annex_k;
+	int enable_annex_t;
+}
+ImxVpuEncH263Params;
+
+
+typedef struct
+{
+	int use_avcc;
+	int enable_constrained_intra_prediction;
+	int disable_deblocking;
+	int deblock_filter_offset_alpha, deblock_filter_offset_beta;
+	int chroma_qp_offset;
+	int enable_access_unit_delimiters;
+}
+ImxVpuEncH264Params;
+
+
+typedef struct
+{
+	ImxVpuCodecFormat codec_format;
+
+	unsigned int frame_width, frame_height;
+	unsigned int framerate, bitrate;
+	unsigned int gop_size;
+	ImxVpuColorFormat color_format;
+
+	int user_defined_min_qp;
+	int user_defined_max_qp;
+	int enable_user_defined_min_qp;
+	int enable_user_defined_max_qp;
+
+	int use_intra_refresh;
+	int intra_qp;
+
+	unsigned int user_gamma;
+
+	ImxVpuEncRateIntervalMode rate_interval_mode;
+	unsigned int macroblock_interval;
+
+	int enable_avc_intra_16x16_only_mode;
+
+	ImxVpuEncSliceMode slice_mode;
+
+	unsigned int initial_delay;
+	unsigned int vbv_buffer_size;
+
+	ImxVpuEncMESearchRanges me_search_range;
+	int use_me_zero_pmv;
+	unsigned int additional_intra_cost_weight;
+
+	union
+	{
+		ImxVpuEncMPEG4Params mpeg4_params;
+		ImxVpuEncH263Params h263_params;
+		ImxVpuEncH264Params h264_params;
+	}
+	codec_params;
+}
+ImxVpuEncOpenParams;
+
+
+typedef struct
+{
+	/* Caller must register at least this many framebuffers
+	 * with the encoder. */
+	unsigned int min_num_required_framebuffers;
+}
+ImxVpuEncInitialInfo;
+
+
+typedef struct
+{
+	unsigned int frame_width, frame_height;
+	unsigned int framerate;
+
+	int force_I_picture;
+	int skip_picture;
+	int enable_autoskip;
+
+	unsigned int quant_param;
+}
+ImxVpuEncParams;
+
+
+/* Returns a human-readable description of the error code.
+ * Useful for logging. */
+char const * imx_vpu_enc_error_string(ImxVpuEncReturnCodes code);
+
+/* These two functions load/unload the encoder. Due to an internal reference
+ * counter, it is safe to call these functions more than once. However, the
+ * number of unload() calls must match the number of load() calls.
+ *
+ * The encoder must be loaded before doing anything else with it.
+ * Similarly, the encoder must not be unloaded before all encoder activities
+ * have been finished. This includes opening/decoding encoder instances. */
+ImxVpuEncReturnCodes imx_vpu_enc_load(void);
+ImxVpuEncReturnCodes imx_vpu_enc_unload(void);
+
+/* Convenience predefined allocator for allocating DMA buffers. */
+ImxVpuDMABufferAllocator* imx_vpu_enc_get_default_allocator(void);
+
+/* Called before imx_vpu_enc_open(), it returns the alignment and size for the
+ * physical memory block necessary for the encoder's bitstream buffer. The user
+ * must allocate a DMA buffer of at least this size, and its physical address
+ * must be aligned according to the alignment value. */
+void imx_vpu_enc_get_bitstream_buffer_info(size_t *size, unsigned int *alignment);
+
+/* Set the fields in "open_params" to valid defaults
+ * Useful if the caller wants to modify only a few fields (or none at all) */
+void imx_vpu_enc_set_default_open_params(ImxVpuCodecFormat codec_format, ImxVpuEncOpenParams *open_params);
+
+/* Opens a new encoder instance. "open_params" and "bitstream_buffer" must not be NULL. */
+ImxVpuEncReturnCodes imx_vpu_enc_open(ImxVpuEncoder **encoder, ImxVpuEncOpenParams *open_params, ImxVpuDMABuffer *bitstream_buffer);
+
+/* Closes a encoder instance. Trying to close the same instance multiple times results in undefined behavior. */
+ImxVpuEncReturnCodes imx_vpu_enc_close(ImxVpuEncoder *encoder);
+
+/* Registers the specified array of framebuffers with the encoder. These framebuffers are used for temporary
+ * values during encoding, unlike the decoder framebuffers. The minimum valid value for "num_framebuffers" is
+ * the "min_num_required_framebuffers" field of ImxVpuEncInitialInfo. */
+ //TODO:src_stride
+ImxVpuEncReturnCodes imx_vpu_enc_register_framebuffers(ImxVpuEncoder *encoder, ImxVpuFramebuffer *framebuffers, unsigned int num_framebuffers, unsigned int src_stride);
+
+/* Retrieves initial information available after calling @imx_vpu_enc_open. */
+ImxVpuEncReturnCodes imx_vpu_enc_get_initial_info(ImxVpuEncoder *encoder, ImxVpuEncInitialInfo *info);
+
+/* Set the fields in "open_params" to valid defaults
+ * Useful if the caller wants to modify only a few fields (or none at all) */
+void imx_vpu_enc_set_default_encoding_params(ImxVpuEncoder *encoder, ImxVpuEncParams *encoding_params);
+
+/* Sets/updates certain configuration values for the encoder. This allows for controlled bitrate variances,
+ * changes in quality, etc. If no such updates are desired, this function does not need to be called.
+ * "bitrate" is the bit rate, in kbps. Must be set 0 if constant quality mode is enabled.
+ * "intra_refresh_num" is the maximum number of macroblocks to refresh in a frame. 0 = intra macroblock refresh
+ * is not used.
+ * "intra_qp" is the I-frame quantization parameter (1-31 for MPEG-4, 0-51 for h.264). -1 enables automatic
+ * selection by the VPU. */
+void imx_vpu_enc_set_encoding_config(ImxVpuEncoder *encoder, unsigned int bitrate, unsigned int intra_refresh_num, int intra_qp);
+
+ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuPicture *picture, ImxVpuEncodedFrame *encoded_frame, ImxVpuEncParams *encoding_params, unsigned int *output_code);
+
+
+
+
+
+#endif
 
 
 #ifdef __cplusplus

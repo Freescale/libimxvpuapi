@@ -127,6 +127,7 @@ DefaultDMABufferAllocator;
 
 
 static ImxVpuDecReturnCodes dec_convert_retcode(VpuDecRetCode code);
+static ImxVpuEncReturnCodes enc_convert_retcode(VpuEncRetCode code);
 
 
 static ImxVpuDMABuffer* default_dmabufalloc_allocate(ImxVpuDMABufferAllocator *allocator, size_t size, unsigned int alignment)
@@ -157,7 +158,7 @@ static ImxVpuDMABuffer* default_dmabufalloc_allocate(ImxVpuDMABufferAllocator *a
 	{
 		ret = VPU_EncGetMem(&(dmabuffer->mem_desc));
 		ok_ret = VPU_ENC_RET_SUCCESS;
-		//errmsg = imx_vpu_enc_error_string(enc_convert_retcode(ret)); // TODO
+		errmsg = imx_vpu_enc_error_string(enc_convert_retcode(ret));
 	}
 	else
 	{
@@ -1214,6 +1215,609 @@ ImxVpuDecReturnCodes imx_vpu_dec_mark_framebuffer_as_displayed(ImxVpuDecoder *de
 	}
 
 	framebuffer->already_marked = TRUE;
+
+	return IMX_VPU_DEC_RETURN_CODE_OK;
+}
+
+
+
+
+/************************************************/
+/******* ENCODER STRUCTURES AND FUNCTIONS *******/
+/************************************************/
+
+
+struct _ImxVpuEncoder
+{
+	VpuEncHandle handle;
+
+	void *virt_mem_sub_block;
+	size_t virt_mem_sub_block_size;
+
+	ImxVpuDMABuffer *bitstream_buffer;
+
+	ImxVpuCodecFormat codec_format;
+
+	unsigned int num_framebuffers;
+	ImxVpuFramebuffer *framebuffers;
+};
+
+
+static ImxVpuEncReturnCodes enc_convert_retcode(VpuEncRetCode code)
+{
+	switch (code)
+	{
+		case VPU_ENC_RET_SUCCESS:                    return IMX_VPU_ENC_RETURN_CODE_OK;
+		case VPU_ENC_RET_FAILURE:                    return IMX_VPU_ENC_RETURN_CODE_ERROR;
+		case VPU_ENC_RET_INVALID_PARAM:              return IMX_VPU_ENC_RETURN_CODE_INVALID_PARAMS;
+		case VPU_ENC_RET_INVALID_HANDLE:             return IMX_VPU_ENC_RETURN_CODE_INVALID_HANDLE;
+		case VPU_ENC_RET_INVALID_FRAME_BUFFER:       return IMX_VPU_ENC_RETURN_CODE_INVALID_FRAMEBUFFER;
+		case VPU_ENC_RET_INSUFFICIENT_FRAME_BUFFERS: return IMX_VPU_ENC_RETURN_CODE_INSUFFICIENT_FRAMEBUFFERS;
+		case VPU_ENC_RET_INVALID_STRIDE:             return IMX_VPU_ENC_RETURN_CODE_INVALID_STRIDE;
+		case VPU_ENC_RET_WRONG_CALL_SEQUENCE:        return IMX_VPU_ENC_RETURN_CODE_WRONG_CALL_SEQUENCE;
+		case VPU_ENC_RET_FAILURE_TIMEOUT:            return IMX_VPU_ENC_RETURN_CODE_TIMEOUT;
+
+		default: return IMX_VPU_ENC_RETURN_CODE_ERROR;
+	}
+}
+
+
+static unsigned int enc_convert_outcode(VpuEncBufRetCode code)
+{
+	unsigned int out = 0;
+	if (code & VPU_ENC_INPUT_USED)       out |= IMX_VPU_ENC_OUTPUT_CODE_INPUT_USED;
+	if (code & VPU_ENC_OUTPUT_DIS)       out |= IMX_VPU_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE;
+	if (code & VPU_ENC_OUTPUT_NODIS)     out |= IMX_VPU_ENC_OUTPUT_CODE_NO_ENCODED_FRAME_AVAILABLE;
+	if (code & VPU_ENC_OUTPUT_SEQHEADER) out |= IMX_VPU_ENC_OUTPUT_CODE_SEQUENCE_HEADER;
+	return out;
+}
+
+
+static int enc_convert_to_wrapper_open_param(ImxVpuEncOpenParams *open_params, VpuEncOpenParam *wrapper_open_param)
+{
+	memset(wrapper_open_param, 0, sizeof(VpuEncOpenParam));
+
+	wrapper_open_param->eFormat = convert_to_wrapper_codec_std(open_params->codec_format);
+	wrapper_open_param->nPicWidth = open_params->frame_width;
+	wrapper_open_param->nPicHeight = open_params->frame_height;
+	wrapper_open_param->nRotAngle = 0;
+	wrapper_open_param->nFrameRate = open_params->framerate;
+	wrapper_open_param->nBitRate = open_params->bitrate;
+	wrapper_open_param->nGOPSize = open_params->gop_size;
+	wrapper_open_param->nChromaInterleave = 0;
+	wrapper_open_param->sMirror = VPU_ENC_MIRDIR_NONE;
+	wrapper_open_param->nMapType = 0;
+	wrapper_open_param->nLinear2TiledEnable = 1;
+	wrapper_open_param->eColorFormat = convert_to_wrapper_color_format(open_params->color_format);
+
+	wrapper_open_param->nUserQpMin = open_params->user_defined_max_qp;
+	wrapper_open_param->nUserQpMax = open_params->user_defined_min_qp;
+	wrapper_open_param->nUserQpMinEnable = open_params->enable_user_defined_min_qp;
+	wrapper_open_param->nUserQpMaxEnable = open_params->enable_user_defined_max_qp;
+
+	wrapper_open_param->nIntraRefresh = open_params->use_intra_refresh;
+	wrapper_open_param->nRcIntraQp = open_params->intra_qp;
+	
+	wrapper_open_param->nUserGamma = open_params->user_gamma;
+
+	wrapper_open_param->nRcIntervalMode = open_params->rate_interval_mode;
+	wrapper_open_param->nMbInterval = open_params->macroblock_interval;
+	wrapper_open_param->nAvcIntra16x16OnlyModeEnable = open_params->enable_avc_intra_16x16_only_mode;
+
+	wrapper_open_param->sliceMode.sliceMode = open_params->slice_mode.multiple_slices_per_picture;
+	wrapper_open_param->sliceMode.sliceSizeMode = open_params->slice_mode.slice_size_mode;
+	wrapper_open_param->sliceMode.sliceSize = open_params->slice_mode.slice_size;
+
+	wrapper_open_param->nInitialDelay = open_params->initial_delay;
+	wrapper_open_param->nVbvBufferSize = open_params->vbv_buffer_size;
+	
+	wrapper_open_param->nMESearchRange = open_params->me_search_range;
+	wrapper_open_param->nMEUseZeroPmv = open_params->use_me_zero_pmv;
+	wrapper_open_param->nIntraCostWeight = open_params->additional_intra_cost_weight;
+
+	switch (open_params->codec_format)
+	{
+		case IMX_VPU_CODEC_FORMAT_MPEG4:
+			wrapper_open_param->VpuEncStdParam.mp4Param.mp4_dataPartitionEnable = open_params->codec_params.mpeg4_params.enable_data_partition;
+			wrapper_open_param->VpuEncStdParam.mp4Param.mp4_reversibleVlcEnable = open_params->codec_params.mpeg4_params.enable_reversible_vlc;
+			wrapper_open_param->VpuEncStdParam.mp4Param.mp4_intraDcVlcThr = open_params->codec_params.mpeg4_params.intra_dc_vlc_thr;
+			wrapper_open_param->VpuEncStdParam.mp4Param.mp4_hecEnable = open_params->codec_params.mpeg4_params.enable_hec;
+			wrapper_open_param->VpuEncStdParam.mp4Param.mp4_verid = open_params->codec_params.mpeg4_params.version_id;
+			break;
+
+		case IMX_VPU_CODEC_FORMAT_H263:
+			wrapper_open_param->VpuEncStdParam.h263Param.h263_annexIEnable = open_params->codec_params.h263_params.enable_annex_i;
+			wrapper_open_param->VpuEncStdParam.h263Param.h263_annexJEnable = open_params->codec_params.h263_params.enable_annex_j;
+			wrapper_open_param->VpuEncStdParam.h263Param.h263_annexKEnable = open_params->codec_params.h263_params.enable_annex_k;
+			wrapper_open_param->VpuEncStdParam.h263Param.h263_annexTEnable = open_params->codec_params.h263_params.enable_annex_t;
+			break;
+
+		case IMX_VPU_CODEC_FORMAT_H264:
+			wrapper_open_param->nIsAvcc = open_params->codec_params.h264_params.use_avcc;
+
+			wrapper_open_param->VpuEncStdParam.avcParam.avc_constrainedIntraPredFlag = open_params->codec_params.h264_params.enable_constrained_intra_prediction;
+			wrapper_open_param->VpuEncStdParam.avcParam.avc_disableDeblk = open_params->codec_params.h264_params.disable_deblocking;
+			wrapper_open_param->VpuEncStdParam.avcParam.avc_deblkFilterOffsetAlpha = open_params->codec_params.h264_params.deblock_filter_offset_alpha;
+			wrapper_open_param->VpuEncStdParam.avcParam.avc_deblkFilterOffsetBeta = open_params->codec_params.h264_params.deblock_filter_offset_beta;
+			wrapper_open_param->VpuEncStdParam.avcParam.avc_chromaQpOffset = open_params->codec_params.h264_params.chroma_qp_offset;
+			wrapper_open_param->VpuEncStdParam.avcParam.avc_audEnable = open_params->codec_params.h264_params.enable_access_unit_delimiters;
+			wrapper_open_param->VpuEncStdParam.avcParam.avc_fmoEnable = 0;
+			wrapper_open_param->VpuEncStdParam.avcParam.avc_fmoSliceNum = 1;
+			wrapper_open_param->VpuEncStdParam.avcParam.avc_fmoType = 0;
+			wrapper_open_param->VpuEncStdParam.avcParam.avc_fmoSliceSaveBufSize = 32;
+			break;
+
+		default:
+			IMX_VPU_ERROR("invalid codec format");
+			return FALSE;
+	}
+
+	return TRUE;
+}
+
+static void enc_convert_from_wrapper_initial_info(VpuEncInitInfo *wrapper_info, ImxVpuEncInitialInfo *info)
+{
+	info->min_num_required_framebuffers = wrapper_info->nMinFrameBufferCount;
+}
+
+
+char const * imx_vpu_enc_error_string(ImxVpuEncReturnCodes code)
+{
+	switch (code)
+	{
+		case IMX_VPU_ENC_RETURN_CODE_OK:                        return "ok";
+		case IMX_VPU_ENC_RETURN_CODE_ERROR:                     return "unspecified error";
+		case IMX_VPU_ENC_RETURN_CODE_INVALID_PARAMS:            return "invalid params";
+		case IMX_VPU_ENC_RETURN_CODE_INVALID_HANDLE:            return "invalid handle";
+		case IMX_VPU_ENC_RETURN_CODE_INVALID_FRAMEBUFFER:       return "invalid framebuffer";
+		case IMX_VPU_ENC_RETURN_CODE_INSUFFICIENT_FRAMEBUFFERS: return "insufficient_framebuffers";
+		case IMX_VPU_ENC_RETURN_CODE_INVALID_STRIDE:            return "invalid stride";
+		case IMX_VPU_ENC_RETURN_CODE_WRONG_CALL_SEQUENCE:       return "wrong call sequence";
+		case IMX_VPU_ENC_RETURN_CODE_TIMEOUT:                   return "timeout";
+		default: return "<unknown>";
+	}
+}
+
+
+static unsigned long vpu_enc_load_inst_counter = 0;
+static DefaultDMABufferAllocator default_enc_dma_buffer_allocator =
+{
+	{
+		default_dmabufalloc_allocate,
+		default_dmabufalloc_deallocate,
+		default_dmabufalloc_map,
+		default_dmabufalloc_unmap,
+		default_dmabufalloc_get_fd,
+		default_dmabufalloc_get_size
+	},
+	1
+};
+
+
+ImxVpuEncReturnCodes imx_vpu_enc_load(void)
+{
+	IMX_VPU_TRACE("VPU encoder load instance counter: %lu", vpu_enc_load_inst_counter);
+	if (vpu_enc_load_inst_counter != 0)
+		return IMX_VPU_ENC_RETURN_CODE_OK;
+
+	ImxVpuEncReturnCodes ret = enc_convert_retcode(VPU_EncLoad());
+	if (ret != IMX_VPU_ENC_RETURN_CODE_OK)
+		IMX_VPU_ERROR("loading encoder failed: %s", imx_vpu_enc_error_string(ret));
+	else
+	{
+		IMX_VPU_TRACE("loaded encoder");
+		++vpu_enc_load_inst_counter;
+	}
+
+	return ret;
+}
+
+
+ImxVpuEncReturnCodes imx_vpu_enc_unload(void)
+{
+	IMX_VPU_TRACE("VPU encoder load instance counter: %lu", vpu_enc_load_inst_counter);
+	if (vpu_enc_load_inst_counter == 0)
+		return IMX_VPU_ENC_RETURN_CODE_OK;
+
+	ImxVpuEncReturnCodes ret = enc_convert_retcode(VPU_EncUnLoad());
+	if (ret != IMX_VPU_ENC_RETURN_CODE_OK)
+		IMX_VPU_ERROR("unloading encoder failed: %s", imx_vpu_enc_error_string(ret));
+	else
+	{
+		IMX_VPU_TRACE("unloaded encoder");
+		--vpu_enc_load_inst_counter;
+	}
+
+	return ret;
+}
+
+
+ImxVpuDMABufferAllocator* imx_vpu_enc_get_default_allocator(void)
+{
+	return (ImxVpuDMABufferAllocator*)(&default_enc_dma_buffer_allocator);
+}
+
+
+void imx_vpu_enc_get_bitstream_buffer_info(size_t *size, unsigned int *alignment)
+{
+	int i;
+	VpuMemInfo mem_info;
+
+	assert(size != NULL);
+	assert(alignment != NULL);
+
+	VPU_EncQueryMem(&mem_info);
+
+	/* only two sub blocks are ever present - get the VPU_MEM_PHY one */
+
+	for (i = 0; i < mem_info.nSubBlockNum; ++i)
+	{
+		if (mem_info.MemSubBlock[i].MemType == VPU_MEM_PHY)
+		{
+			*alignment = mem_info.MemSubBlock[i].nAlignment;
+			*size = mem_info.MemSubBlock[i].nSize;
+			IMX_VPU_TRACE("determined alignment %d and size %d for the physical memory for the bitstream buffer", *alignment, *size);
+			break;
+		}
+	}
+
+	/* virtual memory block is allocated internally inside imx_vpu_enc_open() */
+}
+
+
+void imx_vpu_enc_set_default_open_params(ImxVpuCodecFormat codec_format, ImxVpuEncOpenParams *open_params)
+{
+	assert(open_params != NULL);
+
+	open_params->codec_format = codec_format;
+	open_params->frame_width = 0;
+	open_params->frame_height = 0;
+	open_params->framerate = 1;
+	open_params->bitrate = 100;
+	open_params->gop_size = 16;
+	open_params->color_format = IMX_VPU_COLOR_FORMAT_YUV420;
+	open_params->user_defined_min_qp = 0;
+	open_params->user_defined_max_qp = 0;
+	open_params->enable_user_defined_min_qp = 0;
+	open_params->enable_user_defined_max_qp = 0;
+	open_params->use_intra_refresh = 0;
+	open_params->intra_qp = -1;
+	open_params->user_gamma = (int)(0.75*32768);
+	open_params->rate_interval_mode = IMX_VPU_ENC_RATE_INTERVAL_MODE_NORMAL;
+	open_params->macroblock_interval = 0;
+	open_params->enable_avc_intra_16x16_only_mode = 0;
+	open_params->slice_mode.multiple_slices_per_picture = 0;
+	open_params->slice_mode.slice_size_mode = IMX_VPU_ENC_SLICE_SIZE_MODE_BITS;
+	open_params->slice_mode.slice_size = 4000;
+	open_params->initial_delay = 0;
+	open_params->vbv_buffer_size = 0;
+	open_params->me_search_range = IMX_VPU_ENC_ME_SEARCH_RANGE_256x128;
+	open_params->use_me_zero_pmv = 0;
+	open_params->additional_intra_cost_weight = 0;
+
+	switch (codec_format)
+	{
+		case IMX_VPU_CODEC_FORMAT_MPEG4:
+			open_params->codec_params.mpeg4_params.enable_data_partition = 0;
+			open_params->codec_params.mpeg4_params.enable_reversible_vlc = 0;
+			open_params->codec_params.mpeg4_params.intra_dc_vlc_thr = 0;
+			open_params->codec_params.mpeg4_params.enable_hec = 0;
+			open_params->codec_params.mpeg4_params.version_id = 2;
+			break;
+
+		case IMX_VPU_CODEC_FORMAT_H263:
+			open_params->codec_params.h263_params.enable_annex_i = 0;
+			open_params->codec_params.h263_params.enable_annex_j = 1;
+			open_params->codec_params.h263_params.enable_annex_k = 0;
+			open_params->codec_params.h263_params.enable_annex_t = 0;
+			break;
+
+		case IMX_VPU_CODEC_FORMAT_H264:
+			open_params->codec_params.h264_params.use_avcc = 0;
+			open_params->codec_params.h264_params.enable_constrained_intra_prediction = 0;
+			open_params->codec_params.h264_params.disable_deblocking = 0;
+			open_params->codec_params.h264_params.deblock_filter_offset_alpha = 6;
+			open_params->codec_params.h264_params.deblock_filter_offset_beta = 0;
+			open_params->codec_params.h264_params.chroma_qp_offset = 0;
+			open_params->codec_params.h264_params.enable_access_unit_delimiters = 0;
+			break;
+
+		default:
+			break;
+	}
+}
+
+
+ImxVpuEncReturnCodes imx_vpu_enc_open(ImxVpuEncoder **encoder, ImxVpuEncOpenParams *open_params, ImxVpuDMABuffer *bitstream_buffer)
+{
+	VpuEncRetCode ret;
+	VpuMemInfo mem_info;
+	VpuEncOpenParam open_param;
+	void *bitstream_buffer_virtual_address;
+	imx_vpu_phys_addr_t bitstream_buffer_physical_address;
+
+	assert(encoder != NULL);
+	assert(open_params != NULL);
+	assert(bitstream_buffer != NULL);
+
+	*encoder = IMX_VPU_ALLOC(sizeof(ImxVpuEncoder));
+	if ((*encoder) == NULL)
+	{
+		IMX_VPU_ERROR("allocating memory for encoder object failed");
+		return IMX_VPU_ENC_RETURN_CODE_ERROR;
+	}
+
+	memset(*encoder, 0, sizeof(ImxVpuEncoder));
+
+	imx_vpu_dma_buffer_map(bitstream_buffer, &bitstream_buffer_virtual_address, &bitstream_buffer_physical_address);
+
+	{
+		int i;
+
+		VPU_EncQueryMem(&mem_info);
+
+		IMX_VPU_INFO("about to allocate %d memory sub blocks", mem_info.nSubBlockNum);
+		for (i = 0; i < mem_info.nSubBlockNum; ++i)
+		{
+			char const *type_str = "<unknown>";
+			VpuMemSubBlockInfo *sub_block = &(mem_info.MemSubBlock[i]);
+
+			switch (sub_block->MemType)
+			{
+				case VPU_MEM_VIRT:
+					type_str = "virtual";
+
+					(*encoder)->virt_mem_sub_block_size = sub_block->nSize + sub_block->nAlignment;
+					(*encoder)->virt_mem_sub_block = IMX_VPU_ALLOC((*encoder)->virt_mem_sub_block_size);
+					if ((*encoder)->virt_mem_sub_block == NULL)
+					{
+						imx_vpu_dma_buffer_unmap(bitstream_buffer);
+						IMX_VPU_ERROR("allocating memory for sub block failed");
+						return IMX_VPU_ENC_RETURN_CODE_ERROR;
+					}
+
+					sub_block->pVirtAddr = (unsigned char *)IMX_VPU_ALIGN_VAL_TO((*encoder)->virt_mem_sub_block, sub_block->nAlignment);
+					sub_block->pPhyAddr = 0;
+					break;
+
+				case VPU_MEM_PHY:
+					type_str = "physical";
+
+					sub_block->pVirtAddr = (unsigned char *)(bitstream_buffer_virtual_address);
+					sub_block->pPhyAddr = (unsigned char *)(bitstream_buffer_physical_address);
+					break;
+				default:
+					break;
+			}
+
+			IMX_VPU_INFO("allocated memory sub block #%d:  type: %s  size: %d  alignment: %d  virtual address: %p  physical address: %p", i, type_str, sub_block->nSize, sub_block->nAlignment, sub_block->pVirtAddr, sub_block->pPhyAddr);
+		}
+	}
+
+	if (!enc_convert_to_wrapper_open_param(open_params, &open_param))
+	{
+		IMX_VPU_ERROR("converting open params failed");
+		goto cleanup;
+	}
+
+	IMX_VPU_TRACE("opening encoder");
+
+	ret = VPU_EncOpen(&((*encoder)->handle), &mem_info, &open_param);
+	if (ret != VPU_ENC_RET_SUCCESS)
+	{
+		IMX_VPU_ERROR("opening encoder failed: %s", imx_vpu_enc_error_string(enc_convert_retcode(ret)));
+		goto cleanup;
+	}
+
+	(*encoder)->codec_format = open_params->codec_format;
+	(*encoder)->bitstream_buffer = bitstream_buffer;
+
+finish:
+	if (ret == VPU_ENC_RET_SUCCESS)
+		IMX_VPU_TRACE("successfully opened encoder");
+
+	return enc_convert_retcode(ret);
+
+cleanup:
+	imx_vpu_dma_buffer_unmap(bitstream_buffer);
+	if ((*encoder)->virt_mem_sub_block != NULL)
+		IMX_VPU_FREE((*encoder)->virt_mem_sub_block, (*encoder)->virt_mem_sub_block_size);
+	IMX_VPU_FREE(*encoder, sizeof(ImxVpuDecoder));
+	*encoder = NULL;
+
+	goto finish;
+}
+
+
+ImxVpuEncReturnCodes imx_vpu_enc_close(ImxVpuEncoder *encoder)
+{
+	VpuEncRetCode ret;
+
+	ret = VPU_EncClose(encoder->handle);
+	if (ret != VPU_ENC_RET_SUCCESS)
+		IMX_VPU_ERROR("closing encoder failed: %s", imx_vpu_enc_error_string(enc_convert_retcode(ret)));
+
+	imx_vpu_dma_buffer_unmap(encoder->bitstream_buffer);
+
+	if (encoder->framebuffers != NULL)
+	{
+		unsigned int i;
+		for (i = 0; i < encoder->num_framebuffers; ++i)
+			imx_vpu_dma_buffer_unmap(encoder->framebuffers[i].dma_buffer);
+	}
+
+	if (encoder->virt_mem_sub_block != NULL)
+		IMX_VPU_FREE(encoder->virt_mem_sub_block, encoder->virt_mem_sub_block_size);
+	IMX_VPU_FREE(encoder, sizeof(ImxVpuEncoder));
+
+	IMX_VPU_TRACE("closed encoder");
+
+	return enc_convert_retcode(ret);
+}
+
+
+ImxVpuEncReturnCodes imx_vpu_enc_register_framebuffers(ImxVpuEncoder *encoder, ImxVpuFramebuffer *framebuffers, unsigned int num_framebuffers, unsigned int src_stride)
+{
+	unsigned int i;
+	VpuEncRetCode ret;
+	VpuFrameBuffer *temp_fbs;
+
+	assert(encoder != NULL);
+	assert(framebuffers != NULL);
+	assert(num_framebuffers > 0);
+
+	IMX_VPU_TRACE("attempting to register %u framebuffers", num_framebuffers);
+
+	temp_fbs = IMX_VPU_ALLOC(sizeof(VpuFrameBuffer) * num_framebuffers);
+	if (temp_fbs == NULL)
+	{
+		IMX_VPU_ERROR("allocating memory for framebuffers failed");
+		return IMX_VPU_ENC_RETURN_CODE_ERROR;
+	}
+
+	memset(temp_fbs, 0, sizeof(VpuFrameBuffer) * num_framebuffers);
+	for (i = 0; i < num_framebuffers; ++i)
+	{
+		void *virt_addr;
+		imx_vpu_phys_addr_t phys_addr;
+		ImxVpuFramebuffer *fb = &framebuffers[i];
+
+		imx_vpu_dma_buffer_map(fb->dma_buffer, &virt_addr, &phys_addr);
+		if (virt_addr == NULL)
+		{
+			IMX_VPU_FREE(temp_fbs, sizeof(VpuFrameBuffer) * num_framebuffers);
+			IMX_VPU_ERROR("could not map buffer %u/%u", i, num_framebuffers);
+			return IMX_VPU_ENC_RETURN_CODE_ERROR;
+		}
+
+		temp_fbs[i].nStrideY = fb->y_stride;
+		temp_fbs[i].nStrideC = fb->cbcr_stride;
+
+		temp_fbs[i].pbufY = (unsigned char*)(phys_addr + fb->y_offset);
+		temp_fbs[i].pbufCb = (unsigned char*)(phys_addr + fb->cb_offset);
+		temp_fbs[i].pbufCr = (unsigned char*)(phys_addr + fb->cr_offset);
+		temp_fbs[i].pbufMvCol = (unsigned char*)(phys_addr + fb->mvcol_offset);
+	}
+
+	ret = VPU_EncRegisterFrameBuffer(encoder->handle, temp_fbs, num_framebuffers, src_stride);
+
+	IMX_VPU_FREE(temp_fbs, sizeof(VpuFrameBuffer) * num_framebuffers);
+
+	if (ret != VPU_ENC_RET_SUCCESS)
+	{
+		ImxVpuEncReturnCodes imxret = enc_convert_retcode(ret);
+		IMX_VPU_ERROR("registering framebuffers failed: %s", imx_vpu_enc_error_string(imxret));
+		return ret;
+	}
+
+	encoder->framebuffers = framebuffers;
+	encoder->num_framebuffers = num_framebuffers;
+
+	return IMX_VPU_DEC_RETURN_CODE_OK;
+}
+
+
+ImxVpuEncReturnCodes imx_vpu_enc_get_initial_info(ImxVpuEncoder *encoder, ImxVpuEncInitialInfo *info)
+{
+	VpuEncRetCode ret;
+	VpuEncInitInfo init_info;
+
+	assert(encoder != NULL);
+	assert(info != NULL);
+
+	ret = VPU_EncGetInitialInfo(encoder->handle, &init_info);
+	IMX_VPU_LOG("VPU_EncGetInitialInfo: min num framebuffers required: %d", init_info.nMinFrameBufferCount);
+	enc_convert_from_wrapper_initial_info(&init_info, info);
+	return enc_convert_retcode(ret);
+}
+
+
+void imx_vpu_enc_set_default_encoding_params(ImxVpuEncoder *encoder, ImxVpuEncParams *encoding_params)
+{
+	assert(encoding_params != NULL);
+
+	IMXVPUAPI_UNUSED_PARAM(encoder);
+
+	encoding_params->force_I_picture = 0;
+	encoding_params->skip_picture = 0;
+	encoding_params->enable_autoskip = 0;
+
+	encoding_params->quant_param = 0;
+}
+
+
+void imx_vpu_enc_set_encoding_config(ImxVpuEncoder *encoder, unsigned int bitrate, unsigned int intra_refresh_num, int intra_qp)
+{
+	int param;
+
+	assert(encoder != NULL);
+
+	param = bitrate;           VPU_EncConfig(encoder->handle, VPU_ENC_CONF_BIT_RATE,      &param);
+	param = intra_refresh_num; VPU_EncConfig(encoder->handle, VPU_ENC_CONF_INTRA_REFRESH, &param);
+	param = intra_qp;          VPU_EncConfig(encoder->handle, VPU_ENC_CONF_RC_INTRA_QP,   &param);
+}
+
+
+ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuPicture *picture, ImxVpuEncodedFrame *encoded_frame, ImxVpuEncParams *encoding_params, unsigned int *output_code)
+{
+	VpuEncRetCode ret;
+	VpuEncEncParam enc_enc_param;
+	VpuFrameBuffer in_framebuffer;
+	void *picture_virt_addr, *encoded_frame_virt_addr;
+	imx_vpu_phys_addr_t picture_phys_addr, encoded_frame_phys_addr;
+
+	assert(encoder != NULL);
+	assert(encoded_frame != NULL);
+	assert(encoded_frame->data.dma_buffer != NULL);
+	assert(encoding_params != NULL);
+	assert(output_code != NULL);
+
+	imx_vpu_dma_buffer_map(picture->framebuffer->dma_buffer, &picture_virt_addr, &picture_phys_addr);
+	imx_vpu_dma_buffer_map(encoded_frame->data.dma_buffer, &encoded_frame_virt_addr, &encoded_frame_phys_addr);
+
+	memset(&enc_enc_param, 0, sizeof(enc_enc_param));
+
+	in_framebuffer.nStrideY = picture->framebuffer->y_stride;
+	in_framebuffer.nStrideC = picture->framebuffer->cbcr_stride;
+	in_framebuffer.pbufY = (unsigned char*)(picture_phys_addr + picture->framebuffer->y_offset);
+	in_framebuffer.pbufCb = (unsigned char*)(picture_phys_addr + picture->framebuffer->cb_offset);
+	in_framebuffer.pbufCr = (unsigned char*)(picture_phys_addr + picture->framebuffer->cr_offset);
+	in_framebuffer.pbufMvCol = (unsigned char*)(picture_phys_addr + picture->framebuffer->mvcol_offset);
+
+	enc_enc_param.eFormat = convert_to_wrapper_codec_std(encoder->codec_format);
+	enc_enc_param.nPicWidth = encoding_params->frame_width;
+	enc_enc_param.nPicHeight = encoding_params->frame_height;
+	enc_enc_param.nFrameRate = encoding_params->framerate;
+	enc_enc_param.nQuantParam = encoding_params->quant_param;
+
+	enc_enc_param.nInPhyOutput = (unsigned int)encoded_frame_phys_addr;
+	enc_enc_param.nInVirtOutput = (unsigned int)encoded_frame_virt_addr;
+	enc_enc_param.nInOutputBufLen = imx_vpu_dma_buffer_get_size(encoded_frame->data.dma_buffer);
+
+	enc_enc_param.nForceIPicture = encoding_params->force_I_picture;
+	enc_enc_param.nSkipPicture = encoding_params->skip_picture;
+	enc_enc_param.nEnableAutoSkip = encoding_params->enable_autoskip;
+
+	enc_enc_param.pInFrame = &in_framebuffer;
+
+	ret = VPU_EncEncodeFrame(encoder->handle, &enc_enc_param);
+	IMX_VPU_LOG("VPU_EncEncodeFrame out ret code: 0x%x size: %d", enc_enc_param.eOutRetCode, enc_enc_param.nOutOutputSize);
+
+	*output_code = enc_convert_outcode(enc_enc_param.eOutRetCode);
+
+	if (ret != VPU_ENC_RET_SUCCESS)
+	{
+		IMX_VPU_ERROR("encoding frame failed: %s", imx_vpu_enc_error_string(enc_convert_retcode(ret)));
+		return enc_convert_retcode(ret);
+	}
+
+	encoded_frame->data_size = enc_enc_param.nOutOutputSize;
+
+	// TODO: check if this really is always the case
+	encoded_frame->context = picture->context;
+
+	imx_vpu_dma_buffer_unmap(encoded_frame->data.dma_buffer);
+	imx_vpu_dma_buffer_unmap(picture->framebuffer->dma_buffer);
 
 	return IMX_VPU_DEC_RETURN_CODE_OK;
 }
