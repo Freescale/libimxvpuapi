@@ -75,7 +75,7 @@ static ImxVpuPicType convert_from_wrapper_pic_type(VpuPicType type)
 }
 
 
-static VpuCodStd convert_to_wrapper_codec_std(ImxVpuCodecFormats format)
+static VpuCodStd convert_to_wrapper_codec_std(ImxVpuCodecFormat format)
 {
 	switch (format)
 	{
@@ -250,7 +250,7 @@ struct _ImxVpuDecoder
 
 	ImxVpuDMABuffer *bitstream_buffer;
 
-	ImxVpuCodecFormats codec_format;
+	ImxVpuCodecFormat codec_format;
 
 	unsigned int num_framebuffers;
 	VpuFrameBuffer **wrapper_framebuffers;
@@ -314,7 +314,7 @@ static unsigned int dec_convert_outcode(VpuDecBufRetCode code)
 static void dec_convert_to_wrapper_open_param(ImxVpuDecOpenParams *open_params, VpuDecOpenParam *wrapper_open_param)
 {
 	memset(wrapper_open_param, 0, sizeof(VpuDecOpenParam));
-	
+
 	wrapper_open_param->CodecFormat    = convert_to_wrapper_codec_std(open_params->codec_format);
 	wrapper_open_param->nReorderEnable = open_params->enable_frame_reordering;
 	wrapper_open_param->nPicWidth      = open_params->frame_width;
@@ -372,7 +372,7 @@ char const * imx_vpu_dec_error_string(ImxVpuDecReturnCodes code)
 }
 
 
-static unsigned long vpu_load_inst_counter = 0;
+static unsigned long vpu_dec_load_inst_counter = 0;
 static DefaultDMABufferAllocator default_dec_dma_buffer_allocator =
 {
 	{
@@ -389,8 +389,8 @@ static DefaultDMABufferAllocator default_dec_dma_buffer_allocator =
 
 ImxVpuDecReturnCodes imx_vpu_dec_load(void)
 {
-	IMX_VPU_TRACE("VPU load instance counter: %lu", vpu_load_inst_counter);
-	if (vpu_load_inst_counter != 0)
+	IMX_VPU_TRACE("VPU decoder load instance counter: %lu", vpu_dec_load_inst_counter);
+	if (vpu_dec_load_inst_counter != 0)
 		return IMX_VPU_DEC_RETURN_CODE_OK;
 
 	ImxVpuDecReturnCodes ret = dec_convert_retcode(VPU_DecLoad());
@@ -399,7 +399,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_load(void)
 	else
 	{
 		IMX_VPU_TRACE("loaded decoder");
-		++vpu_load_inst_counter;
+		++vpu_dec_load_inst_counter;
 	}
 
 	return ret;
@@ -408,8 +408,8 @@ ImxVpuDecReturnCodes imx_vpu_dec_load(void)
 
 ImxVpuDecReturnCodes imx_vpu_dec_unload(void)
 {
-	IMX_VPU_TRACE("VPU load instance counter: %lu", vpu_load_inst_counter);
-	if (vpu_load_inst_counter == 0)
+	IMX_VPU_TRACE("VPU decoder load instance counter: %lu", vpu_dec_load_inst_counter);
+	if (vpu_dec_load_inst_counter == 0)
 		return IMX_VPU_DEC_RETURN_CODE_OK;
 
 	ImxVpuDecReturnCodes ret = dec_convert_retcode(VPU_DecUnLoad());
@@ -418,7 +418,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_unload(void)
 	else
 	{
 		IMX_VPU_TRACE("unloaded decoder");
-		--vpu_load_inst_counter;
+		--vpu_dec_load_inst_counter;
 	}
 
 	return ret;

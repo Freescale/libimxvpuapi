@@ -201,7 +201,7 @@ typedef enum
 	IMX_VPU_CODEC_FORMAT_VP8
 	/* XXX others will be added when the firmware supports them */
 }
-ImxVpuCodecFormats;
+ImxVpuCodecFormat;
 
 
 typedef enum
@@ -432,7 +432,7 @@ ImxVpuDecOutputCodes;
 /* Structure used together with @imx_vpu_dec_open */
 typedef struct
 {
-	ImxVpuCodecFormats codec_format;
+	ImxVpuCodecFormat codec_format;
 
 	/* Set to 1 if frame reordering shall be done by the VPU, 0 otherwise.
 	 * Useful only for formats which can reorder frames, like h.264. */
@@ -518,7 +518,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_unload(void);
 /* Convenience predefined allocator for allocating DMA buffers. */
 ImxVpuDMABufferAllocator* imx_vpu_dec_get_default_allocator(void);
 
-/* Called before imx_vpu_dec_open(), it returns the alignment and size for the
+/* Called before @imx_vpu_dec_open, it returns the alignment and size for the
  * physical memory block necessary for the decoder's bitstream buffer. The user
  * must allocate a DMA buffer of at least this size, and its physical address
  * must be aligned according to the alignment value. */
