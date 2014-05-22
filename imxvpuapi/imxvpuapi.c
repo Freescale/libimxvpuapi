@@ -57,6 +57,12 @@ int imx_vpu_dma_buffer_get_fd(ImxVpuDMABuffer *buffer)
 }
 
 
+size_t imx_vpu_dma_buffer_get_size(ImxVpuDMABuffer *buffer)
+{
+	return buffer->allocator->get_size(buffer->allocator, buffer);
+}
+
+
 
 
 static void* default_heap_alloc_fn(size_t const size, void *context)

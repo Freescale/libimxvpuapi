@@ -216,6 +216,14 @@ int default_dmabufalloc_get_fd(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuf
 }
 
 
+size_t default_dmabufalloc_get_size(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer)
+{
+	IMXVPUAPI_UNUSED_PARAM(allocator);
+	DefaultDMABuffer *defaultbuf = (DefaultDMABuffer *)buffer;
+	return defaultbuf->size;
+}
+
+
 
 
 /************************************************/
@@ -366,7 +374,8 @@ static DefaultDMABufferAllocator default_dec_dma_buffer_allocator =
 		default_dmabufalloc_deallocate,
 		default_dmabufalloc_map,
 		default_dmabufalloc_unmap,
-		default_dmabufalloc_get_fd
+		default_dmabufalloc_get_fd,
+		default_dmabufalloc_get_size
 	},
 	0
 };

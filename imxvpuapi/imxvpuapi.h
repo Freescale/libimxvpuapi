@@ -102,6 +102,8 @@ struct _ImxVpuDMABufferAllocator
 	void (*unmap)(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer);
 
 	int (*get_fd)(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer);
+
+	size_t (*get_size)(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer);
 };
 
 
@@ -120,6 +122,7 @@ void imx_vpu_dma_buffer_deallocate(ImxVpuDMABuffer *buffer);
 void imx_vpu_dma_buffer_map(ImxVpuDMABuffer *buffer, void **virtual_address, imx_vpu_phys_addr_t *physical_address);
 void imx_vpu_dma_buffer_unmap(ImxVpuDMABuffer *buffer);
 int imx_vpu_dma_buffer_get_fd(ImxVpuDMABuffer *buffer);
+size_t imx_vpu_dma_buffer_get_size(ImxVpuDMABuffer *buffer);
 
 
 /* Heap allocation function for virtual memory blocks internally allocated by imxvpuapi.
