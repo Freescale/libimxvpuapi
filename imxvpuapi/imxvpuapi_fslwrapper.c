@@ -130,8 +130,10 @@ static ImxVpuDecReturnCodes dec_convert_retcode(VpuDecRetCode code);
 static ImxVpuEncReturnCodes enc_convert_retcode(VpuEncRetCode code);
 
 
-static ImxVpuDMABuffer* default_dmabufalloc_allocate(ImxVpuDMABufferAllocator *allocator, size_t size, unsigned int alignment)
+static ImxVpuDMABuffer* default_dmabufalloc_allocate(ImxVpuDMABufferAllocator *allocator, size_t size, unsigned int alignment, unsigned int flags)
 {
+	IMXVPUAPI_UNUSED_PARAM(flags);
+
 	VpuDecRetCode ret, ok_ret;
 	char const *errmsg;
 
@@ -198,9 +200,10 @@ static void default_dmabufalloc_deallocate(ImxVpuDMABufferAllocator *allocator, 
 }
 
 
-static void default_dmabufalloc_map(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer, void **virtual_address, imx_vpu_phys_addr_t *physical_address)
+static void default_dmabufalloc_map(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer, void **virtual_address, imx_vpu_phys_addr_t *physical_address, unsigned int flags)
 {
 	IMXVPUAPI_UNUSED_PARAM(allocator);
+	IMXVPUAPI_UNUSED_PARAM(flags);
 
 	DefaultDMABuffer *defaultbuf = (DefaultDMABuffer *)buffer;
 	*virtual_address = defaultbuf->aligned_virtual_address;
@@ -481,7 +484,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenPara
 
 	memset(*decoder, 0, sizeof(ImxVpuDecoder));
 
-	imx_vpu_dma_buffer_map(bitstream_buffer, &bitstream_buffer_virtual_address, &bitstream_buffer_physical_address);
+	imx_vpu_dma_buffer_map(bitstream_buffer, &bitstream_buffer_virtual_address, &bitstream_buffer_physical_address, 0);
 
 	{
 		int i;
@@ -746,7 +749,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, I
 		imx_vpu_phys_addr_t phys_addr;
 		ImxVpuFramebuffer *fb = &framebuffers[i];
 
-		imx_vpu_dma_buffer_map(fb->dma_buffer, &virt_addr, &phys_addr);
+		imx_vpu_dma_buffer_map(fb->dma_buffer, &virt_addr, &phys_addr, 0);
 		if (virt_addr == NULL)
 		{
 			IMX_VPU_FREE(temp_fbs, sizeof(VpuFrameBuffer) * num_framebuffers);
@@ -1549,7 +1552,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_open(ImxVpuEncoder **encoder, ImxVpuEncOpenPara
 
 	memset(*encoder, 0, sizeof(ImxVpuEncoder));
 
-	imx_vpu_dma_buffer_map(bitstream_buffer, &bitstream_buffer_virtual_address, &bitstream_buffer_physical_address);
+	imx_vpu_dma_buffer_map(bitstream_buffer, &bitstream_buffer_virtual_address, &bitstream_buffer_physical_address, 0);
 
 	{
 		int i;
@@ -1682,7 +1685,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_register_framebuffers(ImxVpuEncoder *encoder, I
 		imx_vpu_phys_addr_t phys_addr;
 		ImxVpuFramebuffer *fb = &framebuffers[i];
 
-		imx_vpu_dma_buffer_map(fb->dma_buffer, &virt_addr, &phys_addr);
+		imx_vpu_dma_buffer_map(fb->dma_buffer, &virt_addr, &phys_addr, 0);
 		if (virt_addr == NULL)
 		{
 			IMX_VPU_FREE(temp_fbs, sizeof(VpuFrameBuffer) * num_framebuffers);
@@ -1772,8 +1775,8 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuPicture *p
 	assert(encoding_params != NULL);
 	assert(output_code != NULL);
 
-	imx_vpu_dma_buffer_map(picture->framebuffer->dma_buffer, &picture_virt_addr, &picture_phys_addr);
-	imx_vpu_dma_buffer_map(encoded_frame->data.dma_buffer, &encoded_frame_virt_addr, &encoded_frame_phys_addr);
+	imx_vpu_dma_buffer_map(picture->framebuffer->dma_buffer, &picture_virt_addr, &picture_phys_addr, 0);
+	imx_vpu_dma_buffer_map(encoded_frame->data.dma_buffer, &encoded_frame_virt_addr, &encoded_frame_phys_addr, 0);
 
 	memset(&enc_enc_param, 0, sizeof(enc_enc_param));
 

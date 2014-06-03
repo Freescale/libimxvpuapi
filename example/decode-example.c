@@ -139,7 +139,7 @@ int init(AppData *app_data, int argc, char **argv)
 
 	imx_vpu_dec_load();
 	imx_vpu_dec_get_bitstream_buffer_info(&(app_data->bitstream_buffer_size), &(app_data->bitstream_buffer_alignment));
-	app_data->bitstream_buffer = imx_vpu_dma_buffer_allocate(imx_vpu_dec_get_default_allocator(), app_data->bitstream_buffer_size, app_data->bitstream_buffer_alignment);
+	app_data->bitstream_buffer = imx_vpu_dma_buffer_allocate(imx_vpu_dec_get_default_allocator(), app_data->bitstream_buffer_size, app_data->bitstream_buffer_alignment, 0);
 	imx_vpu_dec_open(&(app_data->vpudec), &open_params, app_data->bitstream_buffer);
 
 	return RETVAL_OK;
@@ -238,7 +238,7 @@ int decode_frame(AppData *app_data)
 
 		for (i = 0; i < app_data->num_framebuffers; ++i)
 		{
-			app_data->fb_dmabuffers[i] = imx_vpu_dma_buffer_allocate(imx_vpu_dec_get_default_allocator(), app_data->calculated_sizes.total_size, app_data->initial_info.framebuffer_alignment);
+			app_data->fb_dmabuffers[i] = imx_vpu_dma_buffer_allocate(imx_vpu_dec_get_default_allocator(), app_data->calculated_sizes.total_size, app_data->initial_info.framebuffer_alignment, 0);
 
 			imx_vpu_dec_fill_framebuffer_params(&(app_data->framebuffers[i]), &(app_data->calculated_sizes), app_data->fb_dmabuffers[i], (void*)((uintptr_t)(0x2000 + i)));
 		}
@@ -258,7 +258,7 @@ int decode_frame(AppData *app_data)
 		frame_id = (unsigned int)((uintptr_t)(decoded_picture.context));
 		fprintf(stderr, "decoded output picture:  frame id: 0x%x  writing %u byte\n", frame_id, num_out_byte);
 
-		imx_vpu_dma_buffer_map(decoded_picture.framebuffer->dma_buffer, &mapped_virtual_address, &mapped_physical_address);
+		imx_vpu_dma_buffer_map(decoded_picture.framebuffer->dma_buffer, &mapped_virtual_address, &mapped_physical_address, IMX_VPU_MAPPING_FLAG_READ_ONLY);
 		fwrite(mapped_virtual_address, 1, num_out_byte, app_data->fout);
 		imx_vpu_dma_buffer_unmap(decoded_picture.framebuffer->dma_buffer);
 

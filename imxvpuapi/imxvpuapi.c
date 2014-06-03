@@ -27,9 +27,9 @@
 /**************************************************/
 
 
-ImxVpuDMABuffer* imx_vpu_dma_buffer_allocate(ImxVpuDMABufferAllocator *allocator, size_t size, unsigned int alignment)
+ImxVpuDMABuffer* imx_vpu_dma_buffer_allocate(ImxVpuDMABufferAllocator *allocator, size_t size, unsigned int alignment, unsigned int flags)
 {
-	return allocator->allocate(allocator, size, alignment);
+	return allocator->allocate(allocator, size, alignment, flags);
 }
 
 
@@ -39,9 +39,9 @@ void imx_vpu_dma_buffer_deallocate(ImxVpuDMABuffer *buffer)
 }
 
 
-void imx_vpu_dma_buffer_map(ImxVpuDMABuffer *buffer, void **virtual_address, imx_vpu_phys_addr_t *physical_address)
+void imx_vpu_dma_buffer_map(ImxVpuDMABuffer *buffer, void **virtual_address, imx_vpu_phys_addr_t *physical_address, unsigned int flags)
 {
-	buffer->allocator->map(buffer->allocator, buffer, virtual_address, physical_address);
+	buffer->allocator->map(buffer->allocator, buffer, virtual_address, physical_address, flags);
 }
 
 
