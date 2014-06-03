@@ -774,7 +774,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, I
 	{
 		ImxVpuDecReturnCodes imxret = dec_convert_retcode(ret);
 		IMX_VPU_ERROR("registering framebuffers failed: %s", imx_vpu_dec_error_string(imxret));
-		return ret;
+		goto cleanup;
 	}
 
 	decoder->wrapper_framebuffers = IMX_VPU_ALLOC(sizeof(VpuFrameBuffer*) * num_framebuffers);
@@ -784,23 +784,32 @@ ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, I
 		IMX_VPU_LOG("out_num: %d  num_framebuffers: %u", out_num, num_framebuffers);
 	}
 
-	decoder->framebuffers = framebuffers;
-	decoder->num_framebuffers = num_framebuffers;
-	decoder->num_available_framebuffers = num_framebuffers;
-
 	decoder->context_for_frames = IMX_VPU_ALLOC(sizeof(void*) * num_framebuffers);
 	if (decoder->context_for_frames == NULL)
 	{
 		IMX_VPU_ERROR("allocating memory for user data failed");
 		IMX_VPU_FREE(decoder->wrapper_framebuffers, sizeof(VpuFrameBuffer*) * num_framebuffers);
 		decoder->wrapper_framebuffers = NULL;
-		return IMX_VPU_DEC_RETURN_CODE_ERROR;
+		goto cleanup;
 	}
+
+	decoder->framebuffers = framebuffers;
+	decoder->num_framebuffers = num_framebuffers;
+	decoder->num_available_framebuffers = num_framebuffers;
 
 	memset(decoder->context_for_frames, 0, sizeof(void*) * num_framebuffers);
 	decoder->num_context = 0;
 
 	return IMX_VPU_DEC_RETURN_CODE_OK;
+
+cleanup:
+	for (i = 0; i < num_framebuffers; ++i)
+	{
+		ImxVpuFramebuffer *fb = &framebuffers[i];
+		imx_vpu_dma_buffer_unmap(fb->dma_buffer);
+	}
+
+	return ret;
 }
 
 
