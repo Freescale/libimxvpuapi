@@ -975,6 +975,26 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 			IMX_VPU_INFO("flushed decoder");
 	}
 
+	if (buf_ret_code & VPU_DEC_RESOLUTION_CHANGED)
+	{
+		IMX_VPU_INFO("resolution changed - resetting internal states");
+
+		*output_code |= IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE;
+
+		decoder->delay_pending_context = TRUE;
+		decoder->recalculate_num_avail_framebuffers = FALSE;
+
+		decoder->num_context = 0;
+
+		if (decoder->context_for_frames != NULL)
+			IMX_VPU_FREE(decoder->context_for_frames, sizeof(void*) * decoder->num_framebuffers);
+		if (decoder->wrapper_framebuffers != NULL)
+			IMX_VPU_FREE(decoder->wrapper_framebuffers, sizeof(VpuFrameBuffer*) * decoder->num_framebuffers);
+
+		decoder->context_for_frames = NULL;
+		decoder->wrapper_framebuffers = NULL;
+	}
+
 	if (buf_ret_code & VPU_DEC_NO_ENOUGH_INBUF)
 	{
 		/* Not dropping frame here on purpose; the next input frame may
