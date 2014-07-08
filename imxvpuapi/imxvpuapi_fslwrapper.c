@@ -663,6 +663,9 @@ ImxVpuDecReturnCodes imx_vpu_dec_enable_drain_mode(ImxVpuDecoder *decoder, int e
 
 	assert(decoder != NULL);
 
+	if (decoder->drain_mode_enabled == enabled)
+		return IMX_VPU_DEC_RETURN_CODE_OK;
+
 	config_param = enabled ? VPU_DEC_IN_DRAIN : VPU_DEC_IN_NORMAL;
 	ret = VPU_DecConfig(decoder->handle, VPU_DEC_CONF_INPUTTYPE, &config_param);
 
