@@ -31,6 +31,12 @@
 
 
 
+/* This is a simple example of how to decode with the imxvpuapi library.
+ * It decodes h.264 byte stream data and dumps the decoded frames to a file.
+ * Also look into imxvpuapi.h for documentation. */
+
+
+
 typedef struct
 {
 	char *infn, *outfn;
@@ -174,35 +180,53 @@ int shutdown(AppData *app_data)
 int decode_frame(AppData *app_data)
 {
 	ImxVpuEncodedFrame encoded_frame;
-	int ret;
+	int ok;
 	unsigned int output_code;
-
-	ret = h264_ctx_read_access_unit(&(app_data->h264_ctx));
-
-	if (app_data->h264_ctx.au_end_offset <= app_data->h264_ctx.au_start_offset)
-		return RETVAL_EOS;
 
 	if (imx_vpu_dec_is_drain_mode_enabled(app_data->vpudec))
 	{
+		/* In drain mode there is no input data */
 		encoded_frame.data.virtual_address = NULL;
 		encoded_frame.data_size = 0;
 		encoded_frame.codec_data = NULL;
 		encoded_frame.codec_data_size = 0;
 		encoded_frame.context = NULL;
+
+		ok = 1;
 	}
 	else
 	{
+		/* Regular mode; read input data and feed it to the decoder */
+
+		ok = h264_ctx_read_access_unit(&(app_data->h264_ctx));
+
+		if (app_data->h264_ctx.au_end_offset <= app_data->h264_ctx.au_start_offset)
+			return RETVAL_EOS;
+
 		encoded_frame.data.virtual_address = app_data->h264_ctx.in_buffer + app_data->h264_ctx.au_start_offset;
 		encoded_frame.data_size = app_data->h264_ctx.au_end_offset - app_data->h264_ctx.au_start_offset;
+		/* Codec data is out-of-band data that is typically stored in a separate space in
+		 * containers for each elementary stream; h.264 byte-stream does not need it */
 		encoded_frame.codec_data = NULL;
 		encoded_frame.codec_data_size = 0;
+		/* The frame id counter is used to give the encoded frames an example context.
+		 * The context of an encoded frame is a user-defined pointer that is passed along
+		 * to the corresponding decoded picture. This way, it can be determined which
+		 * decoded picture is the result of what encoded frame.
+		 * For example purposes (to be able to print some log output), the context
+		 * is just a monotonically increasing integer. */
 		encoded_frame.context = (void *)((uintptr_t)(app_data->frame_id_counter));
 
 		fprintf(stderr, "encoded input frame:  frame id: 0x%x  size: %u byte\n", app_data->frame_id_counter, encoded_frame.data_size);
 	}
 
+	/* Perform the actual decoding */
 	imx_vpu_dec_decode(app_data->vpudec, &encoded_frame, &output_code);
 
+	/* Initial info is now available; this usually happens right after the
+	 * first frame is decoded, and this is the situation where one must register
+	 * output framebuffers, which the decoder then uses like a buffer pool for
+	 * picking buffers to decode frame into */
 	if (output_code & IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE)
 	{
 		unsigned int i;
@@ -238,41 +262,71 @@ int decode_frame(AppData *app_data)
 
 		for (i = 0; i < app_data->num_framebuffers; ++i)
 		{
+			/* Allocate a DMA buffer for each framebuffer. It is possible to specify alternate allocators;
+			 * all that is required is that the allocator provides physically contiguous memory
+			 * (necessary for DMA transfers) and respecs the alignment value. */
 			app_data->fb_dmabuffers[i] = imx_vpu_dma_buffer_allocate(imx_vpu_dec_get_default_allocator(), app_data->calculated_sizes.total_size, app_data->initial_info.framebuffer_alignment, 0);
 
+			/* The last parameter (the one with 0x2000 + i) is the context data for the framebuffers in the pool.
+			 * It is possible to attach user-defined context data to them. Note that it is not related to the
+			 * context data in en- and decoded pictures. For purposes of demonstrations, the context pointer
+			 * is just a simple monotonically increasing integer. First framebuffer has context 0x2000, second 0x2001 etc. */
 			imx_vpu_dec_fill_framebuffer_params(&(app_data->framebuffers[i]), &(app_data->calculated_sizes), app_data->fb_dmabuffers[i], (void*)((uintptr_t)(0x2000 + i)));
 		}
 
+		/* Actual registration is done here. From this moment on, the VPU knows which buffers to use for
+		 * storing decoded pictures into. This call must not be done again until decoding is shut down or
+		 * IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE is set again. */
 		imx_vpu_dec_register_framebuffers(app_data->vpudec, app_data->framebuffers, app_data->num_framebuffers);
 	}
 
+	/* A decoded picture is available for further processing. Retrieve it, do something
+	 * with it, and once the picture is no longer needed, mark it as displayed. This
+	 * marks it internally as available for further decoding by the VPU. */
 	if (output_code & IMX_VPU_DEC_OUTPUT_CODE_DECODED_PICTURE_AVAILABLE)
 	{
 		ImxVpuPicture decoded_picture;
 		unsigned int frame_id;
-		void *mapped_virtual_address;
+		uint8_t *mapped_virtual_address;
 		imx_vpu_phys_addr_t mapped_physical_address;
 		size_t num_out_byte = app_data->calculated_sizes.y_size + app_data->calculated_sizes.cbcr_size * 2;
 
+		/* This call retrieves information about the decoded picture, including
+		 * a pointer to the corresponding framebuffer structure. This must not be called more
+		 * than once after IMX_VPU_DEC_OUTPUT_CODE_DECODED_PICTURE_AVAILABLE was set. */
 		imx_vpu_dec_get_decoded_picture(app_data->vpudec, &decoded_picture);
 		frame_id = (unsigned int)((uintptr_t)(decoded_picture.context));
 		fprintf(stderr, "decoded output picture:  frame id: 0x%x  writing %u byte\n", frame_id, num_out_byte);
 
+		/* Map buffer to the local address space, dump the decoded frame to file,
+		 * and unmap again. The decoded frame uses the I420 color format for all
+		 * bitstream formats (h.264, MPEG2 etc.), with one exception; with motion JPEG data,
+		 * the format can be different. See imxvpuapi.h for details. */
 		imx_vpu_dma_buffer_map(decoded_picture.framebuffer->dma_buffer, &mapped_virtual_address, &mapped_physical_address, IMX_VPU_MAPPING_FLAG_READ_ONLY);
 		fwrite(mapped_virtual_address, 1, num_out_byte, app_data->fout);
 		imx_vpu_dma_buffer_unmap(decoded_picture.framebuffer->dma_buffer);
 
+		/* Mark the framebuffer as displayed, thus returning it to the list of
+		 *framebuffers available for decoding. */
 		imx_vpu_dec_mark_framebuffer_as_displayed(app_data->vpudec, decoded_picture.framebuffer);
 	}
 	else if (output_code & IMX_VPU_DEC_OUTPUT_CODE_DROPPED)
 	{
+		/* A frame was dropped. The context of the dropped frame can be retrieved
+		 * if this is necessary for timestamping etc. */
 		unsigned int dropped_frame_id = (unsigned int)((uintptr_t)(imx_vpu_dec_get_dropped_frame_context(app_data->vpudec)));
 		fprintf(stderr, "dropped frame:  frame id: 0x%x\n", dropped_frame_id);
 	}
 
+	if (output_code & IMX_VPU_DEC_OUTPUT_CODE_EOS)
+	{
+		fprintf(stderr, "VPU reports EOS; no more decoded frames available");
+		ok = 0;
+	}
+
 	app_data->frame_id_counter++;
 
-	return ret ? RETVAL_OK : RETVAL_EOS;
+	return ok ? RETVAL_OK : RETVAL_EOS;
 }
 
 
@@ -281,10 +335,13 @@ int decode_frame(AppData *app_data)
 int main(int argc, char *argv[])
 {
 	AppData app_data;
+	memset(&app_data, 0, sizeof(AppData));
 
+	/* Initialize decoder */
 	if (init(&app_data, argc, argv) == RETVAL_ERROR)
 		return 1;
 
+	/* Feed frames to decoder & decode & output, until we run out of input data */
 	for (;;)
 	{
 		Retval ret = decode_frame(&app_data);
@@ -296,6 +353,9 @@ int main(int argc, char *argv[])
 			return 1;
 		}
 	}
+
+	/* Enable drain mode; in this mode, any decoded pictures that are still in the
+	 * decoder are output; no input data is given (since there isn't any input data anymore) */
 
 	fprintf(stderr, "draining decoder");
 	imx_vpu_dec_enable_drain_mode(app_data.vpudec, 1);
@@ -312,10 +372,17 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	/* Cleanup */
 	return shutdown(&app_data);
 }
 
 
+
+
+
+
+
+/*****  BOILERPLATE CODE FROM HERE ON *****/
 
 
 static void usage(char *progname)
