@@ -121,7 +121,7 @@ struct _ImxVpuDMABufferAllocator
 	void (*deallocate)(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer);
 
 	/* Mapping/unmapping must use some kind of internal counter, to allow for multiple map() calls */
-	void (*map)(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer, void **virtual_address, imx_vpu_phys_addr_t *physical_address, unsigned int flags);
+	void (*map)(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer, uint8_t **virtual_address, imx_vpu_phys_addr_t *physical_address, unsigned int flags);
 	void (*unmap)(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer);
 
 	int (*get_fd)(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer);
@@ -142,7 +142,7 @@ struct _ImxVpuDMABuffer
 /* Convenience functions which call the corresponding vfuncs in the allocator */
 ImxVpuDMABuffer* imx_vpu_dma_buffer_allocate(ImxVpuDMABufferAllocator *allocator, size_t size, unsigned int alignment, unsigned int flags);
 void imx_vpu_dma_buffer_deallocate(ImxVpuDMABuffer *buffer);
-void imx_vpu_dma_buffer_map(ImxVpuDMABuffer *buffer, void **virtual_address, imx_vpu_phys_addr_t *physical_address, unsigned int flags);
+void imx_vpu_dma_buffer_map(ImxVpuDMABuffer *buffer, uint8_t **virtual_address, imx_vpu_phys_addr_t *physical_address, unsigned int flags);
 void imx_vpu_dma_buffer_unmap(ImxVpuDMABuffer *buffer);
 int imx_vpu_dma_buffer_get_fd(ImxVpuDMABuffer *buffer);
 size_t imx_vpu_dma_buffer_get_size(ImxVpuDMABuffer *buffer);
@@ -286,7 +286,7 @@ typedef struct
 	 * resulting encoded frame. */
 	union
 	{
-		void *virtual_address;
+		uint8_t *virtual_address;
 		ImxVpuDMABuffer *dma_buffer;
 	}
 	data;
@@ -300,7 +300,7 @@ typedef struct
 	 * Set pointer and size for every encoded frame when decoding.
 	 * If no such data exists or is required, or if drain mode is enabled,
 	 * the pointer must be NULL, the size must be 0. Not used by the encoder. */
-	void *codec_data;
+	uint8_t *codec_data;
 	unsigned int codec_data_size;
 
 	/* User-defined pointer. The library does not touch this value.

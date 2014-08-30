@@ -39,7 +39,7 @@ void imx_vpu_dma_buffer_deallocate(ImxVpuDMABuffer *buffer)
 }
 
 
-void imx_vpu_dma_buffer_map(ImxVpuDMABuffer *buffer, void **virtual_address, imx_vpu_phys_addr_t *physical_address, unsigned int flags)
+void imx_vpu_dma_buffer_map(ImxVpuDMABuffer *buffer, uint8_t **virtual_address, imx_vpu_phys_addr_t *physical_address, unsigned int flags)
 {
 	buffer->allocator->map(buffer->allocator, buffer, virtual_address, physical_address, flags);
 }

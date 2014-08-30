@@ -112,7 +112,7 @@ typedef struct
 
 	size_t size;
 
-	void*               aligned_virtual_address;
+	uint8_t*            aligned_virtual_address;
 	imx_vpu_phys_addr_t aligned_physical_address;
 }
 DefaultDMABuffer;
@@ -200,7 +200,7 @@ static void default_dmabufalloc_deallocate(ImxVpuDMABufferAllocator *allocator, 
 }
 
 
-static void default_dmabufalloc_map(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer, void **virtual_address, imx_vpu_phys_addr_t *physical_address, unsigned int flags)
+static void default_dmabufalloc_map(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer, uint8_t **virtual_address, imx_vpu_phys_addr_t *physical_address, unsigned int flags)
 {
 	IMXVPUAPI_UNUSED_PARAM(allocator);
 	IMXVPUAPI_UNUSED_PARAM(flags);
@@ -468,7 +468,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenPara
 	VpuDecRetCode ret;
 	VpuMemInfo mem_info;
 	VpuDecOpenParam open_param;
-	void *bitstream_buffer_virtual_address;
+	uint8_t *bitstream_buffer_virtual_address;
 	imx_vpu_phys_addr_t bitstream_buffer_physical_address;
 
 	assert(decoder != NULL);
@@ -748,7 +748,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, I
 	memset(temp_fbs, 0, sizeof(VpuFrameBuffer) * num_framebuffers);
 	for (i = 0; i < num_framebuffers; ++i)
 	{
-		void *virt_addr;
+		uint8_t *virt_addr;
 		imx_vpu_phys_addr_t phys_addr;
 		ImxVpuFramebuffer *fb = &framebuffers[i];
 
@@ -1565,10 +1565,10 @@ void imx_vpu_enc_set_default_open_params(ImxVpuCodecFormat codec_format, ImxVpuE
 
 ImxVpuEncReturnCodes imx_vpu_enc_open(ImxVpuEncoder **encoder, ImxVpuEncOpenParams *open_params, ImxVpuDMABuffer *bitstream_buffer)
 {
-	VpuEncRetCode ret;
+	VpuEncRetCode ret = VPU_ENC_RET_SUCCESS;
 	VpuMemInfo mem_info;
 	VpuEncOpenParam open_param;
-	void *bitstream_buffer_virtual_address;
+	uint8_t *bitstream_buffer_virtual_address;
 	imx_vpu_phys_addr_t bitstream_buffer_physical_address;
 
 	assert(encoder != NULL);
@@ -1713,7 +1713,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_register_framebuffers(ImxVpuEncoder *encoder, I
 	memset(temp_fbs, 0, sizeof(VpuFrameBuffer) * num_framebuffers);
 	for (i = 0; i < num_framebuffers; ++i)
 	{
-		void *virt_addr;
+		uint8_t *virt_addr;
 		imx_vpu_phys_addr_t phys_addr;
 		ImxVpuFramebuffer *fb = &framebuffers[i];
 
@@ -1798,7 +1798,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuPicture *p
 	VpuEncRetCode ret;
 	VpuEncEncParam enc_enc_param;
 	VpuFrameBuffer in_framebuffer;
-	void *picture_virt_addr, *encoded_frame_virt_addr;
+	uint8_t *picture_virt_addr, *encoded_frame_virt_addr;
 	imx_vpu_phys_addr_t picture_phys_addr, encoded_frame_phys_addr;
 
 	assert(encoder != NULL);
