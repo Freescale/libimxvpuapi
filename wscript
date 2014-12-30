@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 
-from waflib.Build import BuildContext, CleanContext, InstallContext, UninstallContext
+from waflib.Build import BuildContext, CleanContext, InstallContext, UninstallContext, Logs
 
 top = '.'
 out = 'build'
@@ -21,7 +21,8 @@ int main()
 def check_compiler_flag(conf, flag, lang):
 	return conf.check(fragment = c_cflag_check_code, mandatory = 0, execute = 0, define_ret = 0, msg = 'Checking for compiler switch %s' % flag, cxxflags = conf.env[lang + 'FLAGS'] + [flag], okmsg = 'yes', errmsg = 'no')  
 def check_compiler_flags_2(conf, cflags, ldflags, msg):
-	return conf.check(fragment = c_cflag_check_code, mandatory = 0, execute = 0, define_ret = 0, msg = msg, cxxflags = cflags, ldflags = ldflags, okmsg = 'yes', errmsg = 'no')
+	Logs.pprint('NORMAL', msg)
+	return conf.check(fragment = c_cflag_check_code, mandatory = 0, execute = 0, define_ret = 0, msg = 'Checking if building with these flags works', cxxflags = cflags, ldflags = ldflags, okmsg = 'yes', errmsg = 'no')
 
 
 def add_compiler_flags(conf, env, flags, lang, compiler, uselib = ''):
