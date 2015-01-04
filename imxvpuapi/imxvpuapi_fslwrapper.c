@@ -1408,6 +1408,7 @@ static int enc_convert_to_wrapper_open_param(ImxVpuEncOpenParams *open_params, V
 static void enc_convert_from_wrapper_initial_info(VpuEncInitInfo *wrapper_info, ImxVpuEncInitialInfo *info)
 {
 	info->min_num_required_framebuffers = wrapper_info->nMinFrameBufferCount;
+	info->framebuffer_alignment = wrapper_info->nAddressAlignment;
 }
 
 

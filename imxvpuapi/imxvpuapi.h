@@ -792,6 +792,9 @@ typedef struct
 	/* Caller must register at least this many framebuffers
 	 * with the encoder. */
 	unsigned int min_num_required_framebuffers;
+
+	/* Physical framebuffer addresses must be aligned to this value. */
+	unsigned int framebuffer_alignment;
 }
 ImxVpuEncInitialInfo;
 
