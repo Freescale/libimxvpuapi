@@ -1707,7 +1707,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_close(ImxVpuEncoder *encoder)
 }
 
 
-ImxVpuEncReturnCodes imx_vpu_enc_register_framebuffers(ImxVpuEncoder *encoder, ImxVpuFramebuffer *framebuffers, unsigned int num_framebuffers, unsigned int src_stride)
+ImxVpuEncReturnCodes imx_vpu_enc_register_framebuffers(ImxVpuEncoder *encoder, ImxVpuFramebuffer *framebuffers, unsigned int num_framebuffers)
 {
 	unsigned int i;
 	VpuEncRetCode ret;
@@ -1750,7 +1750,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_register_framebuffers(ImxVpuEncoder *encoder, I
 		temp_fbs[i].pbufMvCol = (unsigned char*)(phys_addr + fb->mvcol_offset);
 	}
 
-	ret = VPU_EncRegisterFrameBuffer(encoder->handle, temp_fbs, num_framebuffers, src_stride);
+	ret = VPU_EncRegisterFrameBuffer(encoder->handle, temp_fbs, num_framebuffers, temp_fbs[0].nStrideY);
 
 	IMX_VPU_FREE(temp_fbs, sizeof(VpuFrameBuffer) * num_framebuffers);
 

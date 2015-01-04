@@ -844,8 +844,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_close(ImxVpuEncoder *encoder);
 /* Registers the specified array of framebuffers with the encoder. These framebuffers are used for temporary
  * values during encoding, unlike the decoder framebuffers. The minimum valid value for "num_framebuffers" is
  * the "min_num_required_framebuffers" field of ImxVpuEncInitialInfo. */
- //TODO:src_stride
-ImxVpuEncReturnCodes imx_vpu_enc_register_framebuffers(ImxVpuEncoder *encoder, ImxVpuFramebuffer *framebuffers, unsigned int num_framebuffers, unsigned int src_stride);
+ImxVpuEncReturnCodes imx_vpu_enc_register_framebuffers(ImxVpuEncoder *encoder, ImxVpuFramebuffer *framebuffers, unsigned int num_framebuffers);
 
 /* Retrieves initial information available after calling @imx_vpu_enc_open. */
 ImxVpuEncReturnCodes imx_vpu_enc_get_initial_info(ImxVpuEncoder *encoder, ImxVpuEncInitialInfo *info);
