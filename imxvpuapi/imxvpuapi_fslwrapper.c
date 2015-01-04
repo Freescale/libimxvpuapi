@@ -1376,7 +1376,9 @@ static int enc_convert_to_wrapper_open_param(ImxVpuEncOpenParams *open_params, V
 			break;
 
 		case IMX_VPU_CODEC_FORMAT_H264:
-			wrapper_open_param->nIsAvcc = open_params->codec_params.h264_params.use_avcc;
+			/* The VPU encoder actually doesn't support the AVCC output; the VPU wrapper does
+			 * an internal conversion from byte-stream to AVCC unless this is set to 0 */
+			wrapper_open_param->nIsAvcc = 0;
 
 			wrapper_open_param->VpuEncStdParam.avcParam.avc_constrainedIntraPredFlag = open_params->codec_params.h264_params.enable_constrained_intra_prediction;
 			wrapper_open_param->VpuEncStdParam.avcParam.avc_disableDeblk = open_params->codec_params.h264_params.disable_deblocking;
@@ -1556,7 +1558,6 @@ void imx_vpu_enc_set_default_open_params(ImxVpuCodecFormat codec_format, ImxVpuE
 			break;
 
 		case IMX_VPU_CODEC_FORMAT_H264:
-			open_params->codec_params.h264_params.use_avcc = 0;
 			open_params->codec_params.h264_params.enable_constrained_intra_prediction = 0;
 			open_params->codec_params.h264_params.disable_deblocking = 0;
 			open_params->codec_params.h264_params.deblock_filter_offset_alpha = 6;

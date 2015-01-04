@@ -731,7 +731,6 @@ ImxVpuEncH263Params;
 
 typedef struct
 {
-	int use_avcc;
 	int enable_constrained_intra_prediction;
 	int disable_deblocking;
 	int deblock_filter_offset_alpha, deblock_filter_offset_beta;
