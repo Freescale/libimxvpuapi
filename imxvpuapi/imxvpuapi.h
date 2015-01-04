@@ -55,7 +55,8 @@ extern "C" {
 /**************************************************/
 
 
-typedef uint32_t imx_vpu_phys_addr_t;
+#define IMX_VPU_PHYS_ADDR_FORMAT "#lx"
+typedef unsigned long imx_vpu_phys_addr_t;
 
 
 typedef enum

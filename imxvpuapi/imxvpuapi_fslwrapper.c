@@ -525,7 +525,15 @@ ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenPara
 					break;
 			}
 
-			IMX_VPU_INFO("allocated memory sub block #%d:  type: %s  size: %d  alignment: %d  virtual address: %p  physical address: %p", i, type_str, sub_block->nSize, sub_block->nAlignment, sub_block->pVirtAddr, sub_block->pPhyAddr);
+			IMX_VPU_INFO(
+				"allocated memory sub block #%d:  type: %s  size: %d  alignment: %d  virtual address: %p  physical address: %" IMX_VPU_PHYS_ADDR_FORMAT,
+				i,
+				type_str,
+				sub_block->nSize,
+				sub_block->nAlignment,
+				sub_block->pVirtAddr,
+				(imx_vpu_phys_addr_t)(sub_block->pPhyAddr)
+			);
 		}
 	}
 
@@ -1625,7 +1633,15 @@ ImxVpuEncReturnCodes imx_vpu_enc_open(ImxVpuEncoder **encoder, ImxVpuEncOpenPara
 					break;
 			}
 
-			IMX_VPU_INFO("allocated memory sub block #%d:  type: %s  size: %d  alignment: %d  virtual address: %p  physical address: %p", i, type_str, sub_block->nSize, sub_block->nAlignment, sub_block->pVirtAddr, sub_block->pPhyAddr);
+			IMX_VPU_INFO(
+				"allocated memory sub block #%d:  type: %s  size: %d  alignment: %d  virtual address: %p  physical address: %" IMX_VPU_PHYS_ADDR_FORMAT,
+				i,
+				type_str,
+				sub_block->nSize,
+				sub_block->nAlignment,
+				sub_block->pVirtAddr,
+				sub_block->pPhyAddr
+			);
 		}
 	}
 
