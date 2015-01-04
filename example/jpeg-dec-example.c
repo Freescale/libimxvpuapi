@@ -45,7 +45,7 @@ struct _Context
 	ImxVpuFramebuffer *framebuffers;
 	ImxVpuDMABuffer **fb_dmabuffers;
 	unsigned int num_framebuffers;
-	ImxVpuDecFramebufferSizes calculated_sizes;
+	ImxVpuFramebufferSizes calculated_sizes;
 };
 
 
@@ -135,7 +135,7 @@ Retval run(Context *ctx)
 
 		ctx->num_framebuffers = ctx->initial_info.min_num_required_framebuffers;
 
-		imx_vpu_dec_calc_framebuffer_sizes(&(ctx->initial_info), 0, 0, &(ctx->calculated_sizes));
+		imx_vpu_calc_framebuffer_sizes(ctx->initial_info.color_format, ctx->initial_info.frame_width, ctx->initial_info.frame_height, ctx->initial_info.framebuffer_alignment, ctx->initial_info.interlacing, &(ctx->calculated_sizes));
 		fprintf(
 			stderr,
 			"calculated sizes:  frame width&height: %dx%d  Y stride: %u  CbCr stride: %u  Y size: %u  CbCr size: %u  MvCol size: %u  total size: %u\n",
@@ -155,11 +155,7 @@ Retval run(Context *ctx)
 			 * (necessary for DMA transfers) and respecs the alignment value. */
 			ctx->fb_dmabuffers[i] = imx_vpu_dma_buffer_allocate(imx_vpu_dec_get_default_allocator(), ctx->calculated_sizes.total_size, ctx->initial_info.framebuffer_alignment, 0);
 
-			/* The last parameter (the one with 0x2000 + i) is the context data for the framebuffers in the pool.
-			 * It is possible to attach user-defined context data to them. Note that it is not related to the
-			 * context data in en- and decoded pictures. For purposes of demonstrations, the context pointer
-			 * is just a simple monotonically increasing integer. First framebuffer has context 0x2000, second 0x2001 etc. */
-			imx_vpu_dec_fill_framebuffer_params(&(ctx->framebuffers[i]), &(ctx->calculated_sizes), ctx->fb_dmabuffers[i], (void*)((uintptr_t)(0x2000 + i)));
+			imx_vpu_fill_framebuffer_params(&(ctx->framebuffers[i]), &(ctx->calculated_sizes), ctx->fb_dmabuffers[i], 0);
 		}
 
 		/* Actual registration is done here. From this moment on, the VPU knows which buffers to use for

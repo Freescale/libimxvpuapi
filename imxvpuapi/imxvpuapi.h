@@ -337,6 +337,40 @@ typedef struct
 ImxVpuPicture;
 
 
+/* Structure used together with @imx_vpu_calc_framebuffer_sizes */
+typedef struct
+{
+	/* Frame width and height, aligned to the 16-pixel boundary required by the VPU. */
+	unsigned int aligned_frame_width, aligned_frame_height;
+
+	/* Stride sizes, in bytes, with alignment applied. The Cb and Cr planes always
+	 * use the same stride, so they share the same value. */
+	unsigned int y_stride, cbcr_stride;
+
+	/* Required DMA memory size for the Y,Cb,Cr planes and the MvCol data, in bytes.
+	 * The Cb and Cr planes always are of the same size, so they share the same value. */
+	unsigned int y_size, cbcr_size, mvcol_size;
+
+	/* Total required size of a framebuffer's DMA buffer, in bytes. This value includes
+	 * the sizes of all planes, the MvCol data, and extra bytes for alignment and padding.
+	 * This value must be used when allocating DMA buffers for decoder framebuffers. */
+	unsigned int total_size;
+}
+ImxVpuFramebufferSizes;
+
+
+/* Convenience function which calculates various sizes out of the given width & height and color format.
+ * The results are stored in "calculated_sizes". The given frame width and height will be aligned if
+ * they aren't already, and the aligned value will be stored in calculated_sizes. Width & height must be
+ * nonzero. The calculated_sizes pointer must also be non-NULL. framebuffer_alignment is an alignment
+ * value for the sizes of the Y/U/V planes. 0 or 1 mean no alignment. */
+void imx_vpu_calc_framebuffer_sizes(ImxVpuColorFormat color_format, unsigned int frame_width, unsigned int frame_height, unsigned int framebuffer_alignment, int uses_interlacing, ImxVpuFramebufferSizes *calculated_sizes);
+
+/* Convenience function which fills fields of the ImxVpuFramebuffer structure, based on data from "calculated_sizes".
+ * The specified DMA buffer and context pointer are also set. */
+void imx_vpu_fill_framebuffer_params(ImxVpuFramebuffer *framebuffer, ImxVpuFramebufferSizes *calculated_sizes, ImxVpuDMABuffer *fb_dma_buffer, void* context);
+
+
 
 
 /************************************************/
@@ -361,13 +395,13 @@ ImxVpuPicture;
  *    call imx_vpu_dec_get_initial_info() with a pointer to an ImxVpuDecInitialInfo
  *    instance.
  * 7. (Optional) Perform the necessary size and alignment calculations by calling
- *    imx_vpu_dec_calc_framebuffer_sizes(). Pass in either the frame width & height from
+ *    imx_vpu_calc_framebuffer_sizes(). Pass in either the frame width & height from
  *    ImxVpuDecInitialInfo , or some explicit values that were determined externally.
  * 8. Create an array of at least as many ImxVpuFramebuffer instances as specified in
  *    min_num_required_framebuffers. Each instance must point to a DMA buffer that is big
  *    enough to hold a frame. If step 7 was performed, allocating as many bytes as indicated
  *    by total_size is enough. Make sure the Y,Cb,Cr,MvCol offsets in each ImxVpuFramebuffer
- *    instance are valid. Using the imx_vpu_dec_fill_framebuffer_params() convenience function
+ *    instance are valid. Using the imx_vpu_fill_framebuffer_params() convenience function
  *    for this is recommended.
  * 9. Call imx_vpu_dec_register_framebuffers() and pass in the ImxVpuFramebuffer array
  *    and the number of ImxVpuFramebuffer instances.
@@ -503,28 +537,6 @@ typedef struct
 ImxVpuDecInitialInfo;
 
 
-/* Structure used together with @imx_vpu_dec_calc_framebuffer_sizes */
-typedef struct
-{
-	/* Frame width and height, aligned to the 16-pixel boundary required by the VPU. */
-	unsigned int aligned_frame_width, aligned_frame_height;
-
-	/* Stride sizes, in bytes, with alignment applied. The Cb and Cr planes always
-	 * use the same stride, so they share the same value. */
-	unsigned int y_stride, cbcr_stride;
-
-	/* Required DMA memory size for the Y,Cb,Cr planes and the MvCol data, in bytes.
-	 * The Cb and Cr planes always are of the same size, so they share the same value. */
-	unsigned int y_size, cbcr_size, mvcol_size;
-
-	/* Total required size of a framebuffer's DMA buffer, in bytes. This value includes
-	 * the sizes of all planes, the MvCol data, and extra bytes for alignment and padding.
-	 * This value must be used when allocating DMA buffers for decoder framebuffers. */
-	unsigned int total_size;
-}
-ImxVpuDecFramebufferSizes;
-
-
 /* Returns a human-readable description of the error code.
  * Useful for logging. */
 char const * imx_vpu_dec_error_string(ImxVpuDecReturnCodes code);
@@ -570,18 +582,9 @@ ImxVpuDecReturnCodes imx_vpu_dec_flush(ImxVpuDecoder *decoder);
  * set in it. Registering can happen only once during the lifetime of a decoder instance. If for some reason
  * framebuffers need to be re-registered, the instance must be closed, and a new one opened.
  *
- * The framebuffers must contain valid values. The convenience functions @imx_vpu_dec_calc_framebuffer_sizes and
- * @imx_vpu_dec_fill_framebuffer_params can be used for this. */
+ * The framebuffers must contain valid values. The convenience functions @imx_vpu_calc_framebuffer_sizes and
+ * @imx_vpu_fill_framebuffer_params can be used for this. */
 ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, ImxVpuFramebuffer *framebuffers, unsigned int num_framebuffers);
-
-/* Convenience function which calculates various sizes out of the given width & height and initial info.
- * The results are stored in "calculated_sizes". The given frame width and height do not have to be aligned.
- * If either one of them is set to zero, the width & height from "initial_info" are used. */
-void imx_vpu_dec_calc_framebuffer_sizes(ImxVpuDecInitialInfo *initial_info, unsigned int frame_width, unsigned int frame_height, ImxVpuDecFramebufferSizes *calculated_sizes);
-
-/* Convenience function which fills fields of the ImxVpuFramebuffer structure, based on data from "calculated_sizes".
- * The specified DMA buffer and context pointer are also set. */
-void imx_vpu_dec_fill_framebuffer_params(ImxVpuFramebuffer *framebuffer, ImxVpuDecFramebufferSizes *calculated_sizes, ImxVpuDMABuffer *fb_dma_buffer, void* context);
 
 /* Retrieves initial information available after @imx_vpu_dec_decode returns an output code with
  * IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE set. This usually happens after the first input frame is

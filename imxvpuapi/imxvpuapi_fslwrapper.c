@@ -236,13 +236,90 @@ size_t default_dmabufalloc_get_size(ImxVpuDMABufferAllocator *allocator, ImxVpuD
 
 
 
+/******************************************************/
+/******* MISCELLANEOUS STRUCTURES AND FUNCTIONS *******/
+/******************************************************/
+
+
+#define FRAME_ALIGN 16
+
+
+void imx_vpu_calc_framebuffer_sizes(ImxVpuColorFormat color_format, unsigned int frame_width, unsigned int frame_height, unsigned int framebuffer_alignment, int uses_interlacing, ImxVpuFramebufferSizes *calculated_sizes)
+{
+	int alignment;
+
+	assert(calculated_sizes != NULL);
+	assert(frame_width > 0);
+	assert(frame_height > 0);
+
+	calculated_sizes->aligned_frame_width = IMX_VPU_ALIGN_VAL_TO(frame_width, FRAME_ALIGN);
+	if (uses_interlacing)
+		calculated_sizes->aligned_frame_height = IMX_VPU_ALIGN_VAL_TO(frame_height, (2 * FRAME_ALIGN));
+	else
+		calculated_sizes->aligned_frame_height = IMX_VPU_ALIGN_VAL_TO(frame_height, FRAME_ALIGN);
+
+	calculated_sizes->y_stride = calculated_sizes->aligned_frame_width;
+	calculated_sizes->y_size = calculated_sizes->y_stride * calculated_sizes->aligned_frame_height;
+
+	switch (color_format)
+	{
+		case IMX_VPU_COLOR_FORMAT_YUV420:
+			calculated_sizes->cbcr_stride = calculated_sizes->y_stride / 2;
+			calculated_sizes->cbcr_size = calculated_sizes->mvcol_size = calculated_sizes->y_size / 4;
+			break;
+		case IMX_VPU_COLOR_FORMAT_YUV422_HORIZONTAL:
+			calculated_sizes->cbcr_stride = calculated_sizes->y_stride / 2;
+			calculated_sizes->cbcr_size = calculated_sizes->mvcol_size = calculated_sizes->y_size / 2;
+			break;
+		case IMX_VPU_COLOR_FORMAT_YUV444:
+			calculated_sizes->cbcr_stride = calculated_sizes->y_stride;
+			calculated_sizes->cbcr_size = calculated_sizes->mvcol_size = calculated_sizes->y_size;
+			break;
+		case IMX_VPU_COLOR_FORMAT_YUV400:
+			/* TODO: check if this is OK */
+			calculated_sizes->cbcr_stride = 0;
+			calculated_sizes->cbcr_size = calculated_sizes->mvcol_size = 0;
+			break;
+		default:
+			assert(FALSE);
+	}
+
+	alignment = framebuffer_alignment;
+	if (alignment > 1)
+	{
+		calculated_sizes->y_size = IMX_VPU_ALIGN_VAL_TO(calculated_sizes->y_size, alignment);
+		calculated_sizes->cbcr_size = IMX_VPU_ALIGN_VAL_TO(calculated_sizes->cbcr_size, alignment);
+		calculated_sizes->mvcol_size = IMX_VPU_ALIGN_VAL_TO(calculated_sizes->mvcol_size, alignment);
+	}
+
+	calculated_sizes->total_size = calculated_sizes->y_size + calculated_sizes->cbcr_size + calculated_sizes->cbcr_size + calculated_sizes->mvcol_size + alignment;
+}
+
+
+void imx_vpu_fill_framebuffer_params(ImxVpuFramebuffer *framebuffer, ImxVpuFramebufferSizes *calculated_sizes, ImxVpuDMABuffer *fb_dma_buffer, void* context)
+{
+	assert(framebuffer != NULL);
+	assert(calculated_sizes != NULL);
+
+	framebuffer->dma_buffer = fb_dma_buffer;
+	framebuffer->context = context;
+	framebuffer->y_stride = calculated_sizes->y_stride;
+	framebuffer->cbcr_stride = calculated_sizes->cbcr_stride;
+	framebuffer->y_offset = 0;
+	framebuffer->cb_offset = calculated_sizes->y_size;
+	framebuffer->cr_offset = calculated_sizes->y_size + calculated_sizes->cbcr_size;
+	framebuffer->mvcol_offset = calculated_sizes->y_size + calculated_sizes->cbcr_size * 2;
+}
+
+
+
+
 /************************************************/
 /******* DECODER STRUCTURES AND FUNCTIONS *******/
 /************************************************/
 
 
 #define MIN_NUM_FREE_FB_REQUIRED 6
-#define FRAME_ALIGN 16
 
 
 struct _ImxVpuDecoder
@@ -821,78 +898,6 @@ cleanup:
 	}
 
 	return ret;
-}
-
-
-void imx_vpu_dec_calc_framebuffer_sizes(ImxVpuDecInitialInfo *initial_info, unsigned int frame_width, unsigned int frame_height, ImxVpuDecFramebufferSizes *calculated_sizes)
-{
-	int alignment;
-
-	assert(initial_info != NULL);
-	assert(calculated_sizes != NULL);
-
-	if (frame_width == 0)
-		frame_width = initial_info->frame_width;
-	if (frame_height == 0)
-		frame_height = initial_info->frame_height;
-
-	calculated_sizes->aligned_frame_width = IMX_VPU_ALIGN_VAL_TO(frame_width, FRAME_ALIGN);
-	if (initial_info->interlacing)
-		calculated_sizes->aligned_frame_height = IMX_VPU_ALIGN_VAL_TO(frame_height, (2 * FRAME_ALIGN));
-	else
-		calculated_sizes->aligned_frame_height = IMX_VPU_ALIGN_VAL_TO(frame_height, FRAME_ALIGN);
-
-	calculated_sizes->y_stride = calculated_sizes->aligned_frame_width;
-	calculated_sizes->y_size = calculated_sizes->y_stride * calculated_sizes->aligned_frame_height;
-
-	switch (initial_info->color_format)
-	{
-		case IMX_VPU_COLOR_FORMAT_YUV420:
-			calculated_sizes->cbcr_stride = calculated_sizes->y_stride / 2;
-			calculated_sizes->cbcr_size = calculated_sizes->mvcol_size = calculated_sizes->y_size / 4;
-			break;
-		case IMX_VPU_COLOR_FORMAT_YUV422_HORIZONTAL:
-			calculated_sizes->cbcr_stride = calculated_sizes->y_stride / 2;
-			calculated_sizes->cbcr_size = calculated_sizes->mvcol_size = calculated_sizes->y_size / 2;
-			break;
-		case IMX_VPU_COLOR_FORMAT_YUV444:
-			calculated_sizes->cbcr_stride = calculated_sizes->y_stride;
-			calculated_sizes->cbcr_size = calculated_sizes->mvcol_size = calculated_sizes->y_size;
-			break;
-		case IMX_VPU_COLOR_FORMAT_YUV400:
-			/* TODO: check if this is OK */
-			calculated_sizes->cbcr_stride = 0;
-			calculated_sizes->cbcr_size = calculated_sizes->mvcol_size = 0;
-			break;
-		default:
-			assert(FALSE);
-	}
-
-	alignment = initial_info->framebuffer_alignment;
-	if (alignment > 1)
-	{
-		calculated_sizes->y_size = IMX_VPU_ALIGN_VAL_TO(calculated_sizes->y_size, alignment);
-		calculated_sizes->cbcr_size = IMX_VPU_ALIGN_VAL_TO(calculated_sizes->cbcr_size, alignment);
-		calculated_sizes->mvcol_size = IMX_VPU_ALIGN_VAL_TO(calculated_sizes->mvcol_size, alignment);
-	}
-
-	calculated_sizes->total_size = calculated_sizes->y_size + calculated_sizes->cbcr_size + calculated_sizes->cbcr_size + calculated_sizes->mvcol_size + alignment;
-}
-
-
-void imx_vpu_dec_fill_framebuffer_params(ImxVpuFramebuffer *framebuffer, ImxVpuDecFramebufferSizes *calculated_sizes, ImxVpuDMABuffer *fb_dma_buffer, void* context)
-{
-	assert(framebuffer != NULL);
-	assert(calculated_sizes != NULL);
-
-	framebuffer->dma_buffer = fb_dma_buffer;
-	framebuffer->context = context;
-	framebuffer->y_stride = calculated_sizes->y_stride;
-	framebuffer->cbcr_stride = calculated_sizes->cbcr_stride;
-	framebuffer->y_offset = 0;
-	framebuffer->cb_offset = calculated_sizes->y_size;
-	framebuffer->cr_offset = calculated_sizes->y_size + calculated_sizes->cbcr_size;
-	framebuffer->mvcol_offset = calculated_sizes->y_size + calculated_sizes->cbcr_size * 2;
 }
 
 
