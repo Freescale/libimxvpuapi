@@ -323,7 +323,7 @@ typedef struct
 	 * Must always be valid. */
 	ImxVpuFramebuffer *framebuffer;
 
-	/* Picture type (I, P, B, ..) */
+	/* Picture type (I, P, B, ..) ; unused by the encoder */
 	ImxVpuPicType pic_type;
 
 	/* User-defined pointer. The library does not touch this value.
@@ -643,7 +643,67 @@ ImxVpuDecReturnCodes imx_vpu_dec_mark_framebuffer_as_displayed(ImxVpuDecoder *de
 /************************************************/
 
 
-/* TODO: overview over how to use the decoder */
+/* How to use the encoder (error handling omitted for clarity):
+ * 1. Call imx_vpu_enc_load
+ * 2. Call imx_vpu_enc_get_bitstream_buffer_info(), and allocate a DMA buffer
+ *    with the given size and alignment.
+ * 3. Fill an instance of ImxVpuEncOpenParams with the values specific to the
+ *    input data. It is recommended to use imx_vpu_enc_set_default_open_params()
+ *    and afterwards set any explicit valus.
+ * 4. Call imx_vpu_enc_open(), passing in a pointer to the filled ImxVpuEncOpenParams
+ *    instance, and the DMA buffer of the bitstream DMA buffer which was allocated in step 2.
+ * 5. Call imx_vpu_enc_get_initial_info(). The encoder's initial info contains the
+ *    minimum number of framebuffers that must be allocated and registered, and the
+ *    address alignment value for these framebuffers.
+ * 6. (Optional) Perform the necessary size and alignment calculations by calling
+ *    imx_vpu_calc_framebuffer_sizes(). Pass in the width & height of the frames that
+ *    shall be encoded.
+ * 7. Create an array of at least as many ImxVpuFramebuffer instances as specified in
+ *    min_num_required_framebuffers. Each instance must point to a DMA buffer that is big
+ *    enough to hold a frame. If step 6 was performed, allocating as many bytes as indicated
+ *    by total_size is enough. Make sure the Y,Cb,Cr,MvCol offsets in each ImxVpuFramebuffer
+ *    instance are valid. Using the imx_vpu_fill_framebuffer_params() convenience function
+ *    for this is recommended. Note that these framebuffers are used for temporary internal
+ *    encoding only, and will not contain input or output data.
+ * 8. Call imx_vpu_enc_register_framebuffers() and pass in the ImxVpuFramebuffer array
+ *    and the number of ImxVpuFramebuffer instances.
+ * 9. Allocate a DMA buffer for the input frames. Only one buffer is necessary. Simply
+ *    reuse the sizes used for the temporary buffers in step 7.
+ * 10. Allocate a DMA buffer for the encoded output data. Set its size to an appropriate value.
+ *     Typically, using the same size as the input buffer is enough, since the whole point of
+ *     encoding is to produce encoded frames that are much smaller than the original ones.
+ *     However, if a very high bitrate is used, and the input frames are small in size, the
+ *     encoded frames may be bigger. This is considered a questionable use case, though, since
+ *     then there is no point in encoding.
+ * 11. Create an instance of ImxVpuPicture, set its values to zero (typically by using memset()),
+ *     and set its framebuffer pointer to refer to the DMA buffer allocated in step 9.
+ * 12. Create an instance of ImxVpuEncodedFrame, set its values to zero (typically by using memset()),
+ *     and set its data.dma_buffer pointer to refer to the DMA buffer allocated in step 10.
+ * 13. Create an instance of ImxVpuEncParams, set its values to zero (typically by using memset()),
+ *     and set at least its frame_width, frame_height, framerate, and quant_param values.
+ *     In most cases, setting them to the same values as in the open params is enough.
+ * 14. Fill the DMA buffer from step 9 with pixels from an input frame, either by transferring
+ *     then over DMA somehow (through an i.MX IPU operation for example), or by mapping the buffer
+ *     and filling it with pixels with the CPU. Make sure the buffer is unmapped afterwards!
+ *     (See imx_vpu_dma_buffer_map() / imx_vpu_dma_buffer_unmap())
+ * 15. Call imx_vpu_enc_encode(). Pass the structures from steps 11, 12 and 13 to it.
+ *     If the IMX_VPU_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE bit is set in the output code,
+ *     it is possible to map the output DMA buffer, and access the encoded data. The data_size
+ *     member in the encoded frame structure contains the actual size of the data, in bytes.
+ *     If the IMX_VPU_ENC_OUTPUT_CODE_SEQUENCE_HEADER is set, sequence header data is available as
+ *     well (this is h.264 specific). The encoded data is typically stored in a container format
+ *     at this stage.
+ * 16. Repeat step 15 until there are no more frames to encode or an error occurs.
+ * 13. After encoding is finished, close the encoder with imx_vpu_enc_close().
+ * 14. Deallocate framebuffer memory blocks, the input and output DMA buffer blocks, and
+ *     the bitstream buffer memory block.
+ * 15. Call imx_vpu_enc_unload().
+ *
+ * Step 15 should only be called if no more playback sessions will occur.
+ *
+ * Note that the encoder does not use any kind of frame reordering. h.264 data uses the
+ * baseline profile. An input frame immediately results in an output frame; there is no delay.
+ */
 
 
 typedef struct _ImxVpuEncoder ImxVpuEncoder;
