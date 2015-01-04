@@ -90,7 +90,6 @@ def build(bld):
 
 	bld(
 		features = ['c', 'cstlib' if bld.env['BUILD_STATIC'] else 'cshlib'],
-		features = ['c', 'cshlib'],
 		includes = ['.'],
 		uselib = 'FSLVPUWRAPPER',
 		source = bld.path.ant_glob('imxvpuapi/*.c'),
@@ -98,14 +97,29 @@ def build(bld):
 		target = 'imxvpuapi',
 		vnum = version
 	)
+
+	examples = [ \
+		{ 'name': 'decode-example', 'source': ['example/decode-example.c'] }, \
+		{ 'name': 'encode-example', 'source': ['example/encode-example.c'] }, \
+		{ 'name': 'jpeg-dec-example', 'source': ['example/jpeg-dec-example.c'] }, \
+	]
+
 	bld(
-		features = ['c', 'cprogram'],
+		features = ['c'],
 		includes = ['.', 'example'],
 		cflags = ['-std=gnu99'],
-		uselib = 'FSLVPUWRAPPER',
 		use = 'imxvpuapi',
-		source = ['example/decode-example.c', 'example/h264_utils.c'],
-		target = 'example/decode-example',
-		install_path = None # makes sure the example is not installed
+		source = ['example/main.c', 'example/h264_utils.c'],
+		name = 'examples-common'
 	)
 
+	for example in examples:
+		bld(
+			features = ['c', 'cprogram'],
+			includes = ['.', 'example'],
+			cflags = ['-std=gnu99'],
+			use = 'imxvpuapi examples-common',
+			source = example['source'],
+			target = 'example/' + example['name'],
+			install_path = None # makes sure the example is not installed
+		)
