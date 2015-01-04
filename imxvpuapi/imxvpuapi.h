@@ -635,7 +635,6 @@ ImxVpuDecReturnCodes imx_vpu_dec_mark_framebuffer_as_displayed(ImxVpuDecoder *de
 
 
 
-#if 1
 /************************************************/
 /******* ENCODER STRUCTURES AND FUNCTIONS *******/
 /************************************************/
@@ -867,10 +866,6 @@ void imx_vpu_enc_set_encoding_config(ImxVpuEncoder *encoder, unsigned int bitrat
 ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuPicture *picture, ImxVpuEncodedFrame *encoded_frame, ImxVpuEncParams *encoding_params, unsigned int *output_code);
 
 
-
-
-
-#endif
 
 
 #ifdef __cplusplus
