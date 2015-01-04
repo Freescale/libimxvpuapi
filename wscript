@@ -48,6 +48,7 @@ def add_compiler_flags(conf, env, flags, lang, compiler, uselib = ''):
 
 def options(opt):
 	opt.add_option('--enable-debug', action = 'store_true', default = False, help = 'enable debug build [default: %default]')
+	opt.add_option('--enable-static', action = 'store_true', default = False, help = 'build static library [default: build shared library]')
 	opt.load('compiler_c')
 
 
@@ -73,6 +74,8 @@ def configure(conf):
 
 	add_compiler_flags(conf, conf.env, compiler_flags, 'C', 'C')
 
+	conf.env['BUILD_STATIC'] = conf.options.enable_static
+
 
 	# test for Freescale libraries
 
@@ -86,6 +89,7 @@ def build(bld):
 		version = x.readline().splitlines()[0]
 
 	bld(
+		features = ['c', 'cstlib' if bld.env['BUILD_STATIC'] else 'cshlib'],
 		features = ['c', 'cshlib'],
 		includes = ['.'],
 		uselib = 'FSLVPUWRAPPER',
