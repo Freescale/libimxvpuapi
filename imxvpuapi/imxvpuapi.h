@@ -581,9 +581,14 @@ ImxVpuDecReturnCodes imx_vpu_dec_flush(ImxVpuDecoder *decoder);
  * @imx_vpu_dec_decode returned an output code with IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE
  * set in it. Registering can happen only once during the lifetime of a decoder instance. If for some reason
  * framebuffers need to be re-registered, the instance must be closed, and a new one opened.
+ * The caller must ensure that the specified framebuffer array remains valid until the decoder instance
+ * is closed. Note that internally, values might be written to the array (though it will never be reallocated
+ * and/or freed from the inside). Also, the framebuffers' DMA buffers will be memory-mapped until the decoder
+ * is closed.
  *
  * The framebuffers must contain valid values. The convenience functions @imx_vpu_calc_framebuffer_sizes and
- * @imx_vpu_fill_framebuffer_params can be used for this. */
+ * @imx_vpu_fill_framebuffer_params can be used for this. Note that all framebuffers must have the same
+ * stride values. */
 ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, ImxVpuFramebuffer *framebuffers, unsigned int num_framebuffers);
 
 /* Retrieves initial information available after @imx_vpu_dec_decode returns an output code with

@@ -85,6 +85,7 @@ static int decode_frame(Context *ctx)
 	ImxVpuEncodedFrame encoded_frame;
 	int ok;
 	unsigned int output_code;
+	ImxVpuDecReturnCodes ret;
 
 	if (imx_vpu_dec_is_drain_mode_enabled(ctx->vpudec))
 	{
@@ -124,7 +125,11 @@ static int decode_frame(Context *ctx)
 	}
 
 	/* Perform the actual decoding */
-	imx_vpu_dec_decode(ctx->vpudec, &encoded_frame, &output_code);
+	if ((ret = imx_vpu_dec_decode(ctx->vpudec, &encoded_frame, &output_code)) != IMX_VPU_DEC_RETURN_CODE_OK)
+	{
+		fprintf(stderr, "imx_vpu_dec_decode() failed: %s\n", imx_vpu_dec_error_string(ret));
+		return RETVAL_ERROR;
+	}
 
 	/* Initial info is now available; this usually happens right after the
 	 * first frame is decoded, and this is the situation where one must register
