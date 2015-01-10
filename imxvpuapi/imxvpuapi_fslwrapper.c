@@ -446,6 +446,7 @@ char const * imx_vpu_dec_error_string(ImxVpuDecReturnCodes code)
 		case IMX_VPU_DEC_RETURN_CODE_INVALID_STRIDE:            return "invalid stride";
 		case IMX_VPU_DEC_RETURN_CODE_WRONG_CALL_SEQUENCE:       return "wrong call sequence";
 		case IMX_VPU_DEC_RETURN_CODE_TIMEOUT:                   return "timeout";
+		case IMX_VPU_DEC_RETURN_CODE_ALREADY_CALLED:            return "already called";
 		default: return "<unknown>";
 	}
 }

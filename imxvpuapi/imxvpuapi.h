@@ -115,7 +115,7 @@ typedef struct _ImxVpuDMABufferAllocator ImxVpuDMABufferAllocator;
  * @get_fd: Gets the file descriptor associated with the DMA buffer. This is the preferred way of interacting
  *          with DMA buffers. If the underlying allocator does not support FDs, this function returns -1.
  *
- * @get_size: Returns the size of the buffer, in bytes. */
+ * @get_size: Returns the size of the buffer, in bytes. This function can also be used while the buffer is mapped. */
 struct _ImxVpuDMABufferAllocator
 {
 	ImxVpuDMABuffer* (*allocate)(ImxVpuDMABufferAllocator *allocator, size_t size, unsigned int alignment, unsigned int flags);
@@ -465,7 +465,8 @@ typedef enum
 	IMX_VPU_DEC_RETURN_CODE_INSUFFICIENT_FRAMEBUFFERS,
 	IMX_VPU_DEC_RETURN_CODE_INVALID_STRIDE,
 	IMX_VPU_DEC_RETURN_CODE_WRONG_CALL_SEQUENCE,
-	IMX_VPU_DEC_RETURN_CODE_TIMEOUT
+	IMX_VPU_DEC_RETURN_CODE_TIMEOUT,
+	IMX_VPU_DEC_RETURN_CODE_ALREADY_CALLED
 }
 ImxVpuDecReturnCodes;
 
