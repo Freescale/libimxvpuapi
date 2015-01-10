@@ -526,11 +526,6 @@ typedef struct
 	/* 0 = no interlacing, 1 = interlacing. */
 	int interlacing;
 
-	/* Fixed point, shifted by 16.
-	 * Example: 1.0 -> floor(1.0*(1<<16)) = 0x10000
-	 *          0.5 -> floor(0.5*(1<<16)) = 0x8000 */
-	unsigned int width_height_ratio;
-
 	/* Physical framebuffer addresses must be aligned to this value. */
 	unsigned int framebuffer_alignment;
 }

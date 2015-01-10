@@ -415,8 +415,6 @@ static void dec_convert_from_wrapper_initial_info(VpuDecInitInfo *wrapper_info, 
 
 	info->interlacing = wrapper_info->nInterlace;
 
-	info->width_height_ratio = wrapper_info->nQ16ShiftWidthDivHeightRatio;
-
 	info->framebuffer_alignment = wrapper_info->nAddressAlignment;
 }
 

@@ -113,14 +113,13 @@ Retval run(Context *ctx)
 		imx_vpu_dec_get_initial_info(ctx->vpudec, &(ctx->initial_info));
 		fprintf(
 			stderr,
-			"initial info:  size: %ux%u pixel  rate: %u/%u  min num required framebuffers: %u  interlacing: %d  width/height ratio: %f  framebuffer alignment: %u  color format: ",
+			"initial info:  size: %ux%u pixel  rate: %u/%u  min num required framebuffers: %u  interlacing: %d  framebuffer alignment: %u  color format: ",
 			ctx->initial_info.frame_width,
 			ctx->initial_info.frame_height,
 			ctx->initial_info.frame_rate_numerator,
 			ctx->initial_info.frame_rate_denominator,
 			ctx->initial_info.min_num_required_framebuffers,
 			ctx->initial_info.interlacing,
-			ctx->initial_info.width_height_ratio / 65536.0f,
 			ctx->initial_info.framebuffer_alignment
 		);
 		switch (ctx->initial_info.color_format)
