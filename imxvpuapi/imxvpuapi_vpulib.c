@@ -259,14 +259,13 @@ static void default_dmabufalloc_deallocate(ImxVpuDMABufferAllocator *allocator, 
 }
 
 
-static void default_dmabufalloc_map(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer, uint8_t **virtual_address, imx_vpu_phys_addr_t *physical_address, unsigned int flags)
+static uint8_t* default_dmabufalloc_map(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer, unsigned int flags)
 {
 	IMXVPUAPI_UNUSED_PARAM(allocator);
 	IMXVPUAPI_UNUSED_PARAM(flags);
 
 	DefaultDMABuffer *defaultbuf = (DefaultDMABuffer *)buffer;
-	*virtual_address = defaultbuf->aligned_virtual_address;
-	*physical_address = defaultbuf->aligned_physical_address;
+	return defaultbuf->aligned_virtual_address;
 }
 
 
@@ -282,6 +281,14 @@ int default_dmabufalloc_get_fd(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuf
 	IMXVPUAPI_UNUSED_PARAM(allocator);
 	IMXVPUAPI_UNUSED_PARAM(buffer);
 	return -1;
+}
+
+
+imx_vpu_phys_addr_t default_dmabufalloc_get_physical_address(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer)
+{
+	IMXVPUAPI_UNUSED_PARAM(allocator);
+	DefaultDMABuffer *defaultbuf = (DefaultDMABuffer *)buffer;
+	return defaultbuf->aligned_physical_address;
 }
 
 
@@ -301,6 +308,7 @@ static DefaultDMABufferAllocator default_dma_buffer_allocator =
 		default_dmabufalloc_map,
 		default_dmabufalloc_unmap,
 		default_dmabufalloc_get_fd,
+		default_dmabufalloc_get_physical_address,
 		default_dmabufalloc_get_size
 	}
 };
@@ -601,7 +609,8 @@ ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenPara
 
 
 	/* Map the bitstream buffer. This mapping will persist until the decoder is closed. */
-	imx_vpu_dma_buffer_map(bitstream_buffer, &((*decoder)->bitstream_buffer_virtual_address),  &((*decoder)->bitstream_buffer_physical_address), 0);
+	(*decoder)->bitstream_buffer_virtual_address = imx_vpu_dma_buffer_map(bitstream_buffer, 0);
+	(*decoder)->bitstream_buffer_physical_address = imx_vpu_dma_buffer_get_physical_address(bitstream_buffer);
 
 
 	/* Fill in values into the VPU's decoder open param structure */
@@ -832,13 +841,12 @@ ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, I
 	memset(decoder->internal_framebuffers, 0, sizeof(FrameBuffer) * num_framebuffers);
 	for (i = 0; i < num_framebuffers; ++i)
 	{
-		uint8_t *virt_addr;
 		imx_vpu_phys_addr_t phys_addr;
 		ImxVpuFramebuffer *fb = &framebuffers[i];
 		FrameBuffer *internal_fb = &(decoder->internal_framebuffers[i]);
 
-		imx_vpu_dma_buffer_map(fb->dma_buffer, &virt_addr, &phys_addr, 0);
-		if (virt_addr == NULL)
+		phys_addr = imx_vpu_dma_buffer_get_physical_address(fb->dma_buffer);
+		if (phys_addr == 0)
 		{
 			IMX_VPU_ERROR("could not map buffer %u/%u", i, num_framebuffers);
 			ret = IMX_VPU_DEC_RETURN_CODE_ERROR;
@@ -889,13 +897,8 @@ ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, I
 	return IMX_VPU_DEC_RETURN_CODE_OK;
 
 cleanup:
-	for (i = 0; i < num_framebuffers; ++i)
-	{
-		ImxVpuFramebuffer *fb = &framebuffers[i];
-		imx_vpu_dma_buffer_unmap(fb->dma_buffer);
-	}
-
 	IMX_VPU_FREE(decoder->internal_framebuffers, sizeof(FrameBuffer) * num_framebuffers);
+	decoder->internal_framebuffers = NULL;
 
 	return ret;
 }
