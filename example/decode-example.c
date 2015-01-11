@@ -227,7 +227,7 @@ static int decode_frame(Context *ctx)
 
 	if (output_code & IMX_VPU_DEC_OUTPUT_CODE_EOS)
 	{
-		fprintf(stderr, "VPU reports EOS; no more decoded frames available");
+		fprintf(stderr, "VPU reports EOS; no more decoded frames available\n");
 		ok = 0;
 	}
 
@@ -252,7 +252,7 @@ Retval run(Context *ctx)
 	/* Enable drain mode; in this mode, any decoded pictures that are still in the
 	 * decoder are output; no input data is given (since there isn't any input data anymore) */
 
-	fprintf(stderr, "draining decoder");
+	fprintf(stderr, "draining decoder\n");
 	imx_vpu_dec_enable_drain_mode(ctx->vpudec, 1);
 
 	for (;;)
