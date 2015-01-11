@@ -63,6 +63,15 @@
 #define VPU_PS_SAVE_BUFFER_SIZE      (1024*512)
 #define VPU_VP8_MB_PRED_BUFFER_SIZE  (68*(1920*1088/256))
 
+#define VP8_SEQUENCE_HEADER_SIZE  32
+#define VP8_FRAME_HEADER_SIZE     12
+
+#define WMV3_RCV_SEQUENCE_LAYER_SIZE (6 * 4)
+#define WMV3_RCV_FRAME_LAYER_SIZE    4
+
+#define VC1_NAL_FRAME_LAYER_MAX_SIZE   4
+#define VC1_IS_NOT_NAL(ID)             (( (ID) & 0x00FFFFFF) != 0x00010000)
+
 #define VPU_WAIT_TIMEOUT             500 /* milliseconds to wait for frame completion */
 #define VPU_MAX_TIMEOUT_COUNTS       4   /* how many timeouts are allowed in series */
 
@@ -388,13 +397,14 @@ struct _ImxVpuDecoder
 	imx_vpu_phys_addr_t bitstream_buffer_physical_address;
 
 	ImxVpuCodecFormat codec_format;
+	unsigned int picture_width, picture_height;
 
 	unsigned int num_framebuffers, num_used_framebuffers;
 	FrameBuffer *internal_framebuffers;
 	ImxVpuFramebuffer *framebuffers;
 	void **context_for_frames;
 
-	BOOL codec_data_pushed;
+	BOOL main_header_pushed;
 
 	BOOL drain_mode_enabled;
 	BOOL drain_eos_sent_to_vpu;
@@ -413,7 +423,17 @@ struct _ImxVpuDecoder
 
 static ImxVpuDecReturnCodes imx_vpu_dec_handle_error_full(char const *fn, int linenr, char const *funcn, char const *msg_start, RetCode ret_code);
 static ImxVpuDecReturnCodes imx_vpu_dec_get_initial_info_internal(ImxVpuDecoder *decoder);
-static ImxVpuDecReturnCodes imx_vpu_dec_handle_and_push_codec_data(ImxVpuDecoder *decoder, uint8_t *codec_data, unsigned int codec_data_size);
+
+static void imx_vpu_dec_insert_vp8_ivf_main_header(uint8_t *header, unsigned int pic_width, unsigned int pic_height);
+static void imx_vpu_dec_insert_vp8_ivf_frame_header(uint8_t *header, unsigned int main_data_size);
+
+static void imx_vpu_dec_insert_wmv3_sequence_layer_header(uint8_t *header, unsigned int pic_width, unsigned int pic_height, unsigned int main_data_size, uint8_t *codec_data);
+static void imx_vpu_dec_insert_wmv3_frame_layer_header(uint8_t *header, unsigned int main_data_size);
+
+static void imx_vpu_dec_insert_vc1_frame_layer_header(uint8_t *header, uint8_t *main_data, unsigned int *actual_header_length);
+
+static ImxVpuDecReturnCodes imx_vpu_dec_insert_frame_headers(ImxVpuDecoder *decoder, uint8_t *codec_data, unsigned int codec_data_size, uint8_t *main_data, unsigned int main_data_size);
+
 static ImxVpuDecReturnCodes imx_vpu_dec_push_input_data(ImxVpuDecoder *decoder, void *data, unsigned int data_size);
 
 
@@ -650,6 +670,8 @@ ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenPara
 
 	(*decoder)->codec_format = open_params->codec_format;
 	(*decoder)->bitstream_buffer = bitstream_buffer;
+	(*decoder)->picture_width = open_params->frame_width;
+	(*decoder)->picture_height = open_params->frame_height;
 
 
 	/* Finish & cleanup (in case of error) */
@@ -941,9 +963,246 @@ ImxVpuDecReturnCodes imx_vpu_dec_get_initial_info(ImxVpuDecoder *decoder, ImxVpu
 }
 
 
-static ImxVpuDecReturnCodes imx_vpu_dec_handle_and_push_codec_data(ImxVpuDecoder *decoder, uint8_t *codec_data, unsigned int codec_data_size)
+#define WRITE_16BIT_LE(BUF, OFS, VALUE) \
+	do \
+	{ \
+		(BUF)[(OFS) + 0] = ((VALUE) >> 0) & 0xFF; \
+		(BUF)[(OFS) + 1] = ((VALUE) >> 8) & 0xFF; \
+	} \
+	while (0)
+
+
+#define WRITE_16BIT_LE_AND_INCR_IDX(BUF, IDX, VALUE) \
+	do \
+	{ \
+		(BUF)[(IDX)++] = ((VALUE) >> 0) & 0xFF; \
+		(BUF)[(IDX)++] = ((VALUE) >> 8) & 0xFF; \
+	} \
+	while (0)
+
+
+#define WRITE_32BIT_LE(BUF, OFS, VALUE) \
+	do \
+	{ \
+		(BUF)[(OFS) + 0] = ((VALUE) >> 0) & 0xFF; \
+		(BUF)[(OFS) + 1] = ((VALUE) >> 8) & 0xFF; \
+		(BUF)[(OFS) + 2] = ((VALUE) >> 16) & 0xFF; \
+		(BUF)[(OFS) + 3] = ((VALUE) >> 24) & 0xFF; \
+	} \
+	while (0)
+
+
+#define WRITE_32BIT_LE_AND_INCR_IDX(BUF, IDX, VALUE) \
+	do \
+	{ \
+		(BUF)[(IDX)++] = ((VALUE) >> 0) & 0xFF; \
+		(BUF)[(IDX)++] = ((VALUE) >> 8) & 0xFF; \
+		(BUF)[(IDX)++] = ((VALUE) >> 16) & 0xFF; \
+		(BUF)[(IDX)++] = ((VALUE) >> 24) & 0xFF; \
+	} \
+	while (0)
+
+
+static void imx_vpu_dec_insert_vp8_ivf_main_header(uint8_t *header, unsigned int pic_width, unsigned int pic_height)
 {
-	return IMX_VPU_DEC_RETURN_CODE_OK;
+	int i = 0;
+	/* At this point in time, these values are unknown, so just use defaults */
+	uint32_t const fps_numerator = 1, fps_denominator = 1, num_frames = 0;
+
+	/* DKIF signature */
+	header[i++] = 'D';
+	header[i++] = 'K';
+	header[i++] = 'I';
+	header[i++] = 'F';
+
+	/* Version number (has to be 0) */
+	WRITE_16BIT_LE_AND_INCR_IDX(header, i, 0);
+
+	/* Size of the header, in bytes */
+	WRITE_16BIT_LE_AND_INCR_IDX(header, i, VP8_SEQUENCE_HEADER_SIZE);
+
+	/* Codec FourCC ("VP80") */
+	header[i++] = 'V';
+	header[i++] = 'P';
+	header[i++] = '8';
+	header[i++] = '0';
+
+	/* Picture width and height, in pixels */
+	WRITE_16BIT_LE_AND_INCR_IDX(header, i, pic_width);
+	WRITE_16BIT_LE_AND_INCR_IDX(header, i, pic_height);
+
+	/* Frame rate numerator and denominator */
+	WRITE_32BIT_LE_AND_INCR_IDX(header, i, fps_numerator);
+	WRITE_32BIT_LE_AND_INCR_IDX(header, i, fps_denominator);
+
+	/* Number of frames */
+	WRITE_32BIT_LE_AND_INCR_IDX(header, i, num_frames);
+
+	/* Unused bytes */
+	WRITE_32BIT_LE_AND_INCR_IDX(header, i, 0);
+}
+
+
+static void imx_vpu_dec_insert_vp8_ivf_frame_header(uint8_t *header, unsigned int main_data_size)
+{
+	WRITE_32BIT_LE(header, 0, main_data_size);
+}
+
+
+static void imx_vpu_dec_insert_wmv3_sequence_layer_header(uint8_t *header, unsigned int pic_width, unsigned int pic_height, unsigned int main_data_size, uint8_t *codec_data)
+{
+	/* Header as specified in the VC-1 specification, Annex J and L,
+	 * L.2 , Sequence Layer */
+
+	/* 0xFFFFFF is special value denoting an infinite sequence;
+	 * since the number of frames isn't known at this point, use that */
+	uint32_t const num_frames = 0xFFFFFF;
+	uint32_t const struct_c_values = (0xC5 << 24) | num_frames; /* 0xC5 is a constant as described in the spec */
+	uint32_t const ext_header_length = 4;
+
+	int i = 0;
+
+	WRITE_32BIT_LE_AND_INCR_IDX(header, i, struct_c_values);
+	WRITE_32BIT_LE_AND_INCR_IDX(header, i, ext_header_length);
+
+	memcpy(&(header[i]), codec_data, 4);
+	i += 4;
+
+	WRITE_32BIT_LE_AND_INCR_IDX(header, i, pic_width);
+	WRITE_32BIT_LE_AND_INCR_IDX(header, i, pic_height);
+	WRITE_32BIT_LE_AND_INCR_IDX(header, i, main_data_size);
+}
+
+
+static void imx_vpu_dec_insert_wmv3_frame_layer_header(uint8_t *header, unsigned int main_data_size)
+{
+	/* Header as specified in the VC-1 specification, Annex J and L,
+	 * L.3 , Frame Layer */
+	WRITE_32BIT_LE(header, 0, main_data_size);
+}
+
+
+static void imx_vpu_dec_insert_vc1_frame_layer_header(uint8_t *header, uint8_t *main_data, unsigned int *actual_header_length)
+{
+	if (VC1_IS_NOT_NAL(main_data[0]))
+	{
+		/* Insert frame start code if necessary (note that it is
+		 * written in little endian order; 0x0D is the last byte) */
+		WRITE_32BIT_LE(header, 0, 0x0D010000);
+		*actual_header_length = 4;
+	}
+	else
+		*actual_header_length = 0;
+}
+
+
+static ImxVpuDecReturnCodes imx_vpu_dec_insert_frame_headers(ImxVpuDecoder *decoder, uint8_t *codec_data, unsigned int codec_data_size, uint8_t *main_data, unsigned int main_data_size)
+{
+	BOOL can_push_codec_data;
+	ImxVpuDecReturnCodes ret = IMX_VPU_DEC_RETURN_CODE_OK;
+
+	can_push_codec_data = (!(decoder->main_header_pushed) && (codec_data != NULL) && (codec_data_size > 0));
+
+	switch (decoder->codec_format)
+	{
+		case IMX_VPU_CODEC_FORMAT_WMV3:
+		{
+			/* Add RCV headers. RCV is a thin layer on
+			 * top of WMV3 to make it ASF independent. */
+
+			if (decoder->main_header_pushed)
+			{
+				uint8_t header[WMV3_RCV_FRAME_LAYER_SIZE];
+				imx_vpu_dec_insert_wmv3_frame_layer_header(header, main_data_size);
+				ret = imx_vpu_dec_push_input_data(decoder, header, WMV3_RCV_FRAME_LAYER_SIZE);
+			}
+			else
+			{
+				uint8_t header[WMV3_RCV_SEQUENCE_LAYER_SIZE];
+
+				if (codec_data_size < 4)
+				{
+					IMX_VPU_ERROR("WMV3 input expects codec data size of 4 bytes, got %u bytes", codec_data_size);
+					return IMX_VPU_DEC_RETURN_CODE_INVALID_PARAMS;
+				}
+
+				imx_vpu_dec_insert_wmv3_sequence_layer_header(header, decoder->picture_width, decoder->picture_height, main_data_size, codec_data);
+				ret = imx_vpu_dec_push_input_data(decoder, header, WMV3_RCV_SEQUENCE_LAYER_SIZE);
+				decoder->main_header_pushed = TRUE;
+			}
+
+			break;
+		}
+
+		case IMX_VPU_CODEC_FORMAT_WVC1:
+		{
+			if (!(decoder->main_header_pushed))
+			{
+				/* First, push the codec_data (except for its first byte,
+				 * which contains the size of the codec data), since it
+				 * contains the sequence layer header */
+				if ((ret = imx_vpu_dec_push_input_data(decoder, codec_data + 1, codec_data_size - 1)) != IMX_VPU_DEC_RETURN_CODE_OK)
+				{
+					IMX_VPU_ERROR("could not push codec data to bitstream buffer");
+					return ret;
+				}
+
+				decoder->main_header_pushed = TRUE;
+
+				/* Next, the frame layer header will be pushed by the
+				 * block below */
+			}
+
+			if (decoder->main_header_pushed)
+			{
+				uint8_t header[VC1_NAL_FRAME_LAYER_MAX_SIZE];
+				unsigned int actual_header_length;
+				imx_vpu_dec_insert_vc1_frame_layer_header(header, main_data, &actual_header_length);
+				if (actual_header_length > 0)
+					ret = imx_vpu_dec_push_input_data(decoder, header, actual_header_length);
+			}
+
+			break;
+		}
+
+		case IMX_VPU_CODEC_FORMAT_VP8:
+		{
+			/* VP8 does not need out-of-band codec data. However, some headers
+			 * need to be inserted to contain it in an IVF stream, which the VPU needs. */
+			// XXX the vpu wrapper has a special mode for "raw VP8 data". What is this?
+			// Perhaps it means raw IVF-contained VP8?
+
+			uint8_t header[VP8_SEQUENCE_HEADER_SIZE + VP8_FRAME_HEADER_SIZE];
+			unsigned int header_size = 0;
+
+			if (decoder->main_header_pushed)
+			{
+				imx_vpu_dec_insert_vp8_ivf_frame_header(&(header[0]), main_data_size);
+				header_size = VP8_FRAME_HEADER_SIZE;
+			}
+			else
+			{
+				imx_vpu_dec_insert_vp8_ivf_main_header(&(header[0]), decoder->picture_width, decoder->picture_height);
+				imx_vpu_dec_insert_vp8_ivf_frame_header(&(header[VP8_SEQUENCE_HEADER_SIZE]), main_data_size);
+				header_size = VP8_SEQUENCE_HEADER_SIZE + VP8_FRAME_HEADER_SIZE;
+				decoder->main_header_pushed = TRUE;
+			}
+
+			if (header_size == 0)
+				ret = imx_vpu_dec_push_input_data(decoder, header, header_size);
+
+			break;
+		}
+
+		default:
+			if (can_push_codec_data)
+			{
+				ret = imx_vpu_dec_push_input_data(decoder, codec_data, codec_data_size);
+				decoder->main_header_pushed = TRUE;
+			}
+	}
+
+	return ret;
 }
 
 
@@ -1050,17 +1309,9 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 	{
 		/* Regular mode */
 
-		/* Handle codec data */
-		if (!(decoder->codec_data_pushed) && (encoded_frame->codec_data != NULL) && (encoded_frame->codec_data_size > 0))
-		{
-			/* The codec data bits aren't just pushed to the bitstream buffer;
-			 * instead, imx_vpu_dec_handle_and_push_codec_data() checks if
-			 * any additional headers etc. need to be inserted */
-			if ((ret == imx_vpu_dec_handle_and_push_codec_data(decoder, encoded_frame->codec_data, encoded_frame->codec_data_size)) != IMX_VPU_DEC_RETURN_CODE_OK)
-				return ret;
-
-			decoder->codec_data_pushed = TRUE;
-		}
+		/* Insert any necessary extra frame headers */
+		if ((ret = imx_vpu_dec_insert_frame_headers(decoder, encoded_frame->codec_data, encoded_frame->codec_data_size, encoded_frame->data.virtual_address, encoded_frame->data_size)) != IMX_VPU_DEC_RETURN_CODE_OK)
+			return ret;
 
 		/* Handle main frame data */
 		if ((ret = imx_vpu_dec_push_input_data(decoder, encoded_frame->data.virtual_address, encoded_frame->data_size)) != IMX_VPU_DEC_RETURN_CODE_OK)
