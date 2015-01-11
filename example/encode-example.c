@@ -154,10 +154,9 @@ Retval run(Context *ctx)
 	for (;;)
 	{
 		uint8_t *mapped_virtual_address;
-		imx_vpu_phys_addr_t mapped_physical_address;
 
 		/* Read uncompressed pixels into the input DMA buffer */
-		imx_vpu_dma_buffer_map(ctx->input_fb_dmabuffer, &mapped_virtual_address, &mapped_physical_address, IMX_VPU_MAPPING_FLAG_WRITE_ONLY);
+		mapped_virtual_address = imx_vpu_dma_buffer_map(ctx->input_fb_dmabuffer, IMX_VPU_MAPPING_FLAG_WRITE_ONLY);
 		fread(mapped_virtual_address, 1, FRAME_SIZE, ctx->fin);
 		imx_vpu_dma_buffer_unmap(ctx->input_fb_dmabuffer);
 
@@ -169,7 +168,7 @@ Retval run(Context *ctx)
 		imx_vpu_enc_encode(ctx->vpuenc, &input_picture, &output_frame, &enc_params, &output_code);
 
 		/* Write out the encoded frame to the output file */
-		imx_vpu_dma_buffer_map(ctx->output_dmabuffer, &mapped_virtual_address, &mapped_physical_address, IMX_VPU_MAPPING_FLAG_READ_ONLY);
+		mapped_virtual_address = imx_vpu_dma_buffer_map(ctx->output_dmabuffer, IMX_VPU_MAPPING_FLAG_READ_ONLY);
 		fwrite(mapped_virtual_address, 1, output_frame.data_size, ctx->fout);
 		imx_vpu_dma_buffer_unmap(ctx->input_fb_dmabuffer);
 	}

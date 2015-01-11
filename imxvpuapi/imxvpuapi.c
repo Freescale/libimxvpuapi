@@ -39,9 +39,9 @@ void imx_vpu_dma_buffer_deallocate(ImxVpuDMABuffer *buffer)
 }
 
 
-void imx_vpu_dma_buffer_map(ImxVpuDMABuffer *buffer, uint8_t **virtual_address, imx_vpu_phys_addr_t *physical_address, unsigned int flags)
+uint8_t* imx_vpu_dma_buffer_map(ImxVpuDMABuffer *buffer, unsigned int flags)
 {
-	buffer->allocator->map(buffer->allocator, buffer, virtual_address, physical_address, flags);
+	return buffer->allocator->map(buffer->allocator, buffer, flags);
 }
 
 
@@ -54,6 +54,12 @@ void imx_vpu_dma_buffer_unmap(ImxVpuDMABuffer *buffer)
 int imx_vpu_dma_buffer_get_fd(ImxVpuDMABuffer *buffer)
 {
 	return buffer->allocator->get_fd(buffer->allocator, buffer);
+}
+
+
+imx_vpu_phys_addr_t imx_vpu_dma_buffer_get_physical_address(ImxVpuDMABuffer *buffer)
+{
+	return buffer->allocator->get_physical_address(buffer->allocator, buffer);
 }
 
 
