@@ -90,7 +90,7 @@ typedef struct _ImxVpuDMABufferAllocator ImxVpuDMABufferAllocator;
  * DMA-BUF or the like. To keep compatible with these older allocators and allowing for newer and better
  * methods, both physical addresses and FDs are supported by this API. Typically, an allocator allows for
  * one of them. If an allocator does not support FDs, @get_fd must return -1. If it does not support physical
- * addresses, then the physical address returned by @map must be set to zero.
+ * addresses, then the physical address returned by @get_physical_address must be set to zero.
  *
  * The vfuncs are:
  *
@@ -102,11 +102,9 @@ typedef struct _ImxVpuDMABufferAllocator ImxVpuDMABufferAllocator;
  *
  * @deallocate: Deallocates a DMA buffer. The buffer must have been allocated with the same allocator.
  *
- * @map: Maps a DMA buffer to the local address space, and also returns a physical address to the region.
- *       If the allocator does not allow for physical addresses, the address is always set to zero by the
- *       function. The "virtual_address" and "physical_address" pointers must not be NULL.
- *       "flags" is a bitwise OR combination of flags (or 0 if no flags are used, in which case it will map in regular
- *       read/write mode).
+ * @map: Maps a DMA buffer to the local address space, and returns the virtual address to this space.
+ *       "flags" is a bitwise OR combination of flags (or 0 if no flags are used, in which case it will map
+ *       in regular read/write mode).
  *
  * @unmap: Unmaps a DMA buffer. @map and @unmap must contain an internal counter, to allow for multiple
  *       map/unmap calls. Only if that counter reaches zero again - in other words, once @unmap is called as
@@ -115,17 +113,24 @@ typedef struct _ImxVpuDMABufferAllocator ImxVpuDMABufferAllocator;
  * @get_fd: Gets the file descriptor associated with the DMA buffer. This is the preferred way of interacting
  *          with DMA buffers. If the underlying allocator does not support FDs, this function returns -1.
  *
- * @get_size: Returns the size of the buffer, in bytes. This function can also be used while the buffer is mapped. */
+ * @get_physical_address: Gets the physical address associated with the DMA buffer. This address points to the
+ *                        start of the buffer in the physical address space. If no physical addresses are
+ *                        supported by the allocator, this function returns 0.
+ *
+ * @get_size: Returns the size of the buffer, in bytes.
+ *
+ * The vfuncs @get_fd, @get_physical_address, and @get_size can also be used while the buffer is mapped. */
 struct _ImxVpuDMABufferAllocator
 {
 	ImxVpuDMABuffer* (*allocate)(ImxVpuDMABufferAllocator *allocator, size_t size, unsigned int alignment, unsigned int flags);
 	void (*deallocate)(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer);
 
 	/* Mapping/unmapping must use some kind of internal counter, to allow for multiple map() calls */
-	void (*map)(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer, uint8_t **virtual_address, imx_vpu_phys_addr_t *physical_address, unsigned int flags);
+	uint8_t* (*map)(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer, unsigned int flags);
 	void (*unmap)(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer);
 
 	int (*get_fd)(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer);
+	imx_vpu_phys_addr_t (*get_physical_address)(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer);
 
 	size_t (*get_size)(ImxVpuDMABufferAllocator *allocator, ImxVpuDMABuffer *buffer);
 };
@@ -143,9 +148,10 @@ struct _ImxVpuDMABuffer
 /* Convenience functions which call the corresponding vfuncs in the allocator */
 ImxVpuDMABuffer* imx_vpu_dma_buffer_allocate(ImxVpuDMABufferAllocator *allocator, size_t size, unsigned int alignment, unsigned int flags);
 void imx_vpu_dma_buffer_deallocate(ImxVpuDMABuffer *buffer);
-void imx_vpu_dma_buffer_map(ImxVpuDMABuffer *buffer, uint8_t **virtual_address, imx_vpu_phys_addr_t *physical_address, unsigned int flags);
+uint8_t* imx_vpu_dma_buffer_map(ImxVpuDMABuffer *buffer, unsigned int flags);
 void imx_vpu_dma_buffer_unmap(ImxVpuDMABuffer *buffer);
 int imx_vpu_dma_buffer_get_fd(ImxVpuDMABuffer *buffer);
+imx_vpu_phys_addr_t imx_vpu_dma_buffer_get_physical_address(ImxVpuDMABuffer *buffer);
 size_t imx_vpu_dma_buffer_get_size(ImxVpuDMABuffer *buffer);
 
 
