@@ -673,7 +673,17 @@ ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenPara
 	dec_open_param.mapType = 0;
 	dec_open_param.tiled2LinearEnable = 0; // this must ALWAYS be 0, otherwise VPU hangs eventually (it is 0 in the wrapper except for MX6X)
 	dec_open_param.bitstreamMode = 1;
-	dec_open_param.jpgLineBufferMode = (open_params->codec_format == IMX_VPU_CODEC_FORMAT_MJPEG);
+
+	/* Motion-JPEG specific settings */
+	if (open_params->codec_format == IMX_VPU_CODEC_FORMAT_MJPEG)
+	{
+		dec_open_param.jpgLineBufferMode = 1;
+		/* This one is not mentioned in the specs for some reason,
+		 * but is required for motion JPEG to work */
+		dec_open_param.pBitStream = (*decoder)->bitstream_buffer_virtual_address;
+	}
+	else
+		dec_open_param.jpgLineBufferMode = 0;
 
 
 	/* Now actually open the decoder instance */
@@ -1385,6 +1395,13 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 		BOOL timeout;
 
 		memset(&params, 0, sizeof(params));
+
+		/* There is an error in the specification. It states that chunkSize
+		 * is not used in the i.MX6. This is untrue; for motion JPEG, this
+		 * must be nonzero. */
+		if (decoder->codec_format == IMX_VPU_CODEC_FORMAT_MJPEG)
+			params.chunkSize = encoded_frame->data_size;
+
 		/* XXX: currently, iframe search and skip frame modes are not supported */
 
 
