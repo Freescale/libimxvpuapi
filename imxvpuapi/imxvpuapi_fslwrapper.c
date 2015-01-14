@@ -347,8 +347,6 @@ struct _ImxVpuDecoder
 	void *pending_context;
 	void *dropped_frame_context;
 	int num_context;
-	BOOL delay_pending_context;
-	void *last_pending_context;
 
 	BOOL consumption_info_available;
 	BOOL flush_vpu_upon_reset;
@@ -359,6 +357,9 @@ struct _ImxVpuDecoder
 	int num_available_framebuffers;
 	int num_times_counter_decremented;
 	int num_framebuffers_in_use;
+
+	imx_vpu_dec_new_initial_info_callback initial_info_callback;
+	void *callback_user_data;
 };
 
 
@@ -393,7 +394,6 @@ static unsigned int dec_convert_outcode(VpuDecBufRetCode code)
 	if (code & VPU_DEC_OUTPUT_MOSAIC_DIS)  out |= IMX_VPU_DEC_OUTPUT_CODE_DROPPED; /* mosaic frames are dropped */
 	if (code & VPU_DEC_NO_ENOUGH_BUF)      out |= IMX_VPU_DEC_OUTPUT_CODE_NOT_ENOUGH_OUTPUT_FRAMES;
 	if (code & VPU_DEC_NO_ENOUGH_INBUF)    out |= IMX_VPU_DEC_OUTPUT_CODE_NOT_ENOUGH_INPUT_DATA;
-	if (code & VPU_DEC_INIT_OK)            out |= IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE;
 	if (code & VPU_DEC_RESOLUTION_CHANGED) out |= IMX_VPU_DEC_OUTPUT_CODE_RESOLUTION_CHANGED;
 	return out;
 }
@@ -546,7 +546,7 @@ void imx_vpu_dec_get_bitstream_buffer_info(size_t *size, unsigned int *alignment
 }
 
 
-ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenParams *open_params, ImxVpuDMABuffer *bitstream_buffer)
+ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenParams *open_params, ImxVpuDMABuffer *bitstream_buffer, imx_vpu_dec_new_initial_info_callback new_initial_info_callback, void *callback_user_data)
 {
 	int config_param;
 	VpuDecRetCode ret;
@@ -570,6 +570,9 @@ ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenPara
 
 	bitstream_buffer_virtual_address = imx_vpu_dma_buffer_map(bitstream_buffer, 0);
 	bitstream_buffer_physical_address = imx_vpu_dma_buffer_get_physical_address(bitstream_buffer);
+
+	(*decoder)->initial_info_callback = new_initial_info_callback;
+	(*decoder)->callback_user_data = callback_user_data;
 
 	{
 		int i;
@@ -787,8 +790,6 @@ ImxVpuDecReturnCodes imx_vpu_dec_flush(ImxVpuDecoder *decoder)
 
 	assert(decoder != NULL);
 
-	decoder->delay_pending_context = FALSE;
-
 	if (decoder->flush_vpu_upon_reset)
 	{
 		ret = VPU_DecFlushAll(decoder->handle);
@@ -907,21 +908,6 @@ ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, I
 }
 
 
-ImxVpuDecReturnCodes imx_vpu_dec_get_initial_info(ImxVpuDecoder *decoder, ImxVpuDecInitialInfo *info)
-{
-	VpuDecRetCode ret;
-	VpuDecInitInfo init_info;
-
-	assert(decoder != NULL);
-	assert(info != NULL);
-
-	ret = VPU_DecGetInitialInfo(decoder->handle, &init_info);
-	IMX_VPU_LOG("VPU_DecGetInitialInfo: min num framebuffers required: %d", init_info.nMinFrameBufferCount);
-	dec_convert_from_wrapper_initial_info(&init_info, info);
-	return dec_convert_retcode(ret);
-}
-
-
 ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFrame *encoded_frame, unsigned int *output_code)
 {
 	VpuDecRetCode ret;
@@ -962,8 +948,80 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 
 	if (buf_ret_code & VPU_DEC_INIT_OK)
 	{
-		decoder->delay_pending_context = TRUE;
-		decoder->last_pending_context = decoder->pending_context;
+		/* Init info is available. Get this info, and then proceed with decoding the frame.
+		 *
+		 * This is ordinarily not possible, since the first frame is consumed by VPU_DecDecodeBuf(),
+		 * and after this call, initial info is available. Ther caller is then supposed to
+		 * allocate and register framebuffers using that initial info, and then feed to second
+		 * encoded frame to VPU_DecDecodeBuf(), which will (depending on the codec) decode the first.
+		 * This means that with this ordinary approach, there is always at least a one-frame delay
+		 * (caused by the initial info phase).
+		 * Such a one-frame delay can make things more difficult for users, especially when performing
+		 * tasks like JPEG decoding. So, to circumvent this delay, a trick is used.
+		 * If VPU_DecDecodeBuf() reports that initial info is available, the code inside this scope
+		 * here first retrieves this info, and then calls the initial_info_callback . Inside this
+		 * callback, users can allocate and register framebuffers. Afterwards, the VPU wrapper's
+		 * drain mode is enabled. This is necessary to force the wrapper to decode the frame that was
+		 * fed into VPU_DecDecodeBuf() earlier. Then, VPU_DecDecodeBuf() is called again, but with
+		 * an input VpuBufferNode with size 0 and null pointers (since it is in the drain mode).
+		 * After this VPU_DecDecodeBuf() call, the drain mode is immediately disabled. Then,
+		 * the code proceeds as usual.
+		 * Result: the delay does not affect operations.
+		 */
+
+		VpuDecInitInfo wrapper_init_info;
+		ImxVpuDecInitialInfo initial_info;
+
+		/* Dummy drain node with null pointers and size zero */
+		VpuBufferNode drain_node;
+		drain_node.pVirAddr = 0;
+		drain_node.pPhyAddr = 0;
+		drain_node.nSize = 0;
+
+		/* Extract the initial info */
+		if ((ret = VPU_DecGetInitialInfo(decoder->handle, &wrapper_init_info)) != VPU_DEC_RET_SUCCESS)
+		{
+			IMX_VPU_ERROR("could not get initial info: %s", imx_vpu_dec_error_string(dec_convert_retcode(ret)));
+			return dec_convert_retcode(ret);
+		}
+
+		IMX_VPU_LOG("VPU_DecGetInitialInfo: min num framebuffers required: %d", wrapper_init_info.nMinFrameBufferCount);
+		/* Convert the initial info to the imxvpuapi structure equivalent for the callback */
+		dec_convert_from_wrapper_initial_info(&wrapper_init_info, &initial_info);
+
+		/* Invoke the initial_info_callback. Framebuffers for decoding are allocated
+		 * and registered there. */
+		if (!decoder->initial_info_callback(decoder, &initial_info, *output_code, decoder->callback_user_data))
+		{
+			IMX_VPU_ERROR("initial info callback reported failure - cannot continue");
+			return IMX_VPU_DEC_RETURN_CODE_ERROR;
+		}
+
+		/* Enable drain mode to force the VPU wrapper to decode the frame that
+		 * was fed into it previously */
+		imx_vpu_dec_enable_drain_mode(decoder, TRUE);
+
+		/* Decode the frame */
+		ret = VPU_DecDecodeBuf(decoder->handle, &drain_node, &buf_ret_code);
+		*output_code = dec_convert_outcode(buf_ret_code);
+		IMX_VPU_LOG("VPU_DecDecodeBuf buf ret code: 0x%x", buf_ret_code);
+		if (ret != VPU_DEC_RET_SUCCESS)
+		{
+			IMX_VPU_ERROR("decoding frame failed: %s", imx_vpu_dec_error_string(dec_convert_retcode(ret)));
+			return dec_convert_retcode(ret);
+		}
+
+		/* Frame decoded, disable drain mode */
+		imx_vpu_dec_enable_drain_mode(decoder, FALSE);
+
+		if (ret != VPU_DEC_RET_SUCCESS)
+		{
+			IMX_VPU_ERROR("decoding frame failed: %s", imx_vpu_dec_error_string(dec_convert_retcode(ret)));
+			return dec_convert_retcode(ret);
+		}
+
+		/* From here on, the rest of the code can assume it was just
+		 * a regular VPU_DecDecodeBuf() call */
 	}
 
 	if (buf_ret_code & VPU_DEC_FLUSH)
@@ -996,11 +1054,11 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 
 	if (buf_ret_code & VPU_DEC_RESOLUTION_CHANGED)
 	{
+		/* Resolution changed; reset internal states, since in the next
+		 * VPU_DecDecodeBuf() call, new initial info will become available */
+
 		IMX_VPU_INFO("resolution changed - resetting internal states");
 
-		*output_code |= IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE;
-
-		decoder->delay_pending_context = TRUE;
 		decoder->recalculate_num_avail_framebuffers = FALSE;
 
 		decoder->num_context = 0;
@@ -1021,15 +1079,21 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 	}
 
 	{
-		void *context = decoder->delay_pending_context ? decoder->last_pending_context : decoder->pending_context;
+		/* In here, the frame context is stored in the context_for_frames array.
+		 * There are two ways of doing this. Which one to pick depends on whether or not
+		 * the VPU wrapper produces information about the consumed frame (that is, the
+		 * frame that was just picked by the VPU to decode a frame into). If it does,
+		 * method 1 is used: VPU_DecGetConsumedFrameInfo() is called, and based on
+		 * its pFrame pointer, the appropriate array index is computed. The context is
+		 * stored there.
+		 * If the VPU wrapper does not produce such information, store the context
+		 * as the "newest" one. context_for_frames then behaves like a FIFO. This is
+		 * appropriate, since codec formats that don't produce consumed frame information
+		 * do not use frame reordering. They can delay frame decoding, but the order of
+		 * frames stays intact. */
 
-		/* The first time this location is reached, VPU_DEC_INIT_OK will be set in the output_code.
-		 * This implies that the framebuffers have not been allocated and registered yet,
-		 * so no user data can be stored yet.
-		 * With codec formats that produce consumption info, this is not a problem, because
-		 * VPU_DEC_ONE_FRM_CONSUMED will be returned only when framebuffers are present.
-		 * But with other formats, an explicit decoder->framebuffers != NULL check is necessary
-		 * (see below). The context pointer does not get lost; it is stored in last_pending_context. */
+		void *context = decoder->pending_context;
+
 		if ((buf_ret_code & VPU_DEC_ONE_FRM_CONSUMED) && !(buf_ret_code & VPU_DEC_OUTPUT_DROPPED))
 		{
 			int fb_index;
@@ -1072,9 +1136,6 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 			else
 				IMX_VPU_WARNING("too many user data pointers in memory - cannot store current one");
 		}
-
-		decoder->last_pending_context = decoder->pending_context;
-		decoder->pending_context = NULL;
 	}
 
 	if ((buf_ret_code & VPU_DEC_ONE_FRM_CONSUMED) && !(buf_ret_code & VPU_DEC_OUTPUT_DROPPED))

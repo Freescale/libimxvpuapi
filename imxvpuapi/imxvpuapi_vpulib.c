@@ -422,6 +422,9 @@ struct _ImxVpuDecoder
 
 	DecOutputInfo dec_output_info;
 	int available_decoded_pic_idx;
+
+	imx_vpu_dec_new_initial_info_callback initial_info_callback;
+	void *callback_user_data;
 };
 
 
@@ -583,7 +586,7 @@ void imx_vpu_dec_get_bitstream_buffer_info(size_t *size, unsigned int *alignment
 }
 
 
-ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenParams *open_params, ImxVpuDMABuffer *bitstream_buffer)
+ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenParams *open_params, ImxVpuDMABuffer *bitstream_buffer, imx_vpu_dec_new_initial_info_callback new_initial_info_callback, void *callback_user_data)
 {
 	ImxVpuDecReturnCodes ret;
 	DecOpenParam dec_open_param;
@@ -611,6 +614,9 @@ ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenPara
 	/* Map the bitstream buffer. This mapping will persist until the decoder is closed. */
 	(*decoder)->bitstream_buffer_virtual_address = imx_vpu_dma_buffer_map(bitstream_buffer, 0);
 	(*decoder)->bitstream_buffer_physical_address = imx_vpu_dma_buffer_get_physical_address(bitstream_buffer);
+
+	(*decoder)->initial_info_callback = new_initial_info_callback;
+	(*decoder)->callback_user_data = callback_user_data;
 
 
 	/* Fill in values into the VPU's decoder open param structure */
@@ -934,35 +940,6 @@ static ImxVpuDecReturnCodes imx_vpu_dec_get_initial_info_internal(ImxVpuDecoder 
 		decoder->initial_info_available = TRUE;
 
 	return ret;
-}
-
-
-ImxVpuDecReturnCodes imx_vpu_dec_get_initial_info(ImxVpuDecoder *decoder, ImxVpuDecInitialInfo *info)
-{
-	assert(decoder != NULL);
-	assert(info != NULL);
-
-	/* The actual retrieval is performed during the decode operation.
-	 * A copy of the retrieved values is retained internally, and
-	 * returned here. */
-
-	if (decoder->initial_info_available)
-	{
-		info->frame_width = decoder->initial_info.picWidth;
-		info->frame_height = decoder->initial_info.picHeight;
-		info->frame_rate_numerator = decoder->initial_info.frameRateRes;
-		info->frame_rate_denominator = decoder->initial_info.frameRateDiv;
-		info->min_num_required_framebuffers = decoder->initial_info.minFrameBufferCount + 6;
-		info->interlacing = decoder->initial_info.interlace ? 1 : 0;
-		info->framebuffer_alignment = 1; /* for maptype 0 (linear, non-tiling) */
-
-		return IMX_VPU_DEC_RETURN_CODE_OK;
-	}
-	else
-	{
-		IMX_VPU_ERROR("cannot return initial info, since no such info has been retrieved - check if imx_vpu_dec_decode() has been called");
-		return IMX_VPU_DEC_RETURN_CODE_ERROR;
-	}
 }
 
 
@@ -1325,7 +1302,83 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 
 
 	/* Start decoding process */
-	if (decoder->initial_info_available)
+
+	if (!(decoder->initial_info_available))
+	{
+		ImxVpuDecInitialInfo initial_info;
+
+		/* Initial info is not available yet. Fetch it, and store it
+		 * inside the decoder instance structure. */
+		ret = imx_vpu_dec_get_initial_info_internal(decoder);
+		switch (ret)
+		{
+			case IMX_VPU_DEC_RETURN_CODE_OK:
+				break;
+
+			case IMX_VPU_DEC_RETURN_CODE_INVALID_HANDLE:
+				return IMX_VPU_DEC_RETURN_CODE_INVALID_HANDLE;
+
+			case IMX_VPU_DEC_RETURN_CODE_INVALID_PARAMS:
+				/* if this error occurs, something inside this code is wrong; this is no user error */
+				IMX_VPU_ERROR("Internal error: invalid info structure while retrieving initial info");
+				return IMX_VPU_DEC_RETURN_CODE_ERROR;
+
+			case IMX_VPU_DEC_RETURN_CODE_TIMEOUT:
+				IMX_VPU_ERROR("VPU reported timeout while retrieving initial info");
+				return IMX_VPU_DEC_RETURN_CODE_TIMEOUT;
+
+			case IMX_VPU_DEC_RETURN_CODE_WRONG_CALL_SEQUENCE:
+				 return IMX_VPU_DEC_RETURN_CODE_WRONG_CALL_SEQUENCE;
+
+			case IMX_VPU_DEC_RETURN_CODE_ALREADY_CALLED:
+				IMX_VPU_ERROR("Initial info was already retrieved - duplicate call");
+				return IMX_VPU_DEC_RETURN_CODE_ALREADY_CALLED;
+
+			default:
+				/* do not report error; instead, let the caller supply the
+				 * VPU with more data, until initial info can be retrieved */
+				*output_code |= IMX_VPU_DEC_OUTPUT_CODE_NOT_ENOUGH_INPUT_DATA;
+		}
+
+		initial_info.frame_width = decoder->initial_info.picWidth;
+		initial_info.frame_height = decoder->initial_info.picHeight;
+		initial_info.frame_rate_numerator = decoder->initial_info.frameRateRes;
+		initial_info.frame_rate_denominator = decoder->initial_info.frameRateDiv;
+		initial_info.min_num_required_framebuffers = decoder->initial_info.minFrameBufferCount + 6;
+		initial_info.interlacing = decoder->initial_info.interlace ? 1 : 0;
+		initial_info.framebuffer_alignment = 1; /* for maptype 0 (linear, non-tiling) */
+
+		switch (decoder->initial_info.mjpg_sourceFormat)
+		{
+			case FORMAT_420:
+				initial_info.color_format = IMX_VPU_COLOR_FORMAT_YUV420;
+				break;
+			case FORMAT_422:
+				initial_info.color_format = IMX_VPU_COLOR_FORMAT_YUV422_HORIZONTAL;
+				break;
+			case FORMAT_224:
+				initial_info.color_format = IMX_VPU_COLOR_FORMAT_YUV422_VERTICAL;
+				break;
+			case FORMAT_444:
+				initial_info.color_format = IMX_VPU_COLOR_FORMAT_YUV444;
+				break;
+			case FORMAT_400:
+				initial_info.color_format = IMX_VPU_COLOR_FORMAT_YUV400;
+				break;
+			default:
+				IMX_VPU_ERROR("unknown source color format value %d", decoder->initial_info.mjpg_sourceFormat);
+				return IMX_VPU_DEC_RETURN_CODE_ERROR;
+		}
+
+		/* Invoke the initial_info_callback. Framebuffers for decoding are allocated
+		 * and registered there. */
+		if (!decoder->initial_info_callback(decoder, &initial_info, *output_code, decoder->callback_user_data))
+		{
+			IMX_VPU_ERROR("initial info callback reported failure - cannot continue");
+			return IMX_VPU_DEC_RETURN_CODE_ERROR;
+		}
+	}
+
 	{
 		RetCode dec_ret;
 		DecParam params;
@@ -1463,42 +1516,6 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 			IMX_VPU_TRACE("Nothing yet to display ; indexFrameDisplay: %d", decoder->dec_output_info.indexFrameDisplay);
 		}
 
-	}
-	else
-	{
-		/* Initial info is not available yet. Fetch it, and store it
-		 * inside the decoder instance structure. */
-		ret = imx_vpu_dec_get_initial_info_internal(decoder);
-		switch (ret)
-		{
-			case IMX_VPU_DEC_RETURN_CODE_OK:
-				*output_code |= IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE;
-				break;
-
-			case IMX_VPU_DEC_RETURN_CODE_INVALID_HANDLE:
-				return IMX_VPU_DEC_RETURN_CODE_INVALID_HANDLE;
-
-			case IMX_VPU_DEC_RETURN_CODE_INVALID_PARAMS:
-				/* if this error occurs, something inside this code is wrong; this is no user error */
-				IMX_VPU_ERROR("Internal error: invalid info structure while retrieving initial info");
-				return IMX_VPU_DEC_RETURN_CODE_ERROR;
-
-			case IMX_VPU_DEC_RETURN_CODE_TIMEOUT:
-				IMX_VPU_ERROR("VPU reported timeout while retrieving initial info");
-				return IMX_VPU_DEC_RETURN_CODE_TIMEOUT;
-
-			case IMX_VPU_DEC_RETURN_CODE_WRONG_CALL_SEQUENCE:
-				 return IMX_VPU_DEC_RETURN_CODE_WRONG_CALL_SEQUENCE;
-
-			case IMX_VPU_DEC_RETURN_CODE_ALREADY_CALLED:
-				IMX_VPU_ERROR("Initial info was already retrieved - duplicate call");
-				return IMX_VPU_DEC_RETURN_CODE_ALREADY_CALLED;
-
-			default:
-				/* do not report error; instead, let the caller supply the
-				 * VPU with more data, until initial info can be retrieved */
-				*output_code |= IMX_VPU_DEC_OUTPUT_CODE_NOT_ENOUGH_INPUT_DATA;
-		}
 	}
 
 

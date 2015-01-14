@@ -49,6 +49,70 @@ struct _Context
 };
 
 
+int initial_info_callback(ImxVpuDecoder *decoder, ImxVpuDecInitialInfo *new_initial_info, unsigned int output_code, void *user_data)
+{
+	unsigned int i;
+	Context *ctx = (Context *)user_data;
+
+	((void)(decoder));
+	((void)(output_code));
+
+	ctx->initial_info = *new_initial_info;
+	fprintf(
+		stderr,
+		"initial info:  size: %ux%u pixel  rate: %u/%u  min num required framebuffers: %u  interlacing: %d  framebuffer alignment: %u  color format: ",
+		ctx->initial_info.frame_width,
+		ctx->initial_info.frame_height,
+		ctx->initial_info.frame_rate_numerator,
+		ctx->initial_info.frame_rate_denominator,
+		ctx->initial_info.min_num_required_framebuffers,
+		ctx->initial_info.interlacing,
+		ctx->initial_info.framebuffer_alignment
+	);
+	switch (ctx->initial_info.color_format)
+	{
+		case IMX_VPU_COLOR_FORMAT_YUV420: fprintf(stderr, "YUV 4:2:0"); break;
+		case IMX_VPU_COLOR_FORMAT_YUV422_HORIZONTAL: fprintf(stderr, "YUV 4:2:2 horizontal"); break;
+		case IMX_VPU_COLOR_FORMAT_YUV422_VERTICAL: fprintf(stderr, "YUV 4:2:2 vertical"); break;
+		case IMX_VPU_COLOR_FORMAT_YUV444: fprintf(stderr, "YUV 4:4:4"); break;
+		case IMX_VPU_COLOR_FORMAT_YUV400: fprintf(stderr, "YUV 4:0:0 (8-bit grayscale)"); break;
+	}
+	fprintf(stderr, "\n");
+
+	ctx->num_framebuffers = ctx->initial_info.min_num_required_framebuffers;
+
+	imx_vpu_calc_framebuffer_sizes(ctx->initial_info.color_format, ctx->initial_info.frame_width, ctx->initial_info.frame_height, ctx->initial_info.framebuffer_alignment, ctx->initial_info.interlacing, &(ctx->calculated_sizes));
+	fprintf(
+		stderr,
+		"calculated sizes:  frame width&height: %dx%d  Y stride: %u  CbCr stride: %u  Y size: %u  CbCr size: %u  MvCol size: %u  total size: %u\n",
+		ctx->calculated_sizes.aligned_frame_width, ctx->calculated_sizes.aligned_frame_height,
+		ctx->calculated_sizes.y_stride, ctx->calculated_sizes.cbcr_stride,
+		ctx->calculated_sizes.y_size, ctx->calculated_sizes.cbcr_size, ctx->calculated_sizes.mvcol_size,
+		ctx->calculated_sizes.total_size
+	);
+
+	ctx->framebuffers = malloc(sizeof(ImxVpuFramebuffer) * ctx->num_framebuffers);
+	ctx->fb_dmabuffers = malloc(sizeof(ImxVpuDMABuffer*) * ctx->num_framebuffers);
+
+	for (i = 0; i < ctx->num_framebuffers; ++i)
+	{
+		/* Allocate a DMA buffer for each framebuffer. It is possible to specify alternate allocators;
+		 * all that is required is that the allocator provides physically contiguous memory
+		 * (necessary for DMA transfers) and respecs the alignment value. */
+		ctx->fb_dmabuffers[i] = imx_vpu_dma_buffer_allocate(imx_vpu_dec_get_default_allocator(), ctx->calculated_sizes.total_size, ctx->initial_info.framebuffer_alignment, 0);
+
+		imx_vpu_fill_framebuffer_params(&(ctx->framebuffers[i]), &(ctx->calculated_sizes), ctx->fb_dmabuffers[i], 0);
+	}
+
+	/* Actual registration is done here. From this moment on, the VPU knows which buffers to use for
+	 * storing decoded pictures into. This call must not be done again until decoding is shut down or
+	 * IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE is set again. */
+	imx_vpu_dec_register_framebuffers(ctx->vpudec, ctx->framebuffers, ctx->num_framebuffers);
+
+	return 1;
+}
+
+
 Context* init(FILE *input_file, FILE *output_file)
 {
 	Context *ctx;
@@ -65,7 +129,7 @@ Context* init(FILE *input_file, FILE *output_file)
 	imx_vpu_dec_load();
 	imx_vpu_dec_get_bitstream_buffer_info(&(ctx->bitstream_buffer_size), &(ctx->bitstream_buffer_alignment));
 	ctx->bitstream_buffer = imx_vpu_dma_buffer_allocate(imx_vpu_dec_get_default_allocator(), ctx->bitstream_buffer_size, ctx->bitstream_buffer_alignment, 0);
-	imx_vpu_dec_open(&(ctx->vpudec), &open_params, ctx->bitstream_buffer);
+	imx_vpu_dec_open(&(ctx->vpudec), &open_params, ctx->bitstream_buffer, initial_info_callback, ctx);
 
 	return ctx;
 }
@@ -100,85 +164,6 @@ Retval run(Context *ctx)
 		imx_vpu_dec_decode(ctx->vpudec, &encoded_frame, &output_code);
 
 		free(buf);
-	}
-
-	/* Initial info is now available; this usually happens right after the
-	 * first frame is decoded, and this is the situation where one must register
-	 * output framebuffers, which the decoder then uses like a buffer pool for
-	 * picking buffers to decode frame into */
-	if (output_code & IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE)
-	{
-		unsigned int i;
-
-		imx_vpu_dec_get_initial_info(ctx->vpudec, &(ctx->initial_info));
-		fprintf(
-			stderr,
-			"initial info:  size: %ux%u pixel  rate: %u/%u  min num required framebuffers: %u  interlacing: %d  framebuffer alignment: %u  color format: ",
-			ctx->initial_info.frame_width,
-			ctx->initial_info.frame_height,
-			ctx->initial_info.frame_rate_numerator,
-			ctx->initial_info.frame_rate_denominator,
-			ctx->initial_info.min_num_required_framebuffers,
-			ctx->initial_info.interlacing,
-			ctx->initial_info.framebuffer_alignment
-		);
-		switch (ctx->initial_info.color_format)
-		{
-			case IMX_VPU_COLOR_FORMAT_YUV420: fprintf(stderr, "YUV 4:2:0"); break;
-			case IMX_VPU_COLOR_FORMAT_YUV422_HORIZONTAL: fprintf(stderr, "YUV 4:2:2 horizontal"); break;
-			case IMX_VPU_COLOR_FORMAT_YUV422_VERTICAL: fprintf(stderr, "YUV 4:2:2 vertical"); break;
-			case IMX_VPU_COLOR_FORMAT_YUV444: fprintf(stderr, "YUV 4:4:4"); break;
-			case IMX_VPU_COLOR_FORMAT_YUV400: fprintf(stderr, "YUV 4:0:0 (8-bit grayscale)"); break;
-		}
-		fprintf(stderr, "\n");
-
-		ctx->num_framebuffers = ctx->initial_info.min_num_required_framebuffers;
-
-		imx_vpu_calc_framebuffer_sizes(ctx->initial_info.color_format, ctx->initial_info.frame_width, ctx->initial_info.frame_height, ctx->initial_info.framebuffer_alignment, ctx->initial_info.interlacing, &(ctx->calculated_sizes));
-		fprintf(
-			stderr,
-			"calculated sizes:  frame width&height: %dx%d  Y stride: %u  CbCr stride: %u  Y size: %u  CbCr size: %u  MvCol size: %u  total size: %u\n",
-			ctx->calculated_sizes.aligned_frame_width, ctx->calculated_sizes.aligned_frame_height,
-			ctx->calculated_sizes.y_stride, ctx->calculated_sizes.cbcr_stride,
-			ctx->calculated_sizes.y_size, ctx->calculated_sizes.cbcr_size, ctx->calculated_sizes.mvcol_size,
-			ctx->calculated_sizes.total_size
-		);
-
-		ctx->framebuffers = malloc(sizeof(ImxVpuFramebuffer) * ctx->num_framebuffers);
-		ctx->fb_dmabuffers = malloc(sizeof(ImxVpuDMABuffer*) * ctx->num_framebuffers);
-
-		for (i = 0; i < ctx->num_framebuffers; ++i)
-		{
-			/* Allocate a DMA buffer for each framebuffer. It is possible to specify alternate allocators;
-			 * all that is required is that the allocator provides physically contiguous memory
-			 * (necessary for DMA transfers) and respecs the alignment value. */
-			ctx->fb_dmabuffers[i] = imx_vpu_dma_buffer_allocate(imx_vpu_dec_get_default_allocator(), ctx->calculated_sizes.total_size, ctx->initial_info.framebuffer_alignment, 0);
-
-			imx_vpu_fill_framebuffer_params(&(ctx->framebuffers[i]), &(ctx->calculated_sizes), ctx->fb_dmabuffers[i], 0);
-		}
-
-		/* Actual registration is done here. From this moment on, the VPU knows which buffers to use for
-		 * storing decoded pictures into. This call must not be done again until decoding is shut down or
-		 * IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE is set again. */
-		imx_vpu_dec_register_framebuffers(ctx->vpudec, ctx->framebuffers, ctx->num_framebuffers);
-	}
-
-	/* Enable drain mode. All available input data is
-	 * inserted. Now We want one output picture. */
-	imx_vpu_dec_enable_drain_mode(ctx->vpudec, 1);
-
-	/* Get the decoded picture out of the VPU */
-	{
-		ImxVpuEncodedFrame encoded_frame;
-
-		/* In drain mode there is no input data */
-		encoded_frame.data.virtual_address = NULL;
-		encoded_frame.data_size = 0;
-		encoded_frame.codec_data = NULL;
-		encoded_frame.codec_data_size = 0;
-		encoded_frame.context = NULL;
-
-		imx_vpu_dec_decode(ctx->vpudec, &encoded_frame, &output_code);
 
 		/* A decoded picture is available for further processing. Retrieve it, do something
 		 * with it, and once the picture is no longer needed, mark it as displayed. This
@@ -193,7 +178,7 @@ Retval run(Context *ctx)
 			 * a pointer to the corresponding framebuffer structure. This must not be called more
 			 * than once after IMX_VPU_DEC_OUTPUT_CODE_DECODED_PICTURE_AVAILABLE was set. */
 			imx_vpu_dec_get_decoded_picture(ctx->vpudec, &decoded_picture);
-			fprintf(stderr, "decoded output picture:  writing %u byte", num_out_byte);
+			fprintf(stderr, "decoded output picture:  writing %u byte\n", num_out_byte);
 
 			/* Map buffer to the local address space, dump the decoded frame to file,
 			 * and unmap again. The decoded frame uses the I420 color format for all

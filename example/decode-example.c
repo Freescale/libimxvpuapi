@@ -54,6 +54,65 @@ struct _Context
 };
 
 
+int initial_info_callback(ImxVpuDecoder *decoder, ImxVpuDecInitialInfo *new_initial_info, unsigned int output_code, void *user_data)
+{
+	unsigned int i;
+	Context *ctx = (Context *)user_data;
+
+	((void)(decoder));
+	((void)(output_code));
+
+	ctx->initial_info = *new_initial_info;
+	fprintf(
+		stderr,
+		"initial info:  size: %ux%u pixel  rate: %u/%u  min num required framebuffers: %u  interlacing: %d  framebuffer alignment: %u\n",
+		ctx->initial_info.frame_width,
+		ctx->initial_info.frame_height,
+		ctx->initial_info.frame_rate_numerator,
+		ctx->initial_info.frame_rate_denominator,
+		ctx->initial_info.min_num_required_framebuffers,
+		ctx->initial_info.interlacing,
+		ctx->initial_info.framebuffer_alignment
+	);
+
+	ctx->num_framebuffers = ctx->initial_info.min_num_required_framebuffers;
+
+	imx_vpu_calc_framebuffer_sizes(ctx->initial_info.color_format, ctx->initial_info.frame_width, ctx->initial_info.frame_height, ctx->initial_info.framebuffer_alignment, ctx->initial_info.interlacing, &(ctx->calculated_sizes));
+	fprintf(
+		stderr,
+		"calculated sizes:  frame width&height: %dx%d  Y stride: %u  CbCr stride: %u  Y size: %u  CbCr size: %u  MvCol size: %u  total size: %u\n",
+		ctx->calculated_sizes.aligned_frame_width, ctx->calculated_sizes.aligned_frame_height,
+		ctx->calculated_sizes.y_stride, ctx->calculated_sizes.cbcr_stride,
+		ctx->calculated_sizes.y_size, ctx->calculated_sizes.cbcr_size, ctx->calculated_sizes.mvcol_size,
+		ctx->calculated_sizes.total_size
+	);
+
+	ctx->framebuffers = malloc(sizeof(ImxVpuFramebuffer) * ctx->num_framebuffers);
+	ctx->fb_dmabuffers = malloc(sizeof(ImxVpuDMABuffer*) * ctx->num_framebuffers);
+
+	for (i = 0; i < ctx->num_framebuffers; ++i)
+	{
+		/* Allocate a DMA buffer for each framebuffer. It is possible to specify alternate allocators;
+		 * all that is required is that the allocator provides physically contiguous memory
+		 * (necessary for DMA transfers) and respecs the alignment value. */
+		ctx->fb_dmabuffers[i] = imx_vpu_dma_buffer_allocate(imx_vpu_dec_get_default_allocator(), ctx->calculated_sizes.total_size, ctx->initial_info.framebuffer_alignment, 0);
+
+		/* The last parameter (the one with 0x2000 + i) is the context data for the framebuffers in the pool.
+		 * It is possible to attach user-defined context data to them. Note that it is not related to the
+		 * context data in en- and decoded pictures. For purposes of demonstrations, the context pointer
+		 * is just a simple monotonically increasing integer. First framebuffer has context 0x2000, second 0x2001 etc. */
+		imx_vpu_fill_framebuffer_params(&(ctx->framebuffers[i]), &(ctx->calculated_sizes), ctx->fb_dmabuffers[i], (void*)((uintptr_t)(0x2000 + i)));
+	}
+
+	/* Actual registration is done here. From this moment on, the VPU knows which buffers to use for
+	 * storing decoded pictures into. This call must not be done again until decoding is shut down or
+	 * IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE is set again. */
+	imx_vpu_dec_register_framebuffers(ctx->vpudec, ctx->framebuffers, ctx->num_framebuffers);
+
+	return 1;
+}
+
+
 Context* init(FILE *input_file, FILE *output_file)
 {
 	Context *ctx;
@@ -74,7 +133,7 @@ Context* init(FILE *input_file, FILE *output_file)
 	imx_vpu_dec_load();
 	imx_vpu_dec_get_bitstream_buffer_info(&(ctx->bitstream_buffer_size), &(ctx->bitstream_buffer_alignment));
 	ctx->bitstream_buffer = imx_vpu_dma_buffer_allocate(imx_vpu_dec_get_default_allocator(), ctx->bitstream_buffer_size, ctx->bitstream_buffer_alignment, 0);
-	imx_vpu_dec_open(&(ctx->vpudec), &open_params, ctx->bitstream_buffer);
+	imx_vpu_dec_open(&(ctx->vpudec), &open_params, ctx->bitstream_buffer, initial_info_callback, ctx);
 
 	return ctx;
 }
@@ -129,62 +188,6 @@ static int decode_frame(Context *ctx)
 	{
 		fprintf(stderr, "imx_vpu_dec_decode() failed: %s\n", imx_vpu_dec_error_string(ret));
 		return RETVAL_ERROR;
-	}
-
-	/* Initial info is now available; this usually happens right after the
-	 * first frame is decoded, and this is the situation where one must register
-	 * output framebuffers, which the decoder then uses like a buffer pool for
-	 * picking buffers to decode frame into */
-	if (output_code & IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE)
-	{
-		unsigned int i;
-
-		imx_vpu_dec_get_initial_info(ctx->vpudec, &(ctx->initial_info));
-		fprintf(
-			stderr,
-			"initial info:  size: %ux%u pixel  rate: %u/%u  min num required framebuffers: %u  interlacing: %d  framebuffer alignment: %u\n",
-			ctx->initial_info.frame_width,
-			ctx->initial_info.frame_height,
-			ctx->initial_info.frame_rate_numerator,
-			ctx->initial_info.frame_rate_denominator,
-			ctx->initial_info.min_num_required_framebuffers,
-			ctx->initial_info.interlacing,
-			ctx->initial_info.framebuffer_alignment
-		);
-
-		ctx->num_framebuffers = ctx->initial_info.min_num_required_framebuffers;
-
-		imx_vpu_calc_framebuffer_sizes(ctx->initial_info.color_format, ctx->initial_info.frame_width, ctx->initial_info.frame_height, ctx->initial_info.framebuffer_alignment, ctx->initial_info.interlacing, &(ctx->calculated_sizes));
-		fprintf(
-			stderr,
-			"calculated sizes:  frame width&height: %dx%d  Y stride: %u  CbCr stride: %u  Y size: %u  CbCr size: %u  MvCol size: %u  total size: %u\n",
-			ctx->calculated_sizes.aligned_frame_width, ctx->calculated_sizes.aligned_frame_height,
-			ctx->calculated_sizes.y_stride, ctx->calculated_sizes.cbcr_stride,
-			ctx->calculated_sizes.y_size, ctx->calculated_sizes.cbcr_size, ctx->calculated_sizes.mvcol_size,
-			ctx->calculated_sizes.total_size
-		);
-
-		ctx->framebuffers = malloc(sizeof(ImxVpuFramebuffer) * ctx->num_framebuffers);
-		ctx->fb_dmabuffers = malloc(sizeof(ImxVpuDMABuffer*) * ctx->num_framebuffers);
-
-		for (i = 0; i < ctx->num_framebuffers; ++i)
-		{
-			/* Allocate a DMA buffer for each framebuffer. It is possible to specify alternate allocators;
-			 * all that is required is that the allocator provides physically contiguous memory
-			 * (necessary for DMA transfers) and respecs the alignment value. */
-			ctx->fb_dmabuffers[i] = imx_vpu_dma_buffer_allocate(imx_vpu_dec_get_default_allocator(), ctx->calculated_sizes.total_size, ctx->initial_info.framebuffer_alignment, 0);
-
-			/* The last parameter (the one with 0x2000 + i) is the context data for the framebuffers in the pool.
-			 * It is possible to attach user-defined context data to them. Note that it is not related to the
-			 * context data in en- and decoded pictures. For purposes of demonstrations, the context pointer
-			 * is just a simple monotonically increasing integer. First framebuffer has context 0x2000, second 0x2001 etc. */
-			imx_vpu_fill_framebuffer_params(&(ctx->framebuffers[i]), &(ctx->calculated_sizes), ctx->fb_dmabuffers[i], (void*)((uintptr_t)(0x2000 + i)));
-		}
-
-		/* Actual registration is done here. From this moment on, the VPU knows which buffers to use for
-		 * storing decoded pictures into. This call must not be done again until decoding is shut down or
-		 * IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE is set again. */
-		imx_vpu_dec_register_framebuffers(ctx->vpudec, ctx->framebuffers, ctx->num_framebuffers);
 	}
 
 	/* A decoded picture is available for further processing. Retrieve it, do something

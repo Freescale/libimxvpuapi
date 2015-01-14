@@ -393,13 +393,14 @@ void imx_vpu_fill_framebuffer_params(ImxVpuFramebuffer *framebuffer, ImxVpuFrame
  *    with h.264 data here. Width & height can be zero for formats which carry size
  *    information inside their bitstreams and/or out-of-band codec data.
  * 4. Call imx_vpu_dec_open(), passing in a pointer to the filled ImxVpuDecOpenParams
- *    instance, and the DMA buffer of the bitstream DMA buffer which was allocated in step 2.
- * 5. Call imx_vpu_dec_decode() with the first encoded frame.
- *    If the output_code bitmask contains IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE,
- *    proceed, otherwise continue feeding in data.
- * 6. Once IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE has been set in the output code,
- *    call imx_vpu_dec_get_initial_info() with a pointer to an ImxVpuDecInitialInfo
- *    instance.
+ *    instance, the DMA buffer of the bitstream DMA buffer which was allocated in step 2,
+ *    a callback of type imx_vpu_dec_new_initial_info_callback, and a user defined pointer
+ *    that is passed to the callback (if not needed, just set it to NULL).
+ * 5. Call imx_vpu_dec_decode(), and push data to it. Once initial information about the
+ *    bitstream becomes available, the callback from step 4 is invoked.
+ * 6. Inside the callback, the new initial info is available. The new_initial_info pointer
+ *    is never NULL. In this callback, framebuffers are allocated and registered, as
+ *    explained in the next steps. Steps 7-9 are performed inside the callback.
  * 7. (Optional) Perform the necessary size and alignment calculations by calling
  *    imx_vpu_calc_framebuffer_sizes(). Pass in either the frame width & height from
  *    ImxVpuDecInitialInfo , or some explicit values that were determined externally.
@@ -411,6 +412,7 @@ void imx_vpu_fill_framebuffer_params(ImxVpuFramebuffer *framebuffer, ImxVpuFrame
  *    for this is recommended.
  * 9. Call imx_vpu_dec_register_framebuffers() and pass in the ImxVpuFramebuffer array
  *    and the number of ImxVpuFramebuffer instances.
+ *    This should be the last action in the callback.
  * 10. Continue calling imx_vpu_dec_decode_frame(). The virtual address in encoded_frame
  *     must not be NULL.
  *     If the IMX_VPU_DEC_OUTPUT_CODE_DECODED_PICTURE_AVAILABLE flag is set in the output code,
@@ -442,7 +444,7 @@ void imx_vpu_fill_framebuffer_params(ImxVpuFramebuffer *framebuffer, ImxVpuFrame
  * Step 15 should only be called if no more playback sessions will occur.
  *
  * As mentioned before, in situations where decoding and display of decoded frames happen in
- * different thread, it is necessary to let the decoder wait until enough framebuffers
+ * different threads, it is necessary to let the decoder wait until enough framebuffers
  * are free (= available for the VPU to decode into). This is typically done by such a check
  * (in pseudo code):
  *
@@ -486,10 +488,9 @@ typedef enum
 	IMX_VPU_DEC_OUTPUT_CODE_DROPPED                      = (1UL << 4),
 	IMX_VPU_DEC_OUTPUT_CODE_NOT_ENOUGH_OUTPUT_FRAMES     = (1UL << 5),
 	IMX_VPU_DEC_OUTPUT_CODE_NOT_ENOUGH_INPUT_DATA        = (1UL << 6),
-	IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE       = (1UL << 7),
-	IMX_VPU_DEC_OUTPUT_CODE_RESOLUTION_CHANGED           = (1UL << 8),
-	IMX_VPU_DEC_OUTPUT_CODE_DECODE_ONLY                  = (1UL << 9),
-	IMX_VPU_DEC_OUTPUT_CODE_INTERNAL_RESET               = (1UL << 10)
+	IMX_VPU_DEC_OUTPUT_CODE_RESOLUTION_CHANGED           = (1UL << 7),
+	IMX_VPU_DEC_OUTPUT_CODE_DECODE_ONLY                  = (1UL << 8),
+	IMX_VPU_DEC_OUTPUT_CODE_INTERNAL_RESET               = (1UL << 9)
 }
 ImxVpuDecOutputCodes;
 
@@ -511,7 +512,7 @@ typedef struct
 ImxVpuDecOpenParams;
 
 
-/* Structure used together with @imx_vpu_dec_get_initial_info */
+/* Structure used together with @imx_vpu_dec_new_initial_info_callback */
 typedef struct
 {
 	/* Width of height of frames, in pixels. Note: it is not guaranteed that
@@ -539,6 +540,19 @@ typedef struct
 ImxVpuDecInitialInfo;
 
 
+/* Callback for handling new ImxVpuDecInitialInfo data. This is called when new
+ * information about the bitstream becomes available. output_code is useful
+ * to check why this callback was invoked. IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE
+ * is always set. If IMX_VPU_DEC_OUTPUT_CODE_RESOLUTION_CHANGED is also set,
+ * it means that this callback was called before, and not got called again, because
+ * the resolution is now different. Either way, every time this callback gets called,
+ * new framebuffers should be allocated and registered with imx_vpu_dec_register_framebuffers().
+ * user_data is a user-defined pointer that is passed to this callback. It has the same value
+ * as the callback_user_data pointer from the imx_vpu_dec_open() call.
+ * It returns 0 if something failed, nonzero if successful. */
+typedef int (*imx_vpu_dec_new_initial_info_callback)(ImxVpuDecoder *decoder, ImxVpuDecInitialInfo *new_initial_info, unsigned int output_code, void *user_data);
+
+
 /* Returns a human-readable description of the error code.
  * Useful for logging. */
 char const * imx_vpu_dec_error_string(ImxVpuDecReturnCodes code);
@@ -562,8 +576,10 @@ ImxVpuDMABufferAllocator* imx_vpu_dec_get_default_allocator(void);
  * must be aligned according to the alignment value. */
 void imx_vpu_dec_get_bitstream_buffer_info(size_t *size, unsigned int *alignment);
 
-/* Opens a new decoder instance. "open_params" and "bitstream_buffer" must not be NULL. */
-ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenParams *open_params, ImxVpuDMABuffer *bitstream_buffer);
+/* Opens a new decoder instance. "open_params", "bitstream_buffer", and "new_initial_info"
+ * must not be NULL. "callback_user_data" is a user-defined pointer that is passed on to
+ * the callback when it is invoked. */
+ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenParams *open_params, ImxVpuDMABuffer *bitstream_buffer, imx_vpu_dec_new_initial_info_callback new_initial_info_callback, void *callback_user_data);
 
 /* Closes a decoder instance. Trying to close the same instance multiple times results in undefined behavior. */
 ImxVpuDecReturnCodes imx_vpu_dec_close(ImxVpuDecoder *decoder);
@@ -592,11 +608,6 @@ ImxVpuDecReturnCodes imx_vpu_dec_flush(ImxVpuDecoder *decoder);
  * @imx_vpu_fill_framebuffer_params can be used for this. Note that all framebuffers must have the same
  * stride values. */
 ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, ImxVpuFramebuffer *framebuffers, unsigned int num_framebuffers);
-
-/* Retrieves initial information available after @imx_vpu_dec_decode returns an output code with
- * IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE set. This usually happens after the first input frame is
- * read. If an error happened, the contents of "info" are undefined. */
-ImxVpuDecReturnCodes imx_vpu_dec_get_initial_info(ImxVpuDecoder *decoder, ImxVpuDecInitialInfo *info);
 
 /* Decodes an encoded input frame. "encoded_frame" must always be set, even in drain mode. See ImxVpuEncodedFrame
  * for details about its contents. output_code is a bit mask, must not be NULL, and returns important information
