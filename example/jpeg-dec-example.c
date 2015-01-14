@@ -199,7 +199,7 @@ Retval run(Context *ctx)
 			 * and unmap again. The decoded frame uses the I420 color format for all
 			 * bitstream formats (h.264, MPEG2 etc.), with one exception; with motion JPEG data,
 			 * the format can be different. See imxvpuapi.h for details. */
-			mapped_virtual_address = imx_vpu_dma_buffer_map(decoded_picture.framebuffer->dma_buffer, IMX_VPU_MAPPING_FLAG_READ_ONLY);
+			mapped_virtual_address = imx_vpu_dma_buffer_map(decoded_picture.framebuffer->dma_buffer, IMX_VPU_MAPPING_FLAG_READ);
 			fwrite(mapped_virtual_address, 1, num_out_byte, ctx->fout);
 			imx_vpu_dma_buffer_unmap(decoded_picture.framebuffer->dma_buffer);
 

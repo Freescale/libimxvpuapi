@@ -69,9 +69,9 @@ ImxVpuAllocationFlags;
 
 typedef enum
 {
-	IMX_VPU_MAPPING_FLAG_WRITE_ONLY = (1UL << 0),
-	IMX_VPU_MAPPING_FLAG_READ_ONLY  = (1UL << 1),
-	IMX_VPU_MAPPING_FLAG_DISCARD    = (1UL << 2)
+	IMX_VPU_MAPPING_FLAG_WRITE   = (1UL << 0),
+	IMX_VPU_MAPPING_FLAG_READ    = (1UL << 1),
+	IMX_VPU_MAPPING_FLAG_DISCARD = (1UL << 2)
 }
 ImxVpuMappingFlags;
 
