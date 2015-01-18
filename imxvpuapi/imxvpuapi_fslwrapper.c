@@ -478,38 +478,52 @@ static DefaultDMABufferAllocator default_dec_dma_buffer_allocator =
 ImxVpuDecReturnCodes imx_vpu_dec_load(void)
 {
 	IMX_VPU_TRACE("VPU decoder load instance counter: %lu", vpu_dec_load_inst_counter);
-	if (vpu_dec_load_inst_counter != 0)
-		return IMX_VPU_DEC_RETURN_CODE_OK;
 
-	ImxVpuDecReturnCodes ret = dec_convert_retcode(VPU_DecLoad());
-	if (ret != IMX_VPU_DEC_RETURN_CODE_OK)
-		IMX_VPU_ERROR("loading decoder failed: %s", imx_vpu_dec_error_string(ret));
+	if (vpu_dec_load_inst_counter != 0)
+	{
+		++vpu_dec_load_inst_counter;
+		return IMX_VPU_DEC_RETURN_CODE_OK;
+	}
 	else
 	{
-		IMX_VPU_TRACE("loaded decoder");
-		++vpu_dec_load_inst_counter;
-	}
+		ImxVpuDecReturnCodes ret = dec_convert_retcode(VPU_DecLoad());
+		if (ret != IMX_VPU_DEC_RETURN_CODE_OK)
+			IMX_VPU_ERROR("loading decoder failed: %s", imx_vpu_dec_error_string(ret));
+		else
+		{
+			IMX_VPU_TRACE("loaded decoder");
+			++vpu_dec_load_inst_counter;
+		}
 
-	return ret;
+		return ret;
+	}
 }
 
 
 ImxVpuDecReturnCodes imx_vpu_dec_unload(void)
 {
 	IMX_VPU_TRACE("VPU decoder load instance counter: %lu", vpu_dec_load_inst_counter);
-	if (vpu_dec_load_inst_counter == 0)
-		return IMX_VPU_DEC_RETURN_CODE_OK;
 
-	ImxVpuDecReturnCodes ret = dec_convert_retcode(VPU_DecUnLoad());
-	if (ret != IMX_VPU_DEC_RETURN_CODE_OK)
-		IMX_VPU_ERROR("unloading decoder failed: %s", imx_vpu_dec_error_string(ret));
-	else
+	if (vpu_dec_load_inst_counter != 0)
 	{
-		IMX_VPU_TRACE("unloaded decoder");
+		ImxVpuDecReturnCodes ret = IMX_VPU_DEC_RETURN_CODE_OK;
 		--vpu_dec_load_inst_counter;
-	}
 
-	return ret;
+		if (vpu_dec_load_inst_counter == 0)
+		{
+			ImxVpuDecReturnCodes ret = dec_convert_retcode(VPU_DecUnLoad());
+			if (ret != IMX_VPU_DEC_RETURN_CODE_OK)
+				IMX_VPU_ERROR("unloading decoder failed: %s", imx_vpu_dec_error_string(ret));
+			else
+			{
+				IMX_VPU_TRACE("unloaded decoder");
+			}
+		}
+
+		return ret;
+	}
+	else
+		return IMX_VPU_DEC_RETURN_CODE_OK;
 }
 
 
@@ -1516,38 +1530,52 @@ static DefaultDMABufferAllocator default_enc_dma_buffer_allocator =
 ImxVpuEncReturnCodes imx_vpu_enc_load(void)
 {
 	IMX_VPU_TRACE("VPU encoder load instance counter: %lu", vpu_enc_load_inst_counter);
-	if (vpu_enc_load_inst_counter != 0)
-		return IMX_VPU_ENC_RETURN_CODE_OK;
 
-	ImxVpuEncReturnCodes ret = enc_convert_retcode(VPU_EncLoad());
-	if (ret != IMX_VPU_ENC_RETURN_CODE_OK)
-		IMX_VPU_ERROR("loading encoder failed: %s", imx_vpu_enc_error_string(ret));
+	if (vpu_enc_load_inst_counter != 0)
+	{
+		++vpu_enc_load_inst_counter;
+		return IMX_VPU_ENC_RETURN_CODE_OK;
+	}
 	else
 	{
-		IMX_VPU_TRACE("loaded encoder");
-		++vpu_enc_load_inst_counter;
-	}
+		ImxVpuEncReturnCodes ret = enc_convert_retcode(VPU_EncLoad());
+		if (ret != IMX_VPU_ENC_RETURN_CODE_OK)
+			IMX_VPU_ERROR("loading encoder failed: %s", imx_vpu_enc_error_string(ret));
+		else
+		{
+			IMX_VPU_TRACE("loaded encoder");
+			++vpu_enc_load_inst_counter;
+		}
 
-	return ret;
+		return ret;
+	}
 }
 
 
 ImxVpuEncReturnCodes imx_vpu_enc_unload(void)
 {
 	IMX_VPU_TRACE("VPU encoder load instance counter: %lu", vpu_enc_load_inst_counter);
-	if (vpu_enc_load_inst_counter == 0)
-		return IMX_VPU_ENC_RETURN_CODE_OK;
 
-	ImxVpuEncReturnCodes ret = enc_convert_retcode(VPU_EncUnLoad());
-	if (ret != IMX_VPU_ENC_RETURN_CODE_OK)
-		IMX_VPU_ERROR("unloading encoder failed: %s", imx_vpu_enc_error_string(ret));
-	else
+	if (vpu_enc_load_inst_counter != 0)
 	{
-		IMX_VPU_TRACE("unloaded encoder");
+		ImxVpuEncReturnCodes ret = IMX_VPU_ENC_RETURN_CODE_OK;
 		--vpu_enc_load_inst_counter;
-	}
 
-	return ret;
+		if (vpu_enc_load_inst_counter == 0)
+		{
+			ImxVpuEncReturnCodes ret = enc_convert_retcode(VPU_EncUnLoad());
+			if (ret != IMX_VPU_ENC_RETURN_CODE_OK)
+				IMX_VPU_ERROR("unloading encoder failed: %s", imx_vpu_enc_error_string(ret));
+			else
+			{
+				IMX_VPU_TRACE("unloaded encoder");
+			}
+		}
+
+		return ret;
+	}
+	else
+		return IMX_VPU_ENC_RETURN_CODE_OK;
 }
 
 

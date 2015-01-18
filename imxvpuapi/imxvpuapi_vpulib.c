@@ -82,34 +82,46 @@ static unsigned long vpu_init_inst_counter = 0;
 static BOOL imx_vpu_load(void)
 {
 	IMX_VPU_TRACE("VPU init instance counter: %lu", vpu_init_inst_counter);
-	if (vpu_init_inst_counter != 0)
-		return IMX_VPU_DEC_RETURN_CODE_OK;
 
-	if (vpu_Init(NULL) == RETCODE_SUCCESS)
+	if (vpu_init_inst_counter != 0)
 	{
-		IMX_VPU_TRACE("loaded VPU");
 		++vpu_init_inst_counter;
-		return IMX_VPU_DEC_RETURN_CODE_OK;
+		return TRUE;
 	}
 	else
 	{
-		IMX_VPU_ERROR("loading VPU failed");
-		return IMX_VPU_DEC_RETURN_CODE_ERROR;
+		if (vpu_Init(NULL) == RETCODE_SUCCESS)
+		{
+			IMX_VPU_TRACE("loaded VPU");
+			++vpu_init_inst_counter;
+			return TRUE;
+		}
+		else
+		{
+			IMX_VPU_ERROR("loading VPU failed");
+			return FALSE;
+		}
 	}
+
 }
 
 
 static BOOL imx_vpu_unload(void)
 {
 	IMX_VPU_TRACE("VPU init instance counter: %lu", vpu_init_inst_counter);
-	if (vpu_init_inst_counter == 0)
-		return IMX_VPU_DEC_RETURN_CODE_OK;
 
-	vpu_UnInit();
+	if (vpu_init_inst_counter != 0)
+	{
+		--vpu_init_inst_counter;
 
-	IMX_VPU_TRACE("unloaded VPU");
-	--vpu_init_inst_counter;
-	return IMX_VPU_DEC_RETURN_CODE_OK;
+		if (vpu_init_inst_counter == 0)
+		{
+			vpu_UnInit();
+			IMX_VPU_TRACE("unloaded VPU");
+		}
+	}
+
+	return TRUE;
 }
 
 
