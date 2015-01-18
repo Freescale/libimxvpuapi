@@ -436,7 +436,7 @@ static ImxVpuDecReturnCodes imx_vpu_dec_handle_error_full(char const *fn, int li
 static ImxVpuDecReturnCodes imx_vpu_dec_get_initial_info_internal(ImxVpuDecoder *decoder);
 
 static void imx_vpu_dec_insert_vp8_ivf_main_header(uint8_t *header, unsigned int pic_width, unsigned int pic_height);
-static void imx_vpu_dec_insert_vp8_ivf_frame_header(uint8_t *header, unsigned int main_data_size);
+static void imx_vpu_dec_insert_vp8_ivf_frame_header(uint8_t *header, uint32_t main_data_size, uint64_t pts);
 
 static void imx_vpu_dec_insert_wmv3_sequence_layer_header(uint8_t *header, unsigned int pic_width, unsigned int pic_height, unsigned int main_data_size, uint8_t *codec_data);
 static void imx_vpu_dec_insert_wmv3_frame_layer_header(uint8_t *header, unsigned int main_data_size);
@@ -1033,9 +1033,12 @@ static void imx_vpu_dec_insert_vp8_ivf_main_header(uint8_t *header, unsigned int
 }
 
 
-static void imx_vpu_dec_insert_vp8_ivf_frame_header(uint8_t *header, unsigned int main_data_size)
+static void imx_vpu_dec_insert_vp8_ivf_frame_header(uint8_t *header, uint32_t main_data_size, uint64_t pts)
 {
-	WRITE_32BIT_LE(header, 0, main_data_size);
+	int i = 0;
+	WRITE_32BIT_LE_AND_INCR_IDX(header, i, main_data_size);
+	WRITE_32BIT_LE_AND_INCR_IDX(header, i, (pts >> 0) & 0xFFFFFFFF);
+	WRITE_32BIT_LE_AND_INCR_IDX(header, i, (pts >> 32) & 0xFFFFFFFF);
 }
 
 
@@ -1167,13 +1170,13 @@ static ImxVpuDecReturnCodes imx_vpu_dec_insert_frame_headers(ImxVpuDecoder *deco
 
 			if (decoder->main_header_pushed)
 			{
-				imx_vpu_dec_insert_vp8_ivf_frame_header(&(header[0]), main_data_size);
+				imx_vpu_dec_insert_vp8_ivf_frame_header(&(header[0]), main_data_size, 0);
 				header_size = VP8_FRAME_HEADER_SIZE;
 			}
 			else
 			{
 				imx_vpu_dec_insert_vp8_ivf_main_header(&(header[0]), decoder->picture_width, decoder->picture_height);
-				imx_vpu_dec_insert_vp8_ivf_frame_header(&(header[VP8_SEQUENCE_HEADER_SIZE]), main_data_size);
+				imx_vpu_dec_insert_vp8_ivf_frame_header(&(header[VP8_SEQUENCE_HEADER_SIZE]), main_data_size, 0);
 				header_size = VP8_SEQUENCE_HEADER_SIZE + VP8_FRAME_HEADER_SIZE;
 				decoder->main_header_pushed = TRUE;
 			}
