@@ -411,6 +411,7 @@ struct _ImxVpuDecoder
 	FrameBuffer *internal_framebuffers;
 	ImxVpuFramebuffer *framebuffers;
 	void **context_for_frames;
+	void *dropped_frame_context;
 
 	BOOL main_header_pushed;
 
@@ -1480,6 +1481,20 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 		);
 
 
+		/* Report dropped frames */
+		if (
+		  (decoder->dec_output_info.indexFrameDecoded == VPU_DECODER_DECODEIDX_FRAME_NOT_DECODED) &&
+		  (
+		    (decoder->dec_output_info.indexFrameDisplay == VPU_DECODER_DISPLAYIDX_NO_PICTURE_TO_DISPLAY) ||
+		    (decoder->dec_output_info.indexFrameDisplay == VPU_DECODER_DISPLAYIDX_SKIP_MODE_NO_PICTURE_TO_DISPLAY)
+		  )
+		)
+		{
+			IMX_VPU_DEBUG("frame got dropped (context: %p)", encoded_frame->context);
+			decoder->dropped_frame_context = encoded_frame->context;
+			*output_code |= IMX_VPU_DEC_OUTPUT_CODE_DROPPED;
+		}
+
 		/* Check if information about the decoded frame is available.
 		 * In particular, the index of the framebuffer where the frame is being
 		 * decoded into is essential with formats like h.264, which allow for both
@@ -1585,9 +1600,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_get_decoded_picture(ImxVpuDecoder *decoder, Imx
 
 void* imx_vpu_dec_get_dropped_frame_context(ImxVpuDecoder *decoder)
 {
-	// TODO: will this ever return anything other than NULL?
-	IMXVPUAPI_UNUSED_PARAM(decoder);
-	return NULL;
+	return decoder->dropped_frame_context;
 }
 
 
