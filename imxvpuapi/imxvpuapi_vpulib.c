@@ -433,6 +433,14 @@ struct _ImxVpuDecoder
 	imx_vpu_dec_handle_error_full(__FILE__, __LINE__, __FUNCTION__, (MSG_START), (RET_CODE))
 
 
+#define VPU_DECODER_DISPLAYIDX_ALL_PICTURED_DISPLAYED -1
+#define VPU_DECODER_DISPLAYIDX_SKIP_MODE_NO_PICTURE_TO_DISPLAY -2
+#define VPU_DECODER_DISPLAYIDX_NO_PICTURE_TO_DISPLAY -3
+
+#define VPU_DECODER_DECODEIDX_ALL_FRAMES_DECODED -1
+#define VPU_DECODER_DECODEIDX_FRAME_NOT_DECODED -2
+
+
 static ImxVpuDecReturnCodes imx_vpu_dec_handle_error_full(char const *fn, int linenr, char const *funcn, char const *msg_start, RetCode ret_code);
 static ImxVpuDecReturnCodes imx_vpu_dec_get_initial_info_internal(ImxVpuDecoder *decoder);
 
@@ -1540,7 +1548,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 			decoder->available_decoded_pic_idx = idx_display;
 			*output_code |= IMX_VPU_DEC_OUTPUT_CODE_DECODED_PICTURE_AVAILABLE;
 		}
-		else if (decoder->dec_output_info.indexFrameDisplay == -1)
+		else if (decoder->dec_output_info.indexFrameDisplay == VPU_DECODER_DISPLAYIDX_ALL_PICTURED_DISPLAYED)
 		{
 			IMX_VPU_TRACE("EOS reached");
 			decoder->available_decoded_pic_idx = -1;
