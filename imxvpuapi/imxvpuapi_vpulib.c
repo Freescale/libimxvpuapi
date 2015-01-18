@@ -908,9 +908,10 @@ ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, I
 	/* Initialize the extra AVC slice buf info; its DMA buffer backing store is
 	 * located inside the bitstream buffer, right after the actual bitstream content */
 	memset(&buf_info, 0, sizeof(buf_info));
-	buf_info.avcSliceBufInfo.bufferBase = decoder->bitstream_buffer_physical_address + VPU_BITSTREAM_BUFFER_SIZE;
-	buf_info.avcSliceBufInfo.bufferSize = VPU_MAX_SLICE_BUFFER_SIZE;	
-
+	buf_info.avcSliceBufInfo.bufferBase = decoder->bitstream_buffer_physical_address + VPU_MAIN_BITSTREAM_BUFFER_SIZE;
+	buf_info.avcSliceBufInfo.bufferSize = VPU_MAX_SLICE_BUFFER_SIZE;
+	buf_info.vp8MbDataBufInfo.bufferBase = decoder->bitstream_buffer_physical_address + VPU_MAIN_BITSTREAM_BUFFER_SIZE;
+	buf_info.vp8MbDataBufInfo.bufferSize = VPU_VP8_MB_PRED_BUFFER_SIZE;
 
 	/* The actual registration */
 	dec_ret = vpu_DecRegisterFrameBuffer(
