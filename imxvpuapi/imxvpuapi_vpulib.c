@@ -1505,6 +1505,21 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 		);
 
 
+		/* VP8 requires some workarounds */
+		if (decoder->codec_format == IMX_VPU_CODEC_FORMAT_VP8)
+		{
+			if ((decoder->dec_output_info.indexFrameDecoded >= 0) && (decoder->dec_output_info.indexFrameDisplay == VPU_DECODER_DISPLAYIDX_NO_PICTURE_TO_DISPLAY))
+			{
+				/* Internal invisible frames are supposed to be used for decoding only,
+				 * so don't output it, and drop it instead; to that end, set the index
+				 * values to resemble indices used for dropped frames to make sure the
+				 * dropped frames block below thinks this frame got dropped by the VPU */
+				IMX_VPU_DEBUG("skip internal invisible frame for VP8");
+				decoder->dec_output_info.indexFrameDecoded = VPU_DECODER_DECODEIDX_FRAME_NOT_DECODED;
+				decoder->dec_output_info.indexFrameDisplay = VPU_DECODER_DISPLAYIDX_NO_PICTURE_TO_DISPLAY;
+			}
+		}
+
 		/* Report dropped frames */
 		if (
 		  (decoder->dec_output_info.indexFrameDecoded == VPU_DECODER_DECODEIDX_FRAME_NOT_DECODED) &&
