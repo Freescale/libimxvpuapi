@@ -58,10 +58,17 @@
 #define FRAME_ALIGN 16
 
 #define VPU_MEMORY_ALIGNMENT         0x8
-#define VPU_BITSTREAM_BUFFER_SIZE    (1024*1024*3)
+#define VPU_MAIN_BITSTREAM_BUFFER_SIZE    (1024*1024*3)
 #define VPU_MAX_SLICE_BUFFER_SIZE    (1920*1088*15/20)
 #define VPU_PS_SAVE_BUFFER_SIZE      (1024*512)
 #define VPU_VP8_MB_PRED_BUFFER_SIZE  (68*(1920*1088/256))
+
+/* The bitstream buffer shares space with other fields,
+ * to not have to allocate several DMA blocks. The actual bitstream buffer is called
+ * the "main bitstream buffer". It makes up all bytes from the start of the buffer
+ * and is VPU_MAIN_BITSTREAM_BUFFER_SIZE large. Bytes beyond that are codec format
+ * specific data. */
+#define VPU_MIN_REQUIRED_BITSTREAM_BUFFER_SIZE  (VPU_MAIN_BITSTREAM_BUFFER_SIZE + VPU_MAX_SLICE_BUFFER_SIZE + VPU_PS_SAVE_BUFFER_SIZE)
 
 #define VP8_SEQUENCE_HEADER_SIZE  32
 #define VP8_FRAME_HEADER_SIZE     12
@@ -602,7 +609,8 @@ ImxVpuDMABufferAllocator* imx_vpu_dec_get_default_allocator(void)
 
 void imx_vpu_dec_get_bitstream_buffer_info(size_t *size, unsigned int *alignment)
 {
-	*size = VPU_BITSTREAM_BUFFER_SIZE + VPU_MAX_SLICE_BUFFER_SIZE + VPU_PS_SAVE_BUFFER_SIZE;
+	assert(VPU_VP8_MB_PRED_BUFFER_SIZE < (VPU_MAX_SLICE_BUFFER_SIZE + VPU_PS_SAVE_BUFFER_SIZE));
+	*size = VPU_MIN_REQUIRED_BITSTREAM_BUFFER_SIZE;
 	*alignment = VPU_MEMORY_ALIGNMENT;
 }
 
@@ -616,6 +624,10 @@ ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenPara
 	assert(decoder != NULL);
 	assert(open_params != NULL);
 	assert(bitstream_buffer != NULL);
+
+
+	/* Check that the allocated bitstream buffer is big enough */
+	assert(imx_vpu_dma_buffer_get_size(bitstream_buffer) >= VPU_MIN_REQUIRED_BITSTREAM_BUFFER_SIZE);
 
 
 	/* Allocate decoder instance */
@@ -678,7 +690,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenPara
 	}
 
 	dec_open_param.bitstreamBuffer = (*decoder)->bitstream_buffer_physical_address;
-	dec_open_param.bitstreamBufferSize = imx_vpu_dma_buffer_get_size(bitstream_buffer);
+	dec_open_param.bitstreamBufferSize = VPU_MAIN_BITSTREAM_BUFFER_SIZE;
 	dec_open_param.qpReport = 0;
 	dec_open_param.mp4DeblkEnable = 0;
 	dec_open_param.chromaInterleave = 0;
@@ -689,7 +701,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenPara
 	dec_open_param.dynamicAllocEnable = 0;
 	dec_open_param.streamStartByteOffset = 0;
 	dec_open_param.mjpg_thumbNailDecEnable = 0;
-	dec_open_param.psSaveBuffer = (*decoder)->bitstream_buffer_physical_address + VPU_BITSTREAM_BUFFER_SIZE + VPU_MAX_SLICE_BUFFER_SIZE;
+	dec_open_param.psSaveBuffer = (*decoder)->bitstream_buffer_physical_address + VPU_MAIN_BITSTREAM_BUFFER_SIZE + VPU_MAX_SLICE_BUFFER_SIZE;
 	dec_open_param.psSaveBufferSize = VPU_PS_SAVE_BUFFER_SIZE;
 	dec_open_param.mapType = 0;
 	dec_open_param.tiled2LinearEnable = 0; // this must ALWAYS be 0, otherwise VPU hangs eventually (it is 0 in the wrapper except for MX6X)
@@ -1234,7 +1246,10 @@ static ImxVpuDecReturnCodes imx_vpu_dec_push_input_data(ImxVpuDecoder *decoder, 
 
 	assert(decoder != NULL);
 
-	bbuf_size = imx_vpu_dma_buffer_get_size(decoder->bitstream_buffer);
+	/* Only touch data within the first VPU_MAIN_BITSTREAM_BUFFER_SIZE bytes of the
+	 * overall bitstream buffer, since the bytes beyond are reserved for slice and
+	 * ps save data and/or VP8 data */
+	bbuf_size = VPU_MAIN_BITSTREAM_BUFFER_SIZE;
 
 
 	/* Get the current read and write position pointers in the bitstream buffer For

@@ -389,7 +389,8 @@ char const *imx_vpu_color_format_string(ImxVpuColorFormat color_format);
 /* How to use the decoder (error handling omitted for clarity):
  * 1. Call imx_vpu_dec_load()
  * 2. Call imx_vpu_dec_get_bitstream_buffer_info(), and allocate a DMA buffer
- *    with the given size and alignment.
+ *    with the given size and alignment. This is the minimum required size.
+ *    The buffer can be larger, but must not be smaller than the given size.
  * 3. Fill an instance of ImxVpuDecOpenParams with the values specific to the
  *    input data. In most cases, one wants to set enable_frame_reordering to 1
  *    with h.264 data here. Width & height can be zero for formats which carry size
@@ -583,7 +584,9 @@ void imx_vpu_dec_get_bitstream_buffer_info(size_t *size, unsigned int *alignment
 
 /* Opens a new decoder instance. "open_params", "bitstream_buffer", and "new_initial_info"
  * must not be NULL. "callback_user_data" is a user-defined pointer that is passed on to
- * the callback when it is invoked. */
+ * the callback when it is invoked. The bitstream buffer must use the alignment and size
+ * that imx_vpu_dec_get_bitstream_buffer_info() specifies (it can also be larger, but must
+ * not be smaller than the size this function gives). */
 ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenParams *open_params, ImxVpuDMABuffer *bitstream_buffer, imx_vpu_dec_new_initial_info_callback new_initial_info_callback, void *callback_user_data);
 
 /* Closes a decoder instance. Trying to close the same instance multiple times results in undefined behavior. */
