@@ -1085,7 +1085,8 @@ static void imx_vpu_dec_insert_wmv3_sequence_layer_header(uint8_t *header, unsig
 	/* 0xFFFFFF is special value denoting an infinite sequence;
 	 * since the number of frames isn't known at this point, use that */
 	uint32_t const num_frames = 0xFFFFFF;
-	uint32_t const struct_c_values = (0xC5 << 24) | num_frames; /* 0xC5 is a constant as described in the spec */
+	/* XXX: the spec requires a constant 0xC5 , but the VPU needs 0x85 ; why? */
+	uint32_t const struct_c_values = (0x85 << 24) | num_frames; /* 0xC5 is a constant as described in the spec */
 	uint32_t const ext_header_length = 4;
 
 	int i = 0;
@@ -1096,8 +1097,8 @@ static void imx_vpu_dec_insert_wmv3_sequence_layer_header(uint8_t *header, unsig
 	memcpy(&(header[i]), codec_data, 4);
 	i += 4;
 
-	WRITE_32BIT_LE_AND_INCR_IDX(header, i, pic_width);
 	WRITE_32BIT_LE_AND_INCR_IDX(header, i, pic_height);
+	WRITE_32BIT_LE_AND_INCR_IDX(header, i, pic_width);
 	WRITE_32BIT_LE_AND_INCR_IDX(header, i, main_data_size);
 }
 
