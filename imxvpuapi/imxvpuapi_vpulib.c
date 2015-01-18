@@ -1445,7 +1445,12 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 		 * is not used in the i.MX6. This is untrue; for motion JPEG, this
 		 * must be nonzero. */
 		if (decoder->codec_format == IMX_VPU_CODEC_FORMAT_MJPEG)
+		{
 			params.chunkSize = encoded_frame->data_size;
+			params.virtJpgChunkBase = (unsigned char *)(decoder->bitstream_buffer_virtual_address);
+			params.phyJpgChunkBase = decoder->bitstream_buffer_physical_address;
+
+		}
 
 		/* XXX: currently, iframe search and skip frame modes are not supported */
 
