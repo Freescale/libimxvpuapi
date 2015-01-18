@@ -1181,7 +1181,7 @@ static ImxVpuDecReturnCodes imx_vpu_dec_insert_frame_headers(ImxVpuDecoder *deco
 				decoder->main_header_pushed = TRUE;
 			}
 
-			if (header_size == 0)
+			if (header_size != 0)
 				ret = imx_vpu_dec_push_input_data(decoder, header, header_size);
 
 			break;
