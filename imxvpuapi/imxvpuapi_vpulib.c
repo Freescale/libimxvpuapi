@@ -430,6 +430,7 @@ struct _ImxVpuDecoder
 	FrameBuffer *internal_framebuffers;
 	ImxVpuFramebuffer *framebuffers;
 	void **context_for_frames;
+	BOOL *frame_context_set;
 	void *dropped_frame_context;
 
 	BOOL main_header_pushed;
@@ -474,6 +475,8 @@ static void imx_vpu_dec_insert_vc1_frame_layer_header(uint8_t *header, uint8_t *
 static ImxVpuDecReturnCodes imx_vpu_dec_insert_frame_headers(ImxVpuDecoder *decoder, uint8_t *codec_data, unsigned int codec_data_size, uint8_t *main_data, unsigned int main_data_size);
 
 static ImxVpuDecReturnCodes imx_vpu_dec_push_input_data(ImxVpuDecoder *decoder, void *data, unsigned int data_size);
+
+static int imx_vpu_dec_find_free_framebuffer(ImxVpuDecoder *decoder);
 
 
 static ImxVpuDecReturnCodes imx_vpu_dec_handle_error_full(char const *fn, int linenr, char const *funcn, char const *msg_start, RetCode ret_code)
@@ -780,6 +783,8 @@ ImxVpuDecReturnCodes imx_vpu_dec_close(ImxVpuDecoder *decoder)
 		IMX_VPU_FREE(decoder->internal_framebuffers, sizeof(FrameBuffer) * decoder->num_framebuffers);	
 	if (decoder->context_for_frames != NULL)
 		IMX_VPU_FREE(decoder->context_for_frames, sizeof(void*) * decoder->num_framebuffers);	
+	if (decoder->frame_context_set != NULL)
+		IMX_VPU_FREE(decoder->frame_context_set, sizeof(void*) * decoder->num_framebuffers);
 
 	IMX_VPU_FREE(decoder, sizeof(ImxVpuDecoder));
 
@@ -838,6 +843,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_flush(ImxVpuDecoder *decoder)
 
 	/* After the flush, any context will be thrown away */
 	memset(decoder->context_for_frames, 0, sizeof(void*) * decoder->num_framebuffers);
+	memset(decoder->frame_context_set, 0, sizeof(void*) * decoder->num_framebuffers);
 
 
 	// TODO: does codec data need to be re-sent after a flush?
@@ -882,6 +888,17 @@ ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, I
 		IMX_VPU_ERROR("allocating memory for frame contexts failed");
 		IMX_VPU_FREE(decoder->internal_framebuffers, sizeof(FrameBuffer) * num_framebuffers);
 		decoder->internal_framebuffers = NULL;
+		return IMX_VPU_DEC_RETURN_CODE_ERROR;
+	}
+
+	decoder->frame_context_set = IMX_VPU_ALLOC(sizeof(void*) * num_framebuffers);
+	if (decoder->frame_context_set == NULL)
+	{
+		IMX_VPU_ERROR("allocating memory for frame context set flags failed");
+		IMX_VPU_FREE(decoder->internal_framebuffers, sizeof(FrameBuffer) * num_framebuffers);
+		IMX_VPU_FREE(decoder->context_for_frames, sizeof(void*) * num_framebuffers);
+		decoder->internal_framebuffers = NULL;
+		decoder->context_for_frames = NULL;
 		return IMX_VPU_DEC_RETURN_CODE_ERROR;
 	}
 
@@ -958,6 +975,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, I
 	decoder->framebuffers = framebuffers;
 	decoder->num_framebuffers = num_framebuffers;
 	memset(decoder->context_for_frames, 0, sizeof(void*) * num_framebuffers);
+	memset(decoder->frame_context_set, 0, sizeof(void*) * num_framebuffers);
 
 
 	return IMX_VPU_DEC_RETURN_CODE_OK;
@@ -1322,6 +1340,23 @@ static ImxVpuDecReturnCodes imx_vpu_dec_push_input_data(ImxVpuDecoder *decoder, 
 }
 
 
+static int imx_vpu_dec_find_free_framebuffer(ImxVpuDecoder *decoder)
+{
+	unsigned int i;
+
+	/* For motion JPEG, the user has to find a free framebuffer manually;
+	 * the VPU does not do that in this case */
+
+	for (i = 0; i < decoder->num_framebuffers; ++i)
+	{
+		if (!(decoder->frame_context_set[i]))
+			return (int)i;
+	}
+
+	return -1;
+}
+
+
 ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFrame *encoded_frame, unsigned int *output_code)
 {
 	ImxVpuDecReturnCodes ret;
@@ -1453,6 +1488,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 		RetCode dec_ret;
 		DecParam params;
 		BOOL timeout;
+		int jpeg_frame_idx = -1;
 
 		memset(&params, 0, sizeof(params));
 
@@ -1465,6 +1501,14 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 			params.virtJpgChunkBase = (unsigned char *)(decoder->bitstream_buffer_virtual_address);
 			params.phyJpgChunkBase = decoder->bitstream_buffer_physical_address;
 
+			jpeg_frame_idx = imx_vpu_dec_find_free_framebuffer(decoder);
+			if (jpeg_frame_idx != -1)
+				vpu_DecGiveCommand(decoder->handle, SET_ROTATOR_OUTPUT, (void *)(&(decoder->internal_framebuffers[jpeg_frame_idx])));
+			else
+			{
+				IMX_VPU_ERROR("could not find free framebuffer for MJPEG output");
+				return IMX_VPU_DEC_RETURN_CODE_ERROR;
+			}
 		}
 
 		/* XXX: currently, iframe search and skip frame modes are not supported */
@@ -1557,6 +1601,14 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 			}
 		}
 
+		/* Motion JPEG requires frame index adjustments */
+		if (decoder->codec_format == IMX_VPU_CODEC_FORMAT_MJPEG)
+		{
+			IMX_VPU_DEBUG("MJPEG data -> adjust indexFrameDisplay and indexFrameDecoded values to %d", jpeg_frame_idx);
+			decoder->dec_output_info.indexFrameDecoded = jpeg_frame_idx;
+			decoder->dec_output_info.indexFrameDisplay = jpeg_frame_idx;
+		}
+
 		/* Report dropped frames */
 		if (
 		  (decoder->dec_output_info.indexFrameDecoded == VPU_DECODER_DECODEIDX_FRAME_NOT_DECODED) &&
@@ -1589,6 +1641,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 			assert(idx_decoded < (int)(decoder->num_framebuffers));
 
 			decoder->context_for_frames[idx_decoded] = encoded_frame->context;
+			decoder->frame_context_set[idx_decoded] = TRUE;
 
 			decoder->num_used_framebuffers++;			
 		}
@@ -1719,6 +1772,10 @@ ImxVpuDecReturnCodes imx_vpu_dec_mark_framebuffer_as_displayed(ImxVpuDecoder *de
 	/* the index into the framebuffer array is stored in the "internal" field */
 	idx = (int)(framebuffer->internal);
 	assert(idx < (int)(decoder->num_framebuffers));
+
+
+	/* frame context is no longer being used */
+	decoder->frame_context_set[idx] = FALSE;
 
 
 	/* mark it as displayed in the VPU */
