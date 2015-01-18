@@ -938,6 +938,21 @@ ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, I
 		goto cleanup;
 
 
+	/* Set default rotator settings for motion JPEG */
+	if (decoder->codec_format == IMX_VPU_CODEC_FORMAT_MJPEG)
+	{
+		/* the datatypes are int, but this is undocumented; determined by looking
+		 * into the imx-vpu library's vpu_lib.c vpu_DecGiveCommand() definition */
+		int rotation_angle = 0;
+		int mirror = 0;
+		int stride = framebuffers[0].y_stride;
+
+		vpu_DecGiveCommand(decoder->handle, SET_ROTATION_ANGLE, (void *)(&rotation_angle));
+		vpu_DecGiveCommand(decoder->handle, SET_MIRROR_DIRECTION,(void *)(&mirror));
+		vpu_DecGiveCommand(decoder->handle, SET_ROTATOR_STRIDE, (void *)(&stride));
+	}
+
+
 	/* Store the pointer to the caller-supplied framebuffer array,
 	 * and set the context pointers to their initial value (0) */
 	decoder->framebuffers = framebuffers;
