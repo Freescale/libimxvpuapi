@@ -133,3 +133,24 @@ void imx_vpu_set_logging_threshold(ImxVpuLogLevel threshold)
 	imx_vpu_cur_log_level_threshold = threshold;
 }
 
+
+
+
+/******************************************************/
+/******* MISCELLANEOUS STRUCTURES AND FUNCTIONS *******/
+/******************************************************/
+
+
+char const *imx_vpu_color_format_string(ImxVpuColorFormat color_format)
+{
+	switch (color_format)
+	{
+		case IMX_VPU_COLOR_FORMAT_YUV420: return "YUV 4:2:0 (I420)";
+		case IMX_VPU_COLOR_FORMAT_YUV422_HORIZONTAL: return "YUV 4:2:2 horizontal";
+		case IMX_VPU_COLOR_FORMAT_YUV422_VERTICAL: return "YUV 2:2:4 vertical";
+		case IMX_VPU_COLOR_FORMAT_YUV444: return "YUV 4:4:4";
+		case IMX_VPU_COLOR_FORMAT_YUV400: return "YUV 4:0:0 (8-bit grayscale)";
+		default:
+			return "<unknown>";
+	}
+}

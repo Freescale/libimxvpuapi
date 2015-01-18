@@ -376,6 +376,8 @@ void imx_vpu_calc_framebuffer_sizes(ImxVpuColorFormat color_format, unsigned int
  * The specified DMA buffer and context pointer are also set. */
 void imx_vpu_fill_framebuffer_params(ImxVpuFramebuffer *framebuffer, ImxVpuFramebufferSizes *calculated_sizes, ImxVpuDMABuffer *fb_dma_buffer, void* context);
 
+char const *imx_vpu_color_format_string(ImxVpuColorFormat color_format);
+
 
 
 
