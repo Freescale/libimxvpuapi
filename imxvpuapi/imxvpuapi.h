@@ -519,7 +519,10 @@ typedef struct
 {
 	/* Width of height of frames, in pixels. Note: it is not guaranteed that
 	 * these values are aligned to a 16-pixel boundary (which is required
-	 * for VPU framebuffers). */
+	 * for VPU framebuffers). These are the width and height of the frame
+	 * with actual pixel content. It may be a subset of the total frame,
+	 * in case these sizes need to be aligned. In that case, there are
+	 * padding columns to the right, and padding rows below the frames. */
 	unsigned int frame_width, frame_height;
 	/* Frame rate ratio. */
 	unsigned int frame_rate_numerator, frame_rate_denominator;

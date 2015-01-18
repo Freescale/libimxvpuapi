@@ -708,7 +708,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenPara
 
 
 	/* Now actually open the decoder instance */
-	IMX_VPU_TRACE("opening decoder");
+	IMX_VPU_TRACE("opening decoder, picture size: %u x %u pixel", open_params->frame_width, open_params->frame_height);
 	dec_ret = vpu_DecOpen(&((*decoder)->handle), &dec_open_param);
 	ret = IMX_VPU_DEC_HANDLE_ERROR("could not open decoder", dec_ret);
 	if (ret != IMX_VPU_DEC_RETURN_CODE_OK)
@@ -868,7 +868,8 @@ ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, I
 	if (decoder->context_for_frames == NULL)
 	{
 		IMX_VPU_ERROR("allocating memory for frame contexts failed");
-		IMX_VPU_FREE(decoder->internal_framebuffers, sizeof(FrameBuffer) * num_framebuffers);	
+		IMX_VPU_FREE(decoder->internal_framebuffers, sizeof(FrameBuffer) * num_framebuffers);
+		decoder->internal_framebuffers = NULL;
 		return IMX_VPU_DEC_RETURN_CODE_ERROR;
 	}
 
@@ -1301,6 +1302,9 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 	ret = IMX_VPU_DEC_RETURN_CODE_OK;
 
 
+	IMX_VPU_TRACE("input info: %d byte", encoded_frame->data_size);
+
+
 	/* Handle input data
 	 * If in drain mode, signal EOS to decoder (if not already done)
 	 * If not in drain mode, push input data and codec data to the decoder
@@ -1555,7 +1559,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 			int idx_display = decoder->dec_output_info.indexFrameDisplay;
 			assert(idx_display < (int)(decoder->num_framebuffers));
 
-			IMX_VPU_TRACE("Decoded and displayable picture available (framebuffer index: %d)", idx_display);
+			IMX_VPU_TRACE("Decoded and displayable picture available (framebuffer display index: %d  context: %p)", idx_display, decoder->context_for_frames[idx_display]);
 
 			decoder->available_decoded_pic_idx = idx_display;
 			*output_code |= IMX_VPU_DEC_OUTPUT_CODE_DECODED_PICTURE_AVAILABLE;
