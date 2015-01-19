@@ -780,9 +780,9 @@ ImxVpuDecReturnCodes imx_vpu_dec_close(ImxVpuDecoder *decoder)
 	/* Remaining cleanup */
 
 	if (decoder->internal_framebuffers != NULL)
-		IMX_VPU_FREE(decoder->internal_framebuffers, sizeof(FrameBuffer) * decoder->num_framebuffers);	
+		IMX_VPU_FREE(decoder->internal_framebuffers, sizeof(FrameBuffer) * decoder->num_framebuffers);
 	if (decoder->context_for_frames != NULL)
-		IMX_VPU_FREE(decoder->context_for_frames, sizeof(void*) * decoder->num_framebuffers);	
+		IMX_VPU_FREE(decoder->context_for_frames, sizeof(void*) * decoder->num_framebuffers);
 	if (decoder->frame_context_set != NULL)
 		IMX_VPU_FREE(decoder->frame_context_set, sizeof(void*) * decoder->num_framebuffers);
 
@@ -805,6 +805,8 @@ ImxVpuDecReturnCodes imx_vpu_dec_enable_drain_mode(ImxVpuDecoder *decoder, int e
 	decoder->drain_mode_enabled = TO_BOOL(enabled);
 	if (enabled)
 		decoder->drain_eos_sent_to_vpu = FALSE;
+
+	IMX_VPU_INFO("set decoder drain mode to %d", enabled);
 
 	return IMX_VPU_DEC_RETURN_CODE_OK;
 }
@@ -1449,9 +1451,14 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 		initial_info.frame_height = decoder->initial_info.picHeight;
 		initial_info.frame_rate_numerator = decoder->initial_info.frameRateRes;
 		initial_info.frame_rate_denominator = decoder->initial_info.frameRateDiv;
-		initial_info.min_num_required_framebuffers = decoder->initial_info.minFrameBufferCount + 6;
+		initial_info.min_num_required_framebuffers = decoder->initial_info.minFrameBufferCount + MIN_NUM_FREE_FB_REQUIRED;
 		initial_info.interlacing = decoder->initial_info.interlace ? 1 : 0;
 		initial_info.framebuffer_alignment = 1; /* for maptype 0 (linear, non-tiling) */
+
+		/* Make sure that at least one framebuffer is allocated and registered
+		 * (Also for motion JPEG, even though the VPU doesn't use framebuffers then) */
+		if (initial_info.min_num_required_framebuffers < 1)
+			initial_info.min_num_required_framebuffers = 1;
 
 		switch (decoder->initial_info.mjpg_sourceFormat)
 		{
