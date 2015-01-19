@@ -710,7 +710,14 @@ ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenPara
 	dec_open_param.tiled2LinearEnable = 0; // this must ALWAYS be 0, otherwise VPU hangs eventually (it is 0 in the wrapper except for MX6X)
 	dec_open_param.bitstreamMode = 1;
 
-	/* Motion-JPEG specific settings */
+	/* Motion-JPEG specific settings
+	 * With motion JPEG, the VPU is configured to operate in line buffer mode,
+	 * because it is easier to handle. During decoding, pointers to the
+	 * beginning of the JPEG data inside the bitstream buffer have to be set,
+	 * which is much simpler if the VPU operates in line buffer mode (one then
+	 * has to only set the pointers to refer to the beginning of the bitstream
+	 * buffer, since in line buffer mode, this is where the encoded frame
+	 * is always placed*/
 	if (open_params->codec_format == IMX_VPU_CODEC_FORMAT_MJPEG)
 	{
 		dec_open_param.jpgLineBufferMode = 1;
@@ -1304,10 +1311,20 @@ static ImxVpuDecReturnCodes imx_vpu_dec_push_input_data(ImxVpuDecoder *decoder, 
 	 * be written at once, if there is enough room at the current write position, or
 	 * the write position may be near the end of the buffer, in which case two writes
 	 * have to be performed (the first N bytes at the end of the buffer, and the remaining
-	 * (bbuf_size - N) bytes at the beginning). */
-	read_offset = 0;
-	write_offset = write_ptr - decoder->bitstream_buffer_physical_address;
+	 * (bbuf_size - N) bytes at the beginning).
+	 * Exception: motion JPEG data. With motion JPEG, the decoder operates in the line
+	 * buffer mode. Meaning that the encoded JPEG frame is always placed at the beginning
+	 * of the bitstream buffer. It does not have to work like a ring buffer, since with
+	 * motion JPEG, one input frame immediately produces one decoded output frame. */
+	if (decoder->codec_format == IMX_VPU_CODEC_FORMAT_MJPEG)
+		write_offset = 0;
+	else
+		write_offset = write_ptr - decoder->bitstream_buffer_physical_address;
+
 	num_free_bytes_at_end = bbuf_size - write_offset;
+
+	read_offset = 0;
+
 	/* This stores the number of bytes to push in the next immediate write operation
 	 * If the write position is near the end of the buffer, not all bytes can be written
 	 * at once, as described above */
@@ -1382,6 +1399,15 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 	{
 		/* Drain mode */
 
+		if (decoder->codec_format == IMX_VPU_CODEC_FORMAT_MJPEG)
+		{
+			/* There is no real drain mode for motion JPEG, since there
+			 * is nothing to drain (JPEG frames are never delayed - the
+			 * VPU decodes them as soon as they arrive). However, the
+			 * VPU also does not report an EOS. So, do this manually. */
+			*output_code = IMX_VPU_DEC_OUTPUT_CODE_EOS;
+			return IMX_VPU_DEC_RETURN_CODE_OK;
+		}
 		if (!(decoder->drain_eos_sent_to_vpu))
 		{
 			RetCode dec_ret;
@@ -1499,15 +1525,23 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 
 		memset(&params, 0, sizeof(params));
 
-		/* There is an error in the specification. It states that chunkSize
-		 * is not used in the i.MX6. This is untrue; for motion JPEG, this
-		 * must be nonzero. */
 		if (decoder->codec_format == IMX_VPU_CODEC_FORMAT_MJPEG)
 		{
+			/* There is an error in the specification. It states that chunkSize
+			 * is not used in the i.MX6. This is untrue; for motion JPEG, this
+			 * must be nonzero. */
 			params.chunkSize = encoded_frame->data_size;
+
+			/* Set the virtual and physical memory pointers that point to the
+			 * start of the frame. These always point to the beginning of the
+			 * bitstream buffer, because the VPU operates in line buffer mode
+			 * when decoding motion JPEG data. */
 			params.virtJpgChunkBase = (unsigned char *)(decoder->bitstream_buffer_virtual_address);
 			params.phyJpgChunkBase = decoder->bitstream_buffer_physical_address;
 
+			/* The framebuffer array isn't used when decoding motion JPEG data.
+			 * Instead, the user has to manually specify a framebuffer for the
+			 * output by sending the SET_ROTATOR_OUTPUT command. */
 			jpeg_frame_idx = imx_vpu_dec_find_free_framebuffer(decoder);
 			if (jpeg_frame_idx != -1)
 				vpu_DecGiveCommand(decoder->handle, SET_ROTATOR_OUTPUT, (void *)(&(decoder->internal_framebuffers[jpeg_frame_idx])));
@@ -1523,6 +1557,18 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 
 		/* Start frame decoding */
 		dec_ret = vpu_DecStartOneFrame(decoder->handle, &params);
+
+		if (dec_ret == RETCODE_JPEG_BIT_EMPTY)
+		{
+			*output_code |= IMX_VPU_DEC_OUTPUT_CODE_NOT_ENOUGH_INPUT_DATA;
+			return IMX_VPU_DEC_RETURN_CODE_OK;
+		}
+		else if (dec_ret == RETCODE_JPEG_EOS)
+		{
+			*output_code |= IMX_VPU_DEC_OUTPUT_CODE_EOS;
+			dec_ret = RETCODE_SUCCESS;
+		}
+
 		if ((ret = IMX_VPU_DEC_HANDLE_ERROR("could not decode frame", dec_ret)) != IMX_VPU_DEC_RETURN_CODE_OK)
 			return ret;
 
