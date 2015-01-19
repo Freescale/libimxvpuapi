@@ -855,6 +855,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_flush(ImxVpuDecoder *decoder)
 	memset(decoder->frame_context_set, 0, sizeof(void*) * decoder->num_framebuffers);
 
 
+	decoder->num_used_framebuffers = 0;
 	// TODO: does codec data need to be re-sent after a flush?
 
 
