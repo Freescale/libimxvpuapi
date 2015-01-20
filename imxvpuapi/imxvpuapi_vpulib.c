@@ -857,6 +857,9 @@ ImxVpuDecReturnCodes imx_vpu_dec_flush(ImxVpuDecoder *decoder)
 
 	IMX_VPU_TRACE("flushing decoder");
 
+	if (decoder->codec_format == IMX_VPU_CODEC_FORMAT_WMV3)
+		return IMX_VPU_DEC_RETURN_CODE_OK;
+
 
 	/* Clear any framebuffers that aren't ready for display yet but
 	 * are being used for decoding (since flushing will clear them) */
