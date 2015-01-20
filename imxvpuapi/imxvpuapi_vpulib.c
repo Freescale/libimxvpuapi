@@ -415,6 +415,27 @@ void imx_vpu_fill_framebuffer_params(ImxVpuFramebuffer *framebuffer, ImxVpuFrame
 /************************************************/
 
 
+/* Frames are not just occupied or free. They can be in one of three modes:
+ * - FrameMode_Free: framebuffer is not being used for decoding, and does not hold
+     a displayable picture
+ * - FrameMode_ReservedForDecoding: framebuffer contains picture data that is
+ *   being decoded; this data can not be displayed yet though
+ * - FrameMode_ContainsDisplayablePicture: framebuffer contains picture that has
+ *   been fully decoded; this can be displayed
+ *
+ * Frames in FrameMode_ReservedForDecoding do not reach the outside. Only frames in
+ * FrameMode_ContainsDisplayablePicture mode, via the imx_vpu_dec_get_decoded_picture()
+ * function.
+ */
+typedef enum
+{
+	FrameMode_Free,
+	FrameMode_ReservedForDecoding,
+	FrameMode_ContainsDisplayablePicture
+}
+FrameMode;
+
+
 struct _ImxVpuDecoder
 {
 	DecHandle handle;
@@ -430,7 +451,7 @@ struct _ImxVpuDecoder
 	FrameBuffer *internal_framebuffers;
 	ImxVpuFramebuffer *framebuffers;
 	void **context_for_frames;
-	BOOL *frame_context_set;
+	FrameMode *frame_modes;
 	void *dropped_frame_context;
 
 	BOOL main_header_pushed;
@@ -790,8 +811,8 @@ ImxVpuDecReturnCodes imx_vpu_dec_close(ImxVpuDecoder *decoder)
 		IMX_VPU_FREE(decoder->internal_framebuffers, sizeof(FrameBuffer) * decoder->num_framebuffers);
 	if (decoder->context_for_frames != NULL)
 		IMX_VPU_FREE(decoder->context_for_frames, sizeof(void*) * decoder->num_framebuffers);
-	if (decoder->frame_context_set != NULL)
-		IMX_VPU_FREE(decoder->frame_context_set, sizeof(void*) * decoder->num_framebuffers);
+	if (decoder->frame_modes != NULL)
+		IMX_VPU_FREE(decoder->frame_modes, sizeof(FrameMode) * decoder->num_framebuffers);
 
 	IMX_VPU_FREE(decoder, sizeof(ImxVpuDecoder));
 
@@ -837,9 +858,17 @@ ImxVpuDecReturnCodes imx_vpu_dec_flush(ImxVpuDecoder *decoder)
 	IMX_VPU_TRACE("flushing decoder");
 
 
-	/* If any framebuffers are not yet marked as displayed, do so here */
+	/* Clear any framebuffers that aren't ready for display yet but
+	 * are being used for decoding (since flushing will clear them) */
 	for (i = 0; i < decoder->num_framebuffers; ++i)
-		imx_vpu_dec_mark_framebuffer_as_displayed(decoder, &(decoder->framebuffers[i]));
+	{
+		if (decoder->frame_modes[i] == FrameMode_ReservedForDecoding)
+		{
+			dec_ret = vpu_DecClrDispFlag(decoder->handle, i);
+			IMX_VPU_DEC_HANDLE_ERROR("vpu_DecClrDispFlag failed while flushing", dec_ret);
+			decoder->frame_modes[i] = FrameMode_Free;
+		}
+	}
 
 
 	/* Perform the actual flush */
@@ -852,11 +881,8 @@ ImxVpuDecReturnCodes imx_vpu_dec_flush(ImxVpuDecoder *decoder)
 
 	/* After the flush, any context will be thrown away */
 	memset(decoder->context_for_frames, 0, sizeof(void*) * decoder->num_framebuffers);
-	memset(decoder->frame_context_set, 0, sizeof(void*) * decoder->num_framebuffers);
-
 
 	decoder->num_used_framebuffers = 0;
-	// TODO: does codec data need to be re-sent after a flush?
 
 
 	return ret;
@@ -901,8 +927,8 @@ ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, I
 		return IMX_VPU_DEC_RETURN_CODE_ERROR;
 	}
 
-	decoder->frame_context_set = IMX_VPU_ALLOC(sizeof(void*) * num_framebuffers);
-	if (decoder->frame_context_set == NULL)
+	decoder->frame_modes = IMX_VPU_ALLOC(sizeof(FrameMode) * num_framebuffers);
+	if (decoder->frame_modes == NULL)
 	{
 		IMX_VPU_ERROR("allocating memory for frame context set flags failed");
 		IMX_VPU_FREE(decoder->internal_framebuffers, sizeof(FrameBuffer) * num_framebuffers);
@@ -985,8 +1011,8 @@ ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, I
 	decoder->framebuffers = framebuffers;
 	decoder->num_framebuffers = num_framebuffers;
 	memset(decoder->context_for_frames, 0, sizeof(void*) * num_framebuffers);
-	memset(decoder->frame_context_set, 0, sizeof(void*) * num_framebuffers);
-
+	for (i = 0; i < num_framebuffers; ++i)
+		decoder->frame_modes[i] = FrameMode_Free;
 
 	return IMX_VPU_DEC_RETURN_CODE_OK;
 
@@ -1369,7 +1395,7 @@ static int imx_vpu_dec_find_free_framebuffer(ImxVpuDecoder *decoder)
 
 	for (i = 0; i < decoder->num_framebuffers; ++i)
 	{
-		if (!(decoder->frame_context_set[i]))
+		if (decoder->frame_modes[i] == FrameMode_Free)
 			return (int)i;
 	}
 
@@ -1695,7 +1721,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 			assert(idx_decoded < (int)(decoder->num_framebuffers));
 
 			decoder->context_for_frames[idx_decoded] = encoded_frame->context;
-			decoder->frame_context_set[idx_decoded] = TRUE;
+			decoder->frame_modes[idx_decoded] = FrameMode_ReservedForDecoding;
 
 			decoder->num_used_framebuffers++;			
 		}
@@ -1719,6 +1745,8 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 			assert(idx_display < (int)(decoder->num_framebuffers));
 
 			IMX_VPU_TRACE("Decoded and displayable picture available (framebuffer display index: %d  context: %p)", idx_display, decoder->context_for_frames[idx_display]);
+
+			decoder->frame_modes[idx_display] = FrameMode_ContainsDisplayablePicture;
 
 			decoder->available_decoded_pic_idx = idx_display;
 			*output_code |= IMX_VPU_DEC_OUTPUT_CODE_DECODED_PICTURE_AVAILABLE;
@@ -1828,8 +1856,8 @@ ImxVpuDecReturnCodes imx_vpu_dec_mark_framebuffer_as_displayed(ImxVpuDecoder *de
 	assert(idx < (int)(decoder->num_framebuffers));
 
 
-	/* frame context is no longer being used */
-	decoder->frame_context_set[idx] = FALSE;
+	/* frame is no longer being used */
+	decoder->frame_modes[idx] = FrameMode_Free;
 
 
 	/* mark it as displayed in the VPU */
