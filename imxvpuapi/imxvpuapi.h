@@ -592,6 +592,9 @@ ImxVpuDecReturnCodes imx_vpu_dec_open(ImxVpuDecoder **decoder, ImxVpuDecOpenPara
 /* Closes a decoder instance. Trying to close the same instance multiple times results in undefined behavior. */
 ImxVpuDecReturnCodes imx_vpu_dec_close(ImxVpuDecoder *decoder);
 
+/* Returns the bitstream buffer that is used by the decoder */
+ImxVpuDMABuffer* imx_vpu_dec_get_bitstream_buffer(ImxVpuDecoder *decoder);
+
 /* Enables/disables the drain mode. In drain mode, no new input data is used; instead, any undecoded frames
  * still stored in the VPU are decoded, until the queue is empty. This is useful when there is no more input
  * data, and playback shall stop once all frames are shown. */
@@ -931,6 +934,9 @@ ImxVpuEncReturnCodes imx_vpu_enc_open(ImxVpuEncoder **encoder, ImxVpuEncOpenPara
 
 /* Closes a encoder instance. Trying to close the same instance multiple times results in undefined behavior. */
 ImxVpuEncReturnCodes imx_vpu_enc_close(ImxVpuEncoder *encoder);
+
+/* Returns the bitstream buffer that is used by the encoder */
+ImxVpuDMABuffer* imx_vpu_enc_get_bitstream_buffer(ImxVpuEncoder *encoder);
 
 /* Registers the specified array of framebuffers with the encoder. These framebuffers are used for temporary
  * values during encoding, unlike the decoder framebuffers. The minimum valid value for "num_framebuffers" is

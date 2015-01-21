@@ -823,6 +823,12 @@ ImxVpuDecReturnCodes imx_vpu_dec_close(ImxVpuDecoder *decoder)
 }
 
 
+ImxVpuDMABuffer* imx_vpu_dec_get_bitstream_buffer(ImxVpuDecoder *decoder)
+{
+	return decoder->bitstream_buffer;
+}
+
+
 ImxVpuDecReturnCodes imx_vpu_dec_enable_drain_mode(ImxVpuDecoder *decoder, int enabled)
 {
 	assert(decoder != NULL);
@@ -1942,6 +1948,11 @@ ImxVpuEncReturnCodes imx_vpu_enc_open(ImxVpuEncoder **encoder, ImxVpuEncOpenPara
 
 
 ImxVpuEncReturnCodes imx_vpu_enc_close(ImxVpuEncoder *encoder)
+{
+}
+
+
+ImxVpuDMABuffer* imx_vpu_enc_get_bitstream_buffer(ImxVpuEncoder *encoder)
 {
 }
 

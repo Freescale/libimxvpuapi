@@ -766,6 +766,12 @@ ImxVpuDecReturnCodes imx_vpu_dec_close(ImxVpuDecoder *decoder)
 }
 
 
+ImxVpuDMABuffer* imx_vpu_dec_get_bitstream_buffer(ImxVpuDecoder *decoder)
+{
+	return decoder->bitstream_buffer;
+}
+
+
 ImxVpuDecReturnCodes imx_vpu_dec_enable_drain_mode(ImxVpuDecoder *decoder, int enabled)
 {
 	int config_param;
@@ -1808,6 +1814,12 @@ ImxVpuEncReturnCodes imx_vpu_enc_close(ImxVpuEncoder *encoder)
 	IMX_VPU_TRACE("closed encoder");
 
 	return enc_convert_retcode(ret);
+}
+
+
+ImxVpuDMABuffer* imx_vpu_enc_get_bitstream_buffer(ImxVpuEncoder *encoder)
+{
+	return encoder->bitstream_buffer;
 }
 
 
