@@ -65,6 +65,7 @@ struct _ImxVpuJPEGDecoder
 
 
 static int initial_info_callback(ImxVpuDecoder *decoder, ImxVpuDecInitialInfo *new_initial_info, unsigned int output_code, void *user_data);
+static void imx_vpu_jpeg_dec_deallocate_framebuffers(ImxVpuJPEGDecoder *jpeg_decoder);
 
 
 static int initial_info_callback(ImxVpuDecoder *decoder, ImxVpuDecInitialInfo *new_initial_info, unsigned int output_code, void *user_data)
@@ -76,9 +77,11 @@ static int initial_info_callback(ImxVpuDecoder *decoder, ImxVpuDecInitialInfo *n
 	IMXVPUAPI_UNUSED_PARAM(decoder);
 	IMXVPUAPI_UNUSED_PARAM(output_code);
 
+	imx_vpu_jpeg_dec_deallocate_framebuffers(jpeg_decoder);
+
 	jpeg_decoder->initial_info = *new_initial_info;
 	IMX_VPU_DEBUG(
-		"Initial info:  size: %ux%u pixel  rate: %u/%u  min num required framebuffers: %u  interlacing: %d  framebuffer alignment: %u  color format: %s",
+		"initial info:  size: %ux%u pixel  rate: %u/%u  min num required framebuffers: %u  interlacing: %d  framebuffer alignment: %u  color format: %s",
 		new_initial_info->frame_width,
 		new_initial_info->frame_height,
 		new_initial_info->frame_rate_numerator,
@@ -93,7 +96,7 @@ static int initial_info_callback(ImxVpuDecoder *decoder, ImxVpuDecInitialInfo *n
 
 	imx_vpu_calc_framebuffer_sizes(new_initial_info->color_format, new_initial_info->frame_width, new_initial_info->frame_height, new_initial_info->framebuffer_alignment, new_initial_info->interlacing, &(jpeg_decoder->calculated_sizes));
 	IMX_VPU_DEBUG(
-		"Calculated sizes:  frame width&height: %dx%d  Y stride: %u  CbCr stride: %u  Y size: %u  CbCr size: %u  MvCol size: %u  total size: %u",
+		"calculated sizes:  frame width&height: %dx%d  Y stride: %u  CbCr stride: %u  Y size: %u  CbCr size: %u  MvCol size: %u  total size: %u",
 		jpeg_decoder->calculated_sizes.aligned_frame_width, jpeg_decoder->calculated_sizes.aligned_frame_height,
 		jpeg_decoder->calculated_sizes.y_stride, jpeg_decoder->calculated_sizes.cbcr_stride,
 		jpeg_decoder->calculated_sizes.y_size, jpeg_decoder->calculated_sizes.cbcr_size, jpeg_decoder->calculated_sizes.mvcol_size,
@@ -111,7 +114,7 @@ static int initial_info_callback(ImxVpuDecoder *decoder, ImxVpuDecInitialInfo *n
 		jpeg_decoder->fb_dmabuffers[i] = imx_vpu_dma_buffer_allocate(jpeg_decoder->dma_buffer_allocator, jpeg_decoder->calculated_sizes.total_size, jpeg_decoder->initial_info.framebuffer_alignment, 0);
 		if (jpeg_decoder->fb_dmabuffers[i] == NULL)
 		{
-			IMX_VPU_ERROR("Could not allocate DMA buffer for framebuffer #%u", i);
+			IMX_VPU_ERROR("could not allocate DMA buffer for framebuffer #%u", i);
 			goto error;
 		}
 
@@ -120,7 +123,7 @@ static int initial_info_callback(ImxVpuDecoder *decoder, ImxVpuDecInitialInfo *n
 
 	if ((ret = imx_vpu_dec_register_framebuffers(jpeg_decoder->decoder, jpeg_decoder->framebuffers, jpeg_decoder->num_framebuffers)) != IMX_VPU_DEC_RETURN_CODE_OK)
 	{
-		IMX_VPU_ERROR("Could not register framebuffers: %s", imx_vpu_dec_error_string(ret));
+		IMX_VPU_ERROR("could not register framebuffers: %s", imx_vpu_dec_error_string(ret));
 		goto error;
 	}
 
@@ -163,7 +166,7 @@ ImxVpuDecReturnCodes imx_vpu_jpeg_dec_open(ImxVpuJPEGDecoder **jpeg_decoder, Imx
 	jpegdec->bitstream_buffer = imx_vpu_dma_buffer_allocate(jpegdec->dma_buffer_allocator, jpegdec->bitstream_buffer_size, jpegdec->bitstream_buffer_alignment, 0);
 	if (jpegdec->bitstream_buffer == NULL)
 	{
-		IMX_VPU_ERROR("Could not allocate DMA buffer for bitstream buffer with %u bytes and alignment %u", jpegdec->bitstream_buffer_size, jpegdec->bitstream_buffer_alignment);
+		IMX_VPU_ERROR("could not allocate DMA buffer for bitstream buffer with %u bytes and alignment %u", jpegdec->bitstream_buffer_size, jpegdec->bitstream_buffer_alignment);
 		ret = IMX_VPU_DEC_RETURN_CODE_ERROR;
 		goto error;
 	}
@@ -194,9 +197,7 @@ ImxVpuDecReturnCodes imx_vpu_jpeg_dec_close(ImxVpuJPEGDecoder *jpeg_decoder)
 
 	imx_vpu_dec_close(jpeg_decoder->decoder);
 
-	IMX_VPU_FREE(jpeg_decoder->framebuffers, sizeof(ImxVpuFramebuffer) * jpeg_decoder->num_framebuffers);
-	imx_vpu_jpeg_deallocate_dma_buffers(jpeg_decoder->fb_dmabuffers, jpeg_decoder->num_framebuffers);
-	IMX_VPU_FREE(jpeg_decoder->fb_dmabuffers, sizeof(ImxVpuDMABuffer *) * jpeg_decoder->num_framebuffers);
+	imx_vpu_jpeg_dec_deallocate_framebuffers(jpeg_decoder);
 
 	if (jpeg_decoder->bitstream_buffer != NULL)
 		imx_vpu_dma_buffer_deallocate(jpeg_decoder->bitstream_buffer);
@@ -204,6 +205,26 @@ ImxVpuDecReturnCodes imx_vpu_jpeg_dec_close(ImxVpuJPEGDecoder *jpeg_decoder)
 	IMX_VPU_FREE(jpeg_decoder, sizeof(ImxVpuJPEGDecoder));
 
 	return IMX_VPU_DEC_RETURN_CODE_OK;
+}
+
+
+static void imx_vpu_jpeg_dec_deallocate_framebuffers(ImxVpuJPEGDecoder *jpeg_decoder)
+{
+	assert(jpeg_decoder != NULL);
+	assert(jpeg_decoder->decoder != NULL);
+
+	if (jpeg_decoder->framebuffers != NULL)
+	{
+		IMX_VPU_FREE(jpeg_decoder->framebuffers, sizeof(ImxVpuFramebuffer) * jpeg_decoder->num_framebuffers);
+		jpeg_decoder->framebuffers = NULL;
+	}
+
+	if (jpeg_decoder->fb_dmabuffers != NULL)
+	{
+		imx_vpu_jpeg_deallocate_dma_buffers(jpeg_decoder->fb_dmabuffers, jpeg_decoder->num_framebuffers);
+		IMX_VPU_FREE(jpeg_decoder->fb_dmabuffers, sizeof(ImxVpuDMABuffer *) * jpeg_decoder->num_framebuffers);
+		jpeg_decoder->fb_dmabuffers = NULL;
+	}
 }
 
 
@@ -355,7 +376,7 @@ ImxVpuEncReturnCodes imx_vpu_jpeg_enc_open(ImxVpuJPEGEncoder **jpeg_encoder, Imx
 	jpegenc->bitstream_buffer = imx_vpu_dma_buffer_allocate(jpegenc->dma_buffer_allocator, jpegenc->bitstream_buffer_size, jpegenc->bitstream_buffer_alignment, 0);
 	if (jpegenc->bitstream_buffer == NULL)
 	{
-		IMX_VPU_ERROR("Could not allocate DMA buffer for bitstream buffer with %u bytes and alignment %u", jpegenc->bitstream_buffer_size, jpegenc->bitstream_buffer_alignment);
+		IMX_VPU_ERROR("could not allocate DMA buffer for bitstream buffer with %u bytes and alignment %u", jpegenc->bitstream_buffer_size, jpegenc->bitstream_buffer_alignment);
 		ret = IMX_VPU_DEC_RETURN_CODE_ERROR;
 		goto error;
 	}
@@ -377,7 +398,7 @@ ImxVpuEncReturnCodes imx_vpu_jpeg_enc_open(ImxVpuJPEGEncoder **jpeg_encoder, Imx
 		jpegenc->fb_dmabuffers[i] = imx_vpu_dma_buffer_allocate(jpegenc->dma_buffer_allocator, jpegenc->calculated_sizes.total_size, jpegenc->initial_info.framebuffer_alignment, 0);
 		if (jpegenc->fb_dmabuffers[i] == NULL)
 		{
-			IMX_VPU_ERROR("Could not allocate DMA buffer for framebuffer #%u", i);
+			IMX_VPU_ERROR("could not allocate DMA buffer for framebuffer #%u", i);
 			goto error;
 		}
 
@@ -386,14 +407,14 @@ ImxVpuEncReturnCodes imx_vpu_jpeg_enc_open(ImxVpuJPEGEncoder **jpeg_encoder, Imx
 
 	if ((ret = imx_vpu_enc_register_framebuffers(jpegenc->encoder, jpegenc->framebuffers, jpegenc->num_framebuffers)) != IMX_VPU_ENC_RETURN_CODE_OK)
 	{
-		IMX_VPU_ERROR("Could not register framebuffers: %s", imx_vpu_enc_error_string(ret));
+		IMX_VPU_ERROR("could not register framebuffers: %s", imx_vpu_enc_error_string(ret));
 		goto error;
 	}
 
 	jpegenc->output_dmabuffer = imx_vpu_dma_buffer_allocate(jpegenc->dma_buffer_allocator, jpegenc->calculated_sizes.total_size, jpegenc->initial_info.framebuffer_alignment, 0);
 	if (jpegenc->output_dmabuffer == NULL)
 	{
-		IMX_VPU_ERROR("Could not allocate DMA buffer for encoded output frames");
+		IMX_VPU_ERROR("could not allocate DMA buffer for encoded output frames");
 		goto error;
 	}
 

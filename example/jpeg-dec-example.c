@@ -89,7 +89,16 @@ Retval run(Context *ctx)
 	fprintf(stderr, "encoded input frame:  size: %u byte\n", encoded_frame.data_size);
 
 	/* Perform the actual JPEG decoding */
-	imx_vpu_jpeg_dec_decode(ctx->jpeg_decoder, &encoded_frame, &decoded_picture);
+	dec_ret = imx_vpu_jpeg_dec_decode(ctx->jpeg_decoder, &encoded_frame, &decoded_picture);
+
+	if ((dec_ret != IMX_VPU_DEC_RETURN_CODE_OK) || (decoded_picture.framebuffer == NULL))
+	{
+		if (dec_ret == IMX_VPU_DEC_RETURN_CODE_OK)
+			fprintf(stderr, "could not decode this JPEG image : unspecified error (framebuffer is NULL)\n");
+		else
+			fprintf(stderr, "could not decode this JPEG image : %s\n", imx_vpu_dec_error_string(dec_ret));
+		return RETVAL_ERROR;
+	}
 
 	/* Get some information about the the frame
 	 * Note that the info is only available *after* calling imx_vpu_jpeg_dec_decode() */

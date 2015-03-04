@@ -100,7 +100,7 @@ def build(bld):
 		features = ['c', 'cstlib' if bld.env['BUILD_STATIC'] else 'cshlib'],
 		includes = ['.'],
 		uselib = bld.env['VPUAPI_USELIBS'],
-		source = ['imxvpuapi/imxvpuapi.c', 'imxvpuapi/imxvpuapi_jpeg.c'] + bld.env['VPUAPI_BACKEND_SOURCE'],
+		source = ['imxvpuapi/imxvpuapi.c', 'imxvpuapi/imxvpuapi_jpeg.c', 'imxvpuapi/imxvpuapi_parse_jpeg.c'] + bld.env['VPUAPI_BACKEND_SOURCE'],
 		name = 'imxvpuapi',
 		target = 'imxvpuapi',
 		vnum = version

@@ -25,6 +25,7 @@
 #include <vpu_io.h>
 #include "imxvpuapi.h"
 #include "imxvpuapi_priv.h"
+#include "imxvpuapi_parse_jpeg.h"
 
 
 
@@ -364,6 +365,7 @@ void imx_vpu_calc_framebuffer_sizes(ImxVpuColorFormat color_format, unsigned int
 			calculated_sizes->cbcr_size = calculated_sizes->mvcol_size = calculated_sizes->y_size / 4;
 			break;
 		case IMX_VPU_COLOR_FORMAT_YUV422_HORIZONTAL:
+		case IMX_VPU_COLOR_FORMAT_YUV422_VERTICAL:
 			calculated_sizes->cbcr_stride = calculated_sizes->y_stride / 2;
 			calculated_sizes->cbcr_size = calculated_sizes->mvcol_size = calculated_sizes->y_size / 2;
 			break;
@@ -446,6 +448,9 @@ struct _ImxVpuDecoder
 
 	ImxVpuCodecFormat codec_format;
 	unsigned int picture_width, picture_height;
+
+	unsigned int old_jpeg_width, old_jpeg_height;
+	ImxVpuColorFormat old_jpeg_color_format;
 
 	unsigned int num_framebuffers, num_used_framebuffers;
 	FrameBuffer *internal_framebuffers;
@@ -793,8 +798,11 @@ ImxVpuDecReturnCodes imx_vpu_dec_close(ImxVpuDecoder *decoder)
 
 
 	/* Flush the VPU bit buffer */
-	dec_ret = vpu_DecBitBufferFlush(decoder->handle);
-	ret = IMX_VPU_DEC_HANDLE_ERROR("could not flush decoder", dec_ret);
+	if (decoder->codec_format != IMX_VPU_CODEC_FORMAT_MJPEG)
+	{
+		dec_ret = vpu_DecBitBufferFlush(decoder->handle);
+		ret = IMX_VPU_DEC_HANDLE_ERROR("could not flush decoder", dec_ret);
+	}
 
 	/* Signal EOS to the decoder by passing 0 as size to vpu_DecUpdateBitstreamBuffer() */
 	dec_ret = vpu_DecUpdateBitstreamBuffer(decoder->handle, 0);
@@ -911,7 +919,16 @@ ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, I
 
 	IMX_VPU_TRACE("attempting to register %u framebuffers", num_framebuffers);
 
-	if (decoder->internal_framebuffers != NULL)
+	if (decoder->codec_format == IMX_VPU_CODEC_FORMAT_MJPEG)
+	{
+		if (decoder->internal_framebuffers != NULL)
+			IMX_VPU_FREE(decoder->internal_framebuffers, sizeof(FrameBuffer) * decoder->num_framebuffers);
+		if (decoder->context_for_frames != NULL)
+			IMX_VPU_FREE(decoder->context_for_frames, sizeof(void*) * decoder->num_framebuffers);
+		if (decoder->frame_modes != NULL)
+			IMX_VPU_FREE(decoder->frame_modes, sizeof(FrameMode) * decoder->num_framebuffers);
+	}
+	else if (decoder->internal_framebuffers != NULL)
 	{
 		IMX_VPU_ERROR("other framebuffers have already been registered");
 		return IMX_VPU_DEC_RETURN_CODE_WRONG_CALL_SEQUENCE;
@@ -988,16 +1005,19 @@ ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, I
 	buf_info.vp8MbDataBufInfo.bufferSize = VPU_VP8_MB_PRED_BUFFER_SIZE;
 
 	/* The actual registration */
-	dec_ret = vpu_DecRegisterFrameBuffer(
-		decoder->handle,
-		decoder->internal_framebuffers,
-		num_framebuffers,
-		framebuffers[0].y_stride, /* The stride value is assumed to be the same for all framebuffers */
-		&buf_info
-	);
-	ret = IMX_VPU_DEC_HANDLE_ERROR("could not register framebuffers", dec_ret);
-	if (ret != IMX_VPU_DEC_RETURN_CODE_OK)
-		goto cleanup;
+	if (decoder->codec_format != IMX_VPU_CODEC_FORMAT_MJPEG)
+	{
+		dec_ret = vpu_DecRegisterFrameBuffer(
+			decoder->handle,
+			decoder->internal_framebuffers,
+			num_framebuffers,
+			framebuffers[0].y_stride, /* The stride value is assumed to be the same for all framebuffers */
+			&buf_info
+		);
+		ret = IMX_VPU_DEC_HANDLE_ERROR("could not register framebuffers", dec_ret);
+		if (ret != IMX_VPU_DEC_RETURN_CODE_OK)
+			goto cleanup;
+	}
 
 
 	/* Set default rotator settings for motion JPEG */
@@ -1415,6 +1435,9 @@ static int imx_vpu_dec_find_free_framebuffer(ImxVpuDecoder *decoder)
 ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFrame *encoded_frame, unsigned int *output_code)
 {
 	ImxVpuDecReturnCodes ret;
+	unsigned int jpeg_width, jpeg_height;
+	ImxVpuColorFormat jpeg_color_format;
+
 
 	assert(decoder != NULL);
 	assert(encoded_frame != NULL);
@@ -1470,6 +1493,50 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 	*output_code |= IMX_VPU_DEC_OUTPUT_CODE_INPUT_USED;
 
 
+	if (decoder->codec_format == IMX_VPU_CODEC_FORMAT_MJPEG)
+	{
+		/* JPEGs are a special case
+		 * The VPU does not report size or color format changes. Therefore,
+		 * JPEG header have to be parsed here manually to retrieve the
+		 * width, height, and color format and check if these changed.
+		 * If so, invoke the initial_info_callback again.
+		 */
+
+		if (!imx_vpu_parse_jpeg_header(encoded_frame->data.virtual_address, encoded_frame->data_size, &jpeg_width, &jpeg_height, &jpeg_color_format))
+		{
+			IMX_VPU_ERROR("encoded frame is not valid JPEG data");
+			return IMX_VPU_DEC_RETURN_CODE_ERROR;
+		}
+
+		IMX_VPU_LOG("JPEG frame information:  width: %u  height: %u  format: %s", jpeg_width, jpeg_height, imx_vpu_color_format_string(jpeg_color_format));
+
+		if (decoder->initial_info_available && ((decoder->old_jpeg_width != jpeg_width) || (decoder->old_jpeg_height != jpeg_height) || (decoder->old_jpeg_color_format != jpeg_color_format)))
+		{
+			ImxVpuDecInitialInfo initial_info;
+			initial_info.frame_width = jpeg_width;
+			initial_info.frame_height = jpeg_height;
+			initial_info.frame_rate_numerator = 0;
+			initial_info.frame_rate_denominator = 1;
+			initial_info.min_num_required_framebuffers = 1 + MIN_NUM_FREE_FB_REQUIRED;
+			initial_info.color_format = jpeg_color_format;
+			initial_info.interlacing = 0;
+			initial_info.framebuffer_alignment = 1;
+
+			/* Invoke the initial_info_callback. Framebuffers for decoding are allocated
+			 * and registered there. */
+			if (!decoder->initial_info_callback(decoder, &initial_info, *output_code, decoder->callback_user_data))
+			{
+				IMX_VPU_ERROR("initial info callback reported failure - cannot continue");
+				return IMX_VPU_DEC_RETURN_CODE_ERROR;
+			}
+		}
+
+		decoder->old_jpeg_width = jpeg_width;
+		decoder->old_jpeg_height = jpeg_height;
+		decoder->old_jpeg_color_format = jpeg_color_format;
+	}
+
+
 	/* Start decoding process */
 
 	if (!(decoder->initial_info_available))
@@ -1521,6 +1588,14 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 		 * (Also for motion JPEG, even though the VPU doesn't use framebuffers then) */
 		if (initial_info.min_num_required_framebuffers < 1)
 			initial_info.min_num_required_framebuffers = 1;
+
+		if (decoder->codec_format == IMX_VPU_CODEC_FORMAT_MJPEG)
+		{
+			if (initial_info.frame_width == 0)
+				initial_info.frame_width = jpeg_width;
+			if (initial_info.frame_height == 0)
+				initial_info.frame_height = jpeg_height;
+		}
 
 		switch (decoder->initial_info.mjpg_sourceFormat)
 		{
@@ -1870,12 +1945,14 @@ ImxVpuDecReturnCodes imx_vpu_dec_mark_framebuffer_as_displayed(ImxVpuDecoder *de
 
 
 	/* mark it as displayed in the VPU */
-	dec_ret = vpu_DecClrDispFlag(decoder->handle, idx);
-	ret = IMX_VPU_DEC_HANDLE_ERROR("could not mark framebuffer as displayed", dec_ret);
+	if (decoder->codec_format != IMX_VPU_CODEC_FORMAT_MJPEG)
+	{
+		dec_ret = vpu_DecClrDispFlag(decoder->handle, idx);
+		ret = IMX_VPU_DEC_HANDLE_ERROR("could not mark framebuffer as displayed", dec_ret);
 
-
-	if (ret != IMX_VPU_DEC_RETURN_CODE_OK)
-		return ret;
+		if (ret != IMX_VPU_DEC_RETURN_CODE_OK)
+			return ret;
+	}
 
 
 	/* set the already_marked flag to inform the rest of the imxvpuapi
