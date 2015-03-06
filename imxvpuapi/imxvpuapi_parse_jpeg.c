@@ -103,8 +103,13 @@ int imx_vpu_parse_jpeg_header(void *jpeg_data, size_t jpeg_data_size, unsigned i
 				jpeg_data_cur += 4;
 				break;
 
-			case SOF0:
 			case SOF2:
+			{
+				IMX_VPU_ERROR("progressive JPEGs are not supported");
+				return 0;
+			}
+
+			case SOF0:
 			{
 				uint16_t length;
 				uint8_t num_components;
@@ -117,6 +122,18 @@ int imx_vpu_parse_jpeg_header(void *jpeg_data, size_t jpeg_data_size, unsigned i
 				jpeg_data_cur++;
 				READ_UINT16(*height);
 				READ_UINT16(*width);
+
+				if ((*width) > 8192)
+				{
+					IMX_VPU_ERROR("width of %u pixels exceeds the maximum of 8192", *width);
+					return 0;
+				}
+
+				if ((*height) > 8192)
+				{
+					IMX_VPU_ERROR("height of %u pixels exceeds the maximum of 8192", *height);
+					return 0;
+				}
 
 				READ_UINT8(num_components);
 
