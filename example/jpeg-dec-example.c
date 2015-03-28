@@ -89,7 +89,7 @@ Retval run(Context *ctx)
 	fprintf(stderr, "encoded input frame:  size: %u byte\n", encoded_frame.data_size);
 
 	/* Perform the actual JPEG decoding */
-	dec_ret = imx_vpu_jpeg_dec_decode(ctx->jpeg_decoder, &encoded_frame, &decoded_picture);
+	ImxVpuDecReturnCodes dec_ret = imx_vpu_jpeg_dec_decode(ctx->jpeg_decoder, &encoded_frame, &decoded_picture);
 
 	if ((dec_ret != IMX_VPU_DEC_RETURN_CODE_OK) || (decoded_picture.framebuffer == NULL))
 	{
