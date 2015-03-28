@@ -230,7 +230,7 @@ static void imx_vpu_jpeg_dec_deallocate_framebuffers(ImxVpuJPEGDecoder *jpeg_dec
 
 int imx_vpu_jpeg_dec_can_decode(ImxVpuJPEGDecoder *jpeg_decoder)
 {
-	return (imx_vpu_dec_get_num_free_framebuffers(jpeg_decoder->decoder) >= imx_vpu_dec_get_min_num_free_required(jpeg_decoder->decoder));
+	return imx_vpu_dec_check_if_can_decode(jpeg_decoder->decoder);
 }
 
 

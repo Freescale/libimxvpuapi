@@ -33,13 +33,6 @@ extern "C" {
 
 /* This library provides a high-level interface for controlling the Freescale
  * i.MX VPU en/decoder.
- * Other libraries do not provide a way of associating frames with user defined
- * information, and lack calls to check the number of currently free framebuffers
- * (when decoding). The former is required by many media frameworks such as
- * GStreamer, FFmpeg/libav, the Chromium media codebase etc. The latter is
- * necessary when framebuffer display and decoding can happen in different
- * threads (the counter makes it possible to use synchronization primitives
- * like thread condition variables to wait until enough frames are free).
  *
  * Note that the functions are _not_ thread safe. If they may be called from
  * different threads, you must make sure they are surrounded by a mutex lock.
@@ -416,7 +409,7 @@ char const *imx_vpu_color_format_string(ImxVpuColorFormat color_format);
  * 9. Call imx_vpu_dec_register_framebuffers() and pass in the ImxVpuFramebuffer array
  *    and the number of ImxVpuFramebuffer instances.
  *    This should be the last action in the callback.
- * 10. Continue calling imx_vpu_dec_decode_frame(). The virtual address in encoded_frame
+ * 10. Continue calling imx_vpu_dec_decode(). The virtual address in encoded_frame
  *     must not be NULL.
  *     If the IMX_VPU_DEC_OUTPUT_CODE_DECODED_PICTURE_AVAILABLE flag is set in the output code,
  *     call imx_vpu_dec_get_decoded_picture() with a pointer to an ImxVpuPicture instance
@@ -446,14 +439,13 @@ char const *imx_vpu_color_format_string(ImxVpuColorFormat color_format);
  *
  * Step 15 should only be called if no more playback sessions will occur.
  *
- * As mentioned before, in situations where decoding and display of decoded frames happen in
- * different threads, it is necessary to let the decoder wait until enough framebuffers
- * are free (= available for the VPU to decode into). This is typically done by such a check
- * (in pseudo code):
+ * In situations where decoding and display of decoded frames happen in different threads, it
+ * is necessary to wait until decoding is possible. imx_vpu_dec_check_if_can_decode() is used
+ * for this purpose. This needs to be done in steps 5 and 10. Example pseudo code:
  *
  *   mutex_lock(&mutex);
  *
- *   while (imx_vpu_dec_get_num_free_framebuffers(decoder) < imx_vpu_dec_get_min_num_free_required(decoder))
+ *   while (!imx_vpu_dec_check_if_can_decode(decode))
  *     condition_wait(&condition_variable, &mutex);
  *
  *   imx_vpu_dec_decode_frame(decoder, encoded_frame, &output_code);
@@ -642,19 +634,12 @@ ImxVpuDecReturnCodes imx_vpu_dec_get_decoded_picture(ImxVpuDecoder *decoder, Imx
  * the IMX_VPU_DEC_OUTPUT_CODE_DROPPED flag set. Otherwise, the returned context value is invalid. */
 void* imx_vpu_dec_get_dropped_frame_context(ImxVpuDecoder *decoder);
 
-/* Gets the number of framebuffers which are currently not occupied. Occupied framebuffers are those which
- * are currently internally in use by the VPU, and those which contain decoded pictures and haven't been
- * marked as displayed yet.
- *
- * This function is mostly useful in multi-threaded environments, where the framebuffers are displayed in
- * a different thread. A certain minimum number of framebuffers must always be free. This number is
- * indicated by @imx_vpu_dec_get_min_num_free_required. If the number of free framebuffers is below
- * that value, then the decoder thread should wait until more are free. Otherwise, the decoder may fail. */
-int imx_vpu_dec_get_num_free_framebuffers(ImxVpuDecoder *decoder);
-
-/* Gets the minimum number of framebuffers which must be free at all times.
- * See @imx_vpu_dec_get_num_free_framebuffers for details. */
-int imx_vpu_dec_get_min_num_free_required(ImxVpuDecoder *decoder);
+/* Check if the VPU can decode right now. While decoding a video stream, sometimes the VPU may not be able
+ * to decode. This is directly related to the set of free framebuffers. If this function returns 0, decoding
+ * should not be attempted until after imx_vpu_dec_mark_framebuffer_as_displayed() was called. If this
+ * happens, imx_vpu_dec_check_if_can_decode() should be called again to check if the situation changed and
+ * decoding can be done again. See the explanation above for details. */
+int imx_vpu_dec_check_if_can_decode(ImxVpuDecoder *decoder);
 
 /* Marks a framebuffer as displayed. This always needs to be called once the application is done with the decoded
  * picture. It returns the framebuffer to the VPU pool so it can be reused for further decoding. Not calling

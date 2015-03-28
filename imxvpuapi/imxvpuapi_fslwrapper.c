@@ -1303,17 +1303,10 @@ void* imx_vpu_dec_get_dropped_frame_context(ImxVpuDecoder *decoder)
 }
 
 
-int imx_vpu_dec_get_num_free_framebuffers(ImxVpuDecoder *decoder)
+int imx_vpu_dec_check_if_can_decode(ImxVpuDecoder *decoder)
 {
 	assert(decoder != NULL);
-	return decoder->num_available_framebuffers;
-}
-
-
-int imx_vpu_dec_get_min_num_free_required(ImxVpuDecoder *decoder)
-{
-	IMXVPUAPI_UNUSED_PARAM(decoder);
-	return MIN_NUM_FREE_FB_REQUIRED;
+	return decoder->num_available_framebuffers >= MIN_NUM_FREE_FB_REQUIRED;
 }
 
 

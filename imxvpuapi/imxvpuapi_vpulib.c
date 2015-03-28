@@ -1899,19 +1899,11 @@ void* imx_vpu_dec_get_dropped_frame_context(ImxVpuDecoder *decoder)
 }
 
 
-int imx_vpu_dec_get_num_free_framebuffers(ImxVpuDecoder *decoder)
+int imx_vpu_dec_check_if_can_decode(ImxVpuDecoder *decoder)
 {
 	assert(decoder != NULL);
 	int num_free_framebuffers = decoder->num_framebuffers - decoder->num_used_framebuffers;
-	assert(num_free_framebuffers >= 0);
-	return num_free_framebuffers;
-}
-
-
-int imx_vpu_dec_get_min_num_free_required(ImxVpuDecoder *decoder)
-{
-	assert(decoder != NULL);
-	return MIN_NUM_FREE_FB_REQUIRED;
+	return num_free_framebuffers >= MIN_NUM_FREE_FB_REQUIRED;
 }
 
 
