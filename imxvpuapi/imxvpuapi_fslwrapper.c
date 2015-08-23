@@ -1364,6 +1364,8 @@ struct _ImxVpuEncoder
 	ImxVpuDMABuffer *bitstream_buffer;
 
 	ImxVpuCodecFormat codec_format;
+	unsigned int frame_width, frame_height;
+	unsigned int frame_rate_numerator, frame_rate_denominator;
 
 	unsigned int num_framebuffers;
 	ImxVpuFramebuffer *framebuffers;
@@ -1408,7 +1410,7 @@ static int enc_convert_to_wrapper_open_param(ImxVpuEncOpenParams *open_params, V
 	wrapper_open_param->nPicWidth = open_params->frame_width;
 	wrapper_open_param->nPicHeight = open_params->frame_height;
 	wrapper_open_param->nRotAngle = 0;
-	wrapper_open_param->nFrameRate = open_params->framerate;
+	wrapper_open_param->nFrameRate = (open_params->frame_rate_numerator & 0xffffUL) | (((open_params->frame_rate_denominator - 1) & 0xffffUL) << 16);
 	wrapper_open_param->nBitRate = open_params->bitrate;
 	wrapper_open_param->nGOPSize = open_params->gop_size;
 	wrapper_open_param->nChromaInterleave = 0;
@@ -1617,7 +1619,8 @@ void imx_vpu_enc_set_default_open_params(ImxVpuCodecFormat codec_format, ImxVpuE
 	open_params->codec_format = codec_format;
 	open_params->frame_width = 0;
 	open_params->frame_height = 0;
-	open_params->framerate = 1;
+	open_params->frame_rate_numerator = 1;
+	open_params->frame_rate_denominator = 1;
 	open_params->bitrate = 100;
 	open_params->gop_size = 16;
 	open_params->color_format = IMX_VPU_COLOR_FORMAT_YUV420;
@@ -1763,6 +1766,10 @@ ImxVpuEncReturnCodes imx_vpu_enc_open(ImxVpuEncoder **encoder, ImxVpuEncOpenPara
 	}
 
 	(*encoder)->codec_format = open_params->codec_format;
+	(*encoder)->frame_width = open_params->frame_width;
+	(*encoder)->frame_height = open_params->frame_height;
+	(*encoder)->frame_rate_numerator = open_params->frame_rate_numerator;
+	(*encoder)->frame_rate_denominator = open_params->frame_rate_denominator;
 	(*encoder)->bitstream_buffer = bitstream_buffer;
 
 finish:
@@ -1945,9 +1952,9 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuPicture *p
 	in_framebuffer.pbufMvCol = (unsigned char*)(picture_phys_addr + picture->framebuffer->mvcol_offset);
 
 	enc_enc_param.eFormat = convert_to_wrapper_codec_std(encoder->codec_format);
-	enc_enc_param.nPicWidth = encoding_params->frame_width;
-	enc_enc_param.nPicHeight = encoding_params->frame_height;
-	enc_enc_param.nFrameRate = encoding_params->framerate;
+	enc_enc_param.nPicWidth = encoder->frame_width;
+	enc_enc_param.nPicHeight = encoder->frame_height;
+	enc_enc_param.nFrameRate = (encoder->frame_rate_numerator & 0xffffUL) | (((encoder->frame_rate_denominator - 1) & 0xffffUL) << 16);
 	enc_enc_param.nQuantParam = encoding_params->quant_param;
 
 	enc_enc_param.nInPhyOutput = (unsigned int)encoded_frame_phys_addr;

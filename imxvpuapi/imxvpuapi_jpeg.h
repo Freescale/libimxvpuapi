@@ -128,7 +128,7 @@ ImxVpuDecReturnCodes imx_vpu_jpeg_dec_picture_finished(ImxVpuJPEGDecoder *jpeg_d
 
 typedef struct _ImxVpuJPEGEncoder ImxVpuJPEGEncoder;
 
-ImxVpuEncReturnCodes imx_vpu_jpeg_enc_open(ImxVpuJPEGEncoder **jpeg_encoder, ImxVpuDMABufferAllocator *dma_buffer_allocator, unsigned int frame_width, unsigned int frame_height, unsigned int frame_rate);
+ImxVpuEncReturnCodes imx_vpu_jpeg_enc_open(ImxVpuJPEGEncoder **jpeg_encoder, ImxVpuDMABufferAllocator *dma_buffer_allocator, unsigned int frame_width, unsigned int frame_height, unsigned int frame_rate_numerator, unsigned int frame_rate_denominator);
 ImxVpuEncReturnCodes imx_vpu_jpeg_enc_close(ImxVpuJPEGEncoder *jpeg_encoder);
 ImxVpuEncReturnCodes imx_vpu_jpeg_enc_encode(ImxVpuJPEGEncoder *jpeg_encoder, ImxVpuPicture *picture, ImxVpuEncodedFrame *encoded_frame);
 

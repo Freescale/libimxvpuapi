@@ -81,7 +81,8 @@ Context* init(FILE *input_file, FILE *output_file)
 	imx_vpu_enc_set_default_open_params(IMX_VPU_CODEC_FORMAT_H264, &open_params);
 	open_params.frame_width = FRAME_WIDTH;
 	open_params.frame_height = FRAME_HEIGHT;
-	open_params.framerate = FPS;
+	open_params.frame_rate_numerator = FPS;
+	open_params.frame_rate_denominator = 1;
 
 	imx_vpu_enc_load();
 	imx_vpu_enc_get_bitstream_buffer_info(&(ctx->bitstream_buffer_size), &(ctx->bitstream_buffer_alignment));
@@ -142,9 +143,6 @@ Retval run(Context *ctx)
 	input_picture.framebuffer = &(ctx->input_framebuffer);
 
 	memset(&enc_params, 0, sizeof(enc_params));
-	enc_params.frame_width = FRAME_WIDTH;
-	enc_params.frame_height = FRAME_HEIGHT;
-	enc_params.framerate = FPS;
 	enc_params.quant_param = 0;
 
 	memset(&output_frame, 0, sizeof(output_frame));

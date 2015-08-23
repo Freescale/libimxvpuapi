@@ -314,7 +314,7 @@ struct _ImxVpuJPEGEncoder
 	size_t bitstream_buffer_size;
 	unsigned int bitstream_buffer_alignment;
 
-	unsigned int frame_width, frame_height, frame_rate;
+	unsigned int frame_width, frame_height;
 
 	ImxVpuEncInitialInfo initial_info;
 
@@ -338,7 +338,7 @@ static void imx_vpu_jpeg_enc_cleanup(ImxVpuJPEGEncoder *jpeg_encoder)
 }
 
 
-ImxVpuEncReturnCodes imx_vpu_jpeg_enc_open(ImxVpuJPEGEncoder **jpeg_encoder, ImxVpuDMABufferAllocator *dma_buffer_allocator, unsigned int frame_width, unsigned int frame_height, unsigned int frame_rate)
+ImxVpuEncReturnCodes imx_vpu_jpeg_enc_open(ImxVpuJPEGEncoder **jpeg_encoder, ImxVpuDMABufferAllocator *dma_buffer_allocator, unsigned int frame_width, unsigned int frame_height, unsigned int frame_rate_numerator, unsigned int frame_rate_denominator)
 {
 	unsigned int i;
 	ImxVpuEncOpenParams open_params;
@@ -347,7 +347,7 @@ ImxVpuEncReturnCodes imx_vpu_jpeg_enc_open(ImxVpuJPEGEncoder **jpeg_encoder, Imx
 
 	assert(frame_width > 0);
 	assert(frame_height > 0);
-	assert(frame_rate > 0);
+	assert(frame_rate_denominator > 0);
 	assert(jpeg_encoder != NULL);
 
 	if ((ret = imx_vpu_enc_load()) != IMX_VPU_ENC_RETURN_CODE_OK)
@@ -365,12 +365,12 @@ ImxVpuEncReturnCodes imx_vpu_jpeg_enc_open(ImxVpuJPEGEncoder **jpeg_encoder, Imx
 	jpegenc->dma_buffer_allocator = (dma_buffer_allocator != NULL) ? dma_buffer_allocator : imx_vpu_enc_get_default_allocator();
 	jpegenc->frame_width = frame_width;
 	jpegenc->frame_height = frame_height;
-	jpegenc->frame_rate = frame_rate;
 
 	imx_vpu_enc_set_default_open_params(IMX_VPU_CODEC_FORMAT_MJPEG, &open_params);
 	open_params.frame_width = frame_width;
 	open_params.frame_height = frame_height;
-	open_params.framerate = frame_rate;
+	open_params.frame_rate_numerator = frame_rate_numerator;
+	open_params.frame_rate_denominator = frame_rate_denominator;
 
 	imx_vpu_enc_get_bitstream_buffer_info(&(jpegenc->bitstream_buffer_size), &(jpegenc->bitstream_buffer_alignment));
 	jpegenc->bitstream_buffer = imx_vpu_dma_buffer_allocate(jpegenc->dma_buffer_allocator, jpegenc->bitstream_buffer_size, jpegenc->bitstream_buffer_alignment, 0);
@@ -453,9 +453,6 @@ ImxVpuEncReturnCodes imx_vpu_jpeg_enc_encode(ImxVpuJPEGEncoder *jpeg_encoder, Im
 	assert(jpeg_encoder->encoder != NULL);
 
 	memset(&enc_params, 0, sizeof(enc_params));
-	enc_params.frame_width = jpeg_encoder->frame_width;
-	enc_params.frame_height = jpeg_encoder->frame_height;
-	enc_params.framerate = jpeg_encoder->frame_rate;
 	enc_params.quant_param = 0;
 
 	memset(encoded_frame, 0, sizeof(ImxVpuEncodedFrame));

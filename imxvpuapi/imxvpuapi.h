@@ -821,7 +821,9 @@ typedef struct
 	ImxVpuCodecFormat codec_format;
 
 	unsigned int frame_width, frame_height;
-	unsigned int framerate, bitrate;
+	unsigned int frame_rate_numerator;
+	unsigned int frame_rate_denominator;
+	unsigned int bitrate;
 	unsigned int gop_size;
 	ImxVpuColorFormat color_format;
 
@@ -874,9 +876,6 @@ ImxVpuEncInitialInfo;
 
 typedef struct
 {
-	unsigned int frame_width, frame_height;
-	unsigned int framerate;
-
 	int force_I_picture;
 	int skip_picture;
 	int enable_autoskip;
