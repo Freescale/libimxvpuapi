@@ -1493,6 +1493,9 @@ static int enc_convert_to_wrapper_open_param(ImxVpuEncOpenParams *open_params, V
 			wrapper_open_param->VpuEncStdParam.avcParam.avc_fmoSliceSaveBufSize = 32;
 			break;
 
+		case IMX_VPU_CODEC_FORMAT_MJPEG:
+			break;
+
 		default:
 			IMX_VPU_ERROR("invalid codec format");
 			return FALSE;
