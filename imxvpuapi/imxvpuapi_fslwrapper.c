@@ -1930,15 +1930,32 @@ void imx_vpu_enc_set_default_encoding_params(ImxVpuEncoder *encoder, ImxVpuEncPa
 }
 
 
-void imx_vpu_enc_set_encoding_config(ImxVpuEncoder *encoder, unsigned int bitrate, unsigned int intra_refresh_num, int intra_qp)
+void imx_vpu_enc_configure_bitrate(ImxVpuEncoder *encoder, unsigned int bitrate)
 {
 	int param;
-
 	assert(encoder != NULL);
+	param = bitrate;
+	VPU_EncConfig(encoder->handle, VPU_ENC_CONF_BIT_RATE, &param);
+}
 
-	param = bitrate;           VPU_EncConfig(encoder->handle, VPU_ENC_CONF_BIT_RATE,      &param);
-	param = intra_refresh_num; VPU_EncConfig(encoder->handle, VPU_ENC_CONF_INTRA_REFRESH, &param);
-	param = intra_qp;          VPU_EncConfig(encoder->handle, VPU_ENC_CONF_RC_INTRA_QP,   &param);
+
+void imx_vpu_enc_configure_min_intra_refresh(ImxVpuEncoder *encoder, unsigned int min_intra_refresh_num)
+{
+	int param;
+	assert(encoder != NULL);
+	if (encoder->codec_format != IMX_VPU_CODEC_FORMAT_MJPEG)
+	{
+		/* MJPEG does not support this parameter */
+		param = min_intra_refresh_num;
+		VPU_EncConfig(encoder->handle, VPU_ENC_CONF_INTRA_REFRESH, &param);
+	}
+}
+
+
+void imx_vpu_enc_configure_intra_qp(ImxVpuEncoder *encoder, int intra_qp)
+{
+	assert(encoder != NULL);
+	VPU_EncConfig(encoder->handle, VPU_ENC_CONF_RC_INTRA_QP, &intra_qp);
 }
 
 

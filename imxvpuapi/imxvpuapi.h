@@ -979,14 +979,15 @@ ImxVpuEncReturnCodes imx_vpu_enc_get_initial_info(ImxVpuEncoder *encoder, ImxVpu
  * Useful if the caller wants to modify only a few fields (or none at all) */
 void imx_vpu_enc_set_default_encoding_params(ImxVpuEncoder *encoder, ImxVpuEncParams *encoding_params);
 
-/* Sets/updates certain configuration values for the encoder. This allows for controlled bitrate variances,
- * changes in quality, etc. If no such updates are desired, this function does not need to be called.
- * "bitrate" is the bit rate, in kbps. Must be set 0 if constant quality mode is enabled.
- * "intra_refresh_num" is the maximum number of macroblocks to refresh in a frame. 0 = intra macroblock refresh
- * is not used.
- * "intra_qp" is the I-frame quantization parameter (1-31 for MPEG-4, 0-51 for h.264). -1 enables automatic
- * selection by the VPU. */
-void imx_vpu_enc_set_encoding_config(ImxVpuEncoder *encoder, unsigned int bitrate, unsigned int intra_refresh_num, int intra_qp);
+/* Sets/updates the bitrate. This allows for controlled bitrate updates during encoding. Calling this
+ * function is optional; by default, the bitrate from the open_params in imx_vpu_enc_open() is used. */
+void imx_vpu_enc_configure_bitrate(ImxVpuEncoder *encoder, unsigned int bitrate);
+/* Sets/updates the miniimum number of macroblocks to refresh in a frame. */
+void imx_vpu_enc_configure_min_intra_refresh(ImxVpuEncoder *encoder, unsigned int min_intra_refresh_num);
+/* Sets/updates a constant I-frame quantization parameter (1-31 for MPEG-4, 0-51 for h.264). -1 enables
+ * automatic selection by the VPU. Calling this function is optional; by default, the intra QP value from
+ * the open_params in imx_vpu_enc_open() is used. */
+void imx_vpu_enc_configure_intra_qp(ImxVpuEncoder *encoder, int intra_qp);
 
 ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuPicture *picture, ImxVpuEncodedFrame *encoded_frame, ImxVpuEncParams *encoding_params, unsigned int *output_code);
 

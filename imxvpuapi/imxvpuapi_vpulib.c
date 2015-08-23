@@ -2065,7 +2065,17 @@ void imx_vpu_enc_set_default_encoding_params(ImxVpuEncoder *encoder, ImxVpuEncPa
 }
 
 
-void imx_vpu_enc_set_encoding_config(ImxVpuEncoder *encoder, unsigned int bitrate, unsigned int intra_refresh_num, int intra_qp)
+void imx_vpu_enc_configure_bitrate(ImxVpuEncoder *encoder, unsigned int bitrate)
+{
+}
+
+
+void imx_vpu_enc_configure_min_intra_refresh(ImxVpuEncoder *encoder, unsigned int min_intra_refresh_num)
+{
+}
+
+
+void imx_vpu_enc_configure_intra_qp(ImxVpuEncoder *encoder, int intra_qp)
 {
 }
 
