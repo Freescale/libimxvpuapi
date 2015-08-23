@@ -70,6 +70,7 @@ ImxVpuMappingFlags;
 
 
 typedef struct _ImxVpuDMABuffer ImxVpuDMABuffer;
+typedef struct _ImxVpuWrappedDMABuffer ImxVpuWrappedDMABuffer;
 typedef struct _ImxVpuDMABufferAllocator ImxVpuDMABufferAllocator;
 
 /* ImxVpuDMABufferAllocator:
@@ -138,6 +139,32 @@ struct _ImxVpuDMABuffer
 };
 
 
+/* ImxVpuWrappedDMABuffer:
+ *
+ * Structure for wrapping existing DMA buffers. This is useful for interfacing with existing buffers
+ * that were not allocated by imxvpuapi.
+ *
+ * fd, physical_address, and size are filled with user-defined values. If the DMA buffer is referred to
+ * by a file descriptor, then fd must be set to the descriptor value, otherwise fd must be set to -1.
+ * If the buffer is referred to by a physical address, then physical_address must be set to that address,
+ * otherwise physical_address must be 0.
+ * map_func and unmap_func are used in the imx_vpu_dma_buffer_map() / imx_vpu_dma_buffer_unmap() calls.
+ * If these function pointers are NULL, no mapping will be done. NOTE: imx_vpu_dma_buffer_map() will return
+ * a NULL pointer in this case.
+ */
+struct _ImxVpuWrappedDMABuffer
+{
+	ImxVpuDMABuffer parent;
+
+	uint8_t* (*map_func)(ImxVpuWrappedDMABuffer *wrapped_dma_buffer, unsigned int flags);
+	void (*unmap_func)(ImxVpuWrappedDMABuffer *wrapped_dma_buffer);
+
+	int fd;
+	imx_vpu_phys_addr_t physical_address;
+	size_t size;
+};
+
+
 /* Convenience functions which call the corresponding vfuncs in the allocator */
 ImxVpuDMABuffer* imx_vpu_dma_buffer_allocate(ImxVpuDMABufferAllocator *allocator, size_t size, unsigned int alignment, unsigned int flags);
 void imx_vpu_dma_buffer_deallocate(ImxVpuDMABuffer *buffer);
@@ -146,6 +173,8 @@ void imx_vpu_dma_buffer_unmap(ImxVpuDMABuffer *buffer);
 int imx_vpu_dma_buffer_get_fd(ImxVpuDMABuffer *buffer);
 imx_vpu_phys_addr_t imx_vpu_dma_buffer_get_physical_address(ImxVpuDMABuffer *buffer);
 size_t imx_vpu_dma_buffer_get_size(ImxVpuDMABuffer *buffer);
+
+void imx_vpu_init_wrapped_dma_buffer(ImxVpuWrappedDMABuffer *buffer);
 
 
 /* Heap allocation function for virtual memory blocks internally allocated by imxvpuapi.
