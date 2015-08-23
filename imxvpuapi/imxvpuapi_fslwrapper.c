@@ -1753,6 +1753,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_open(ImxVpuEncoder **encoder, ImxVpuEncOpenPara
 	if (!enc_convert_to_wrapper_open_param(open_params, &open_param))
 	{
 		IMX_VPU_ERROR("converting open params failed");
+		ret = VPU_ENC_RET_INVALID_PARAM;
 		goto cleanup;
 	}
 
