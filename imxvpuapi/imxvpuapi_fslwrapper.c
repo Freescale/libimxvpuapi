@@ -1424,7 +1424,7 @@ static int enc_convert_to_wrapper_open_param(ImxVpuEncOpenParams *open_params, V
 	wrapper_open_param->nUserQpMinEnable = open_params->enable_user_defined_min_qp;
 	wrapper_open_param->nUserQpMaxEnable = open_params->enable_user_defined_max_qp;
 
-	wrapper_open_param->nIntraRefresh = open_params->use_intra_refresh;
+	wrapper_open_param->nIntraRefresh = open_params->min_intra_refresh_mb_count;
 	wrapper_open_param->nRcIntraQp = open_params->intra_qp;
 	
 	wrapper_open_param->nUserGamma = open_params->user_gamma;
@@ -1628,7 +1628,7 @@ void imx_vpu_enc_set_default_open_params(ImxVpuCodecFormat codec_format, ImxVpuE
 	open_params->user_defined_max_qp = 0;
 	open_params->enable_user_defined_min_qp = 0;
 	open_params->enable_user_defined_max_qp = 0;
-	open_params->use_intra_refresh = 0;
+	open_params->min_intra_refresh_mb_count = 0;
 	open_params->intra_qp = -1;
 	open_params->user_gamma = (int)(0.75*32768);
 	open_params->rate_interval_mode = IMX_VPU_ENC_RATE_INTERVAL_MODE_NORMAL;

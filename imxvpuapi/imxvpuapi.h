@@ -280,7 +280,8 @@ typedef struct
 	/* These define the starting offsets of each component
 	 * relative to the start of the buffer. Specified in bytes.
 	 *
-	 * mvcol is the "co-located motion vector" data. */
+	 * mvcol is the "co-located motion vector" data. It is
+	 * not used by the encoder. */
 	size_t
 		y_offset,
 		cb_offset,
@@ -320,7 +321,8 @@ typedef struct
 	}
 	data;
 
-	/* Size of the encoded data, in bytes. */
+	/* Size of the encoded data, in bytes. When decoding, this is set
+	 * by the user. When encoding, the VPU sets this. */
 	unsigned int data_size;
 
 	/* Pointer to out-of-band codec/header data. If such data exists,
@@ -861,7 +863,7 @@ typedef struct
 	int enable_user_defined_min_qp;
 	int enable_user_defined_max_qp;
 
-	int use_intra_refresh;
+	int min_intra_refresh_mb_count;
 	int intra_qp;
 
 	unsigned int user_gamma;
