@@ -242,6 +242,18 @@ ImxVpuPicType;
 
 typedef enum
 {
+	IMX_VPU_FIELD_TYPE_UNKNOWN = 0,
+	IMX_VPU_FIELD_TYPE_NO_INTERLACING,
+	IMX_VPU_FIELD_TYPE_TOP_FIRST,
+	IMX_VPU_FIELD_TYPE_BOTTOM_FIRST,
+	IMX_VPU_FIELD_TYPE_TOP_ONLY,
+	IMX_VPU_FIELD_TYPE_BOTTOM_ONLY
+}
+ImxVpuFieldType;
+
+
+typedef enum
+{
 	IMX_VPU_CODEC_FORMAT_MPEG2 = 0, /* includes MPEG1 */
 	IMX_VPU_CODEC_FORMAT_MPEG4,
 	IMX_VPU_CODEC_FORMAT_H263,
@@ -355,6 +367,9 @@ typedef struct
 
 	/* Picture type (I, P, B, ..) ; unused by the encoder */
 	ImxVpuPicType pic_type;
+
+	/* Interlacing field type (top-first, bottom-first..); unusd by the encoder */
+	ImxVpuFieldType field_type;
 
 	/* User-defined pointer. The library does not touch this value.
 	 * This pointer and the one from the corresponding

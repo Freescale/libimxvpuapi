@@ -75,6 +75,20 @@ static ImxVpuPicType convert_from_wrapper_pic_type(VpuPicType type)
 }
 
 
+static ImxVpuFieldType convert_from_wrapper_field_type(VpuFieldType type)
+{
+	switch (type)
+	{
+		case VPU_FIELD_NONE:   return IMX_VPU_FIELD_TYPE_NO_INTERLACING;
+		case VPU_FIELD_TOP:    return IMX_VPU_FIELD_TYPE_TOP_ONLY;
+		case VPU_FIELD_BOTTOM: return IMX_VPU_FIELD_TYPE_BOTTOM_ONLY;
+		case VPU_FIELD_TB:     return IMX_VPU_FIELD_TYPE_TOP_FIRST;
+		case VPU_FIELD_BT:     return IMX_VPU_FIELD_TYPE_BOTTOM_FIRST;
+		default: return IMX_VPU_FIELD_TYPE_UNKNOWN;
+	}
+}
+
+
 static VpuCodStd convert_to_wrapper_codec_std(ImxVpuCodecFormat format)
 {
 	switch (format)
@@ -1276,6 +1290,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_get_decoded_picture(ImxVpuDecoder *decoder, Imx
 	}
 
 	decoded_picture->pic_type = convert_from_wrapper_pic_type(out_frame_info.ePicType);
+	decoded_picture->field_type = convert_from_wrapper_field_type(out_frame_info.eFieldType);
 	decoded_picture->context = context;
 
 	/* XXX

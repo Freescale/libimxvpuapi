@@ -182,6 +182,29 @@ static ImxVpuPicType convert_pic_type(ImxVpuCodecFormat codec_format, int pic_ty
 }
 
 
+ImxVpuFieldType convert_field_type(ImxVpuCodecFormat codec_format, DecOutputInfo *dec_output_info)
+{
+	if (dec_output_info->interlacedFrame)
+	{
+		ImxVpuFieldType result = dec_output_info->topFieldFirst ? IMX_VPU_FIELD_TYPE_TOP_FIRST : IMX_VPU_FIELD_TYPE_BOTTOM_FIRST;
+
+		if ((codec_format == IMX_VPU_CODEC_FORMAT_H264) || (codec_format == IMX_VPU_CODEC_FORMAT_H264_MVC))
+		{
+			switch (dec_output_info->h264Npf)
+			{
+				case 1: result = IMX_VPU_FIELD_TYPE_BOTTOM_ONLY; break;
+				case 2: result = IMX_VPU_FIELD_TYPE_TOP_ONLY; break;
+				default: break;
+			}
+		}
+
+		return result;
+	}
+	else
+		return IMX_VPU_FIELD_TYPE_NO_INTERLACING;
+}
+
+
 
 
 /**************************************************/
@@ -1879,6 +1902,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_get_decoded_picture(ImxVpuDecoder *decoder, Imx
 	decoded_picture->framebuffer = &(decoder->framebuffers[idx]);
 	decoded_picture->framebuffer->already_marked = FALSE;
 	decoded_picture->pic_type = convert_pic_type(decoder->codec_format, decoder->dec_output_info.picType);
+	decoded_picture->field_type = convert_field_type(decoder->codec_format, &(decoder->dec_output_info));
 	decoded_picture->context = decoder->context_for_frames[idx];
 
 
