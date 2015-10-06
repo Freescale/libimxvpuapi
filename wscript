@@ -49,7 +49,7 @@ def add_compiler_flags(conf, env, flags, lang, compiler, uselib = ''):
 def options(opt):
 	opt.add_option('--enable-debug', action = 'store_true', default = False, help = 'enable debug build [default: %default]')
 	opt.add_option('--enable-static', action = 'store_true', default = False, help = 'build static library [default: build shared library]')
-	opt.add_option('--use-vpulib-backend', action = 'store_true', default = False, help = 'use the vpulib backend instead of the vpu wrapper one [EXPERIMENTAL] [default: %default]')
+	opt.add_option('--use-fslwrapper-backend', action = 'store_true', default = False, help = 'use the Freescale VPU wrapper (= libfslvpuwrap) backend instead of the vpulib (= imx-vpu) one [default: %default]')
 	opt.load('compiler_c')
 
 
@@ -76,15 +76,16 @@ def configure(conf):
 	add_compiler_flags(conf, conf.env, compiler_flags, 'C', 'C')
 
 	conf.env['BUILD_STATIC'] = conf.options.enable_static
-	conf.env['USE_VPULIB_BACKEND'] = conf.options.use_vpulib_backend
 
 
 	# test for Freescale libraries
 
-	if conf.options.use_vpulib_backend:
+	if not conf.options.use_fslwrapper_backend:
+		Logs.pprint('GREEN', 'using the vpulib backend')
 		conf.check_cc(lib = 'vpu', uselib_store = 'VPULIB', mandatory = 1)
 		conf.env['VPUAPI_USELIBS'] = ['VPULIB']
 		conf.env['VPUAPI_BACKEND_SOURCE'] = ['imxvpuapi/imxvpuapi_vpulib.c']
+
 		with_sof_stuff = conf.check_cc(fragment = '''
 			#include <vpu_lib.h>
 			int main() {
@@ -96,12 +97,12 @@ def configure(conf):
 			execute = False,
 			msg = 'checking if ENC_ENABLE_SOF_STUFF exists'
 		)
-
 		if with_sof_stuff:
 			conf.define('HAVE_ENC_ENABLE_SOF_STUFF', 1)
 
 	else:
-		conf.check_cfg(package = 'libfslvpuwrap', uselib_store = 'FSLVPUWRAPPER', args = '--cflags --libs', mandatory = 1)
+		Logs.pprint('GREEN', 'using the fslwrapper backend')
+		conf.check_cfg(package = 'libfslvpuwrap >= 1.0.45', uselib_store = 'FSLVPUWRAPPER', args = '--cflags --libs', mandatory = 1)
 		conf.env['VPUAPI_USELIBS'] = ['FSLVPUWRAPPER']
 		conf.env['VPUAPI_BACKEND_SOURCE'] = ['imxvpuapi/imxvpuapi_fslwrapper.c']
 
