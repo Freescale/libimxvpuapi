@@ -85,6 +85,21 @@ def configure(conf):
 		conf.check_cc(lib = 'vpu', uselib_store = 'VPULIB', mandatory = 1)
 		conf.env['VPUAPI_USELIBS'] = ['VPULIB']
 		conf.env['VPUAPI_BACKEND_SOURCE'] = ['imxvpuapi/imxvpuapi_vpulib.c']
+		with_sof_stuff = conf.check_cc(fragment = '''
+			#include <vpu_lib.h>
+			int main() {
+				return ENC_ENABLE_SOF_STUFF * 0;
+			}
+			''',
+			uselib = 'VPULIB',
+			mandatory = False,
+			execute = False,
+			msg = 'checking if ENC_ENABLE_SOF_STUFF exists'
+		)
+
+		if with_sof_stuff:
+			conf.define('HAVE_ENC_ENABLE_SOF_STUFF', 1)
+
 	else:
 		conf.check_cfg(package = 'libfslvpuwrap', uselib_store = 'FSLVPUWRAPPER', args = '--cflags --libs', mandatory = 1)
 		conf.env['VPUAPI_USELIBS'] = ['FSLVPUWRAPPER']
