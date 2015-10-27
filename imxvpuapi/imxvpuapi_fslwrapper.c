@@ -2120,6 +2120,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	}
 
 	/* Acquire an output buffer and Transfer the encoded data to it */
+	encoded_frame->data_size = encoded_data_size;
 	output_buffer_ptr = encoding_params->acquire_output_buffer(encoding_params->output_buffer_context, encoded_data_size, &(encoded_frame->acquired_handle));
 	if (output_buffer_ptr == NULL)
 	{

@@ -3518,6 +3518,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 		}
 	}
 
+	encoded_frame->data_size = encoded_data_size;
 	write_ptr_start = encoding_params->acquire_output_buffer(encoding_params->output_buffer_context, encoded_data_size, &(encoded_frame->acquired_handle));
 	if (write_ptr_start == NULL)
 	{

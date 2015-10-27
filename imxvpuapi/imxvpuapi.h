@@ -441,9 +441,11 @@ typedef struct
 	 * the encoder. */
 	uint8_t *data;
 
-	/* Size of the encoded data, in bytes. This is set by the user, and
-	 * is the size of the encoded data that is pointed to by data.
-	 * Not used by the encoder. */
+	/* Size of the encoded data, in bytes. When decoding, this is set by
+	 * the user, and is the size of the encoded data that is pointed to
+	 * by data. When encoding, the encoder sets this to the size of the
+	 * acquired output block, in bytes (exactly the same value as the
+	 * acquire_output_buffer's size argument). */
 	size_t data_size;
 
 	/* Frame type (I, P, B, ..) of the encoded frame. Filled by the encoder.
