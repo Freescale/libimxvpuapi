@@ -106,6 +106,8 @@ def configure(conf):
 		conf.env['VPUAPI_USELIBS'] = ['FSLVPUWRAPPER']
 		conf.env['VPUAPI_BACKEND_SOURCE'] = ['imxvpuapi/imxvpuapi_fslwrapper.c']
 
+	conf.write_config_header('config.h')
+
 
 def build(bld):
 	version_node = bld.srcnode.find_node('VERSION')
