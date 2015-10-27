@@ -158,6 +158,7 @@ ImxVpuDecReturnCodes imx_vpu_jpeg_dec_open(ImxVpuJPEGDecoder **jpeg_decoder, Imx
 	jpegdec->dma_buffer_allocator = (dma_buffer_allocator != NULL) ? dma_buffer_allocator : imx_vpu_dec_get_default_allocator();
 	jpegdec->num_extra_framebuffers = num_extra_framebuffers;
 
+	memset(&open_params, 0, sizeof(open_params));
 	open_params.codec_format = IMX_VPU_CODEC_FORMAT_MJPEG;
 	open_params.frame_width = 0;
 	open_params.frame_height = 0;
