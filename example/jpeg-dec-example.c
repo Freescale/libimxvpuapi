@@ -63,7 +63,7 @@ Retval run(Context *ctx)
 	long size;
 	void *buf;
 	ImxVpuEncodedFrame encoded_frame;
-	ImxVpuPicture decoded_picture;
+	ImxVpuRawFrame decoded_frame;
 	ImxVpuJPEGInfo info;
 	uint8_t *mapped_virtual_address;
 	size_t num_out_byte;
@@ -79,19 +79,15 @@ Retval run(Context *ctx)
 	fread(buf, 1, size, ctx->fin);
 
 	/* Setup encoded frame information */
-	encoded_frame.data.virtual_address = buf;
+	encoded_frame.data = buf;
 	encoded_frame.data_size = size;
-	/* Codec data is out-of-band data that is typically stored in a separate space
-	 * in containers for each elementary stream; JPEG data does not need it */
-	encoded_frame.codec_data = NULL;
-	encoded_frame.codec_data_size = 0;
 
 	fprintf(stderr, "encoded input frame:  size: %u byte\n", encoded_frame.data_size);
 
 	/* Perform the actual JPEG decoding */
-	ImxVpuDecReturnCodes dec_ret = imx_vpu_jpeg_dec_decode(ctx->jpeg_decoder, &encoded_frame, &decoded_picture);
+	ImxVpuDecReturnCodes dec_ret = imx_vpu_jpeg_dec_decode(ctx->jpeg_decoder, &encoded_frame, &decoded_frame);
 
-	if ((dec_ret != IMX_VPU_DEC_RETURN_CODE_OK) || (decoded_picture.framebuffer == NULL))
+	if ((dec_ret != IMX_VPU_DEC_RETURN_CODE_OK) || (decoded_frame.framebuffer == NULL))
 	{
 		if (dec_ret == IMX_VPU_DEC_RETURN_CODE_OK)
 			fprintf(stderr, "could not decode this JPEG image : unspecified error (framebuffer is NULL)\n");
@@ -120,12 +116,12 @@ Retval run(Context *ctx)
 	/* Map the DMA buffer of the decoded picture, write out the decoded pixels, and unmap the buffer again */
 	num_out_byte = info.y_size + info.cbcr_size * 2;
 	fprintf(stderr, "decoded output picture:  writing %u byte\n", num_out_byte);
-	mapped_virtual_address = imx_vpu_dma_buffer_map(decoded_picture.framebuffer->dma_buffer, IMX_VPU_MAPPING_FLAG_READ);
+	mapped_virtual_address = imx_vpu_dma_buffer_map(decoded_frame.framebuffer->dma_buffer, IMX_VPU_MAPPING_FLAG_READ);
 	fwrite(mapped_virtual_address, 1, num_out_byte, ctx->fout);
-	imx_vpu_dma_buffer_unmap(decoded_picture.framebuffer->dma_buffer);
+	imx_vpu_dma_buffer_unmap(decoded_frame.framebuffer->dma_buffer);
 
 	/* Decoded picture is no longer needed, so inform the decoder that it can reclaim it */
-	imx_vpu_jpeg_dec_picture_finished(ctx->jpeg_decoder, &decoded_picture);
+	imx_vpu_jpeg_dec_frame_finished(ctx->jpeg_decoder, &decoded_frame);
 
 	return RETVAL_OK;
 }
