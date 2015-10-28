@@ -1196,7 +1196,7 @@ ImxVpuEncH264Params;
 /* Motion JPEG parameters for the new encoder instance. */
 typedef struct
 {
-	/* Quality factor for JPEG encoding, between 0 (worst quality, best
+	/* Quality factor for JPEG encoding, between 1 (worst quality, best
 	 * compression) and 100 (best quality, worst compression). Default
 	 * value is 85.
 	 * This quality factor is the one from the Independent JPEG Group's

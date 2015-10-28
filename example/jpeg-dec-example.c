@@ -27,12 +27,12 @@
 
 /* This is a simple example of how to decode JPEGs with the imxvpuapi library.
  * It reads the given JPEG file and configures the VPU to decode MJPEG data.
- * Then, the decoded pixels are written to the output file, in PPM format.
+ * Then, the decoded pixels are written to the output file, as raw pixels.
  *
  * Note that using the JPEG decoder is optional, and it is perfectly OK to use
  * the lower-level video decoder API for JPEGs as well. (In fact, this is what
  * the JPEG decoder does internally.) The JPEG decoder is considerably easier
- * to use, with less boilerplate code, however. */
+ * to use and requires less boilerplate code, however. */
 
 
 
@@ -62,9 +62,7 @@ Retval run(Context *ctx)
 {
 	long size;
 	void *buf;
-	ImxVpuEncodedFrame encoded_frame;
-	ImxVpuRawFrame decoded_frame;
-	ImxVpuJPEGInfo info;
+	ImxVpuJPEGDecInfo info;
 	uint8_t *mapped_virtual_address;
 	size_t num_out_byte;
 
@@ -74,31 +72,29 @@ Retval run(Context *ctx)
 	size = ftell(ctx->fin);
 	fseek(ctx->fin, 0, SEEK_SET);
 
+
 	/* Allocate buffer for the input data, and read the data into it */
 	buf = malloc(size);
 	fread(buf, 1, size, ctx->fin);
 
-	/* Setup encoded frame information */
-	encoded_frame.data = buf;
-	encoded_frame.data_size = size;
-
-	fprintf(stderr, "encoded input frame:  size: %u byte\n", encoded_frame.data_size);
+	fprintf(stderr, "encoded input frame:  size: %ld byte\n", size);
 
 	/* Perform the actual JPEG decoding */
-	ImxVpuDecReturnCodes dec_ret = imx_vpu_jpeg_dec_decode(ctx->jpeg_decoder, &encoded_frame, &decoded_frame);
-
-	if ((dec_ret != IMX_VPU_DEC_RETURN_CODE_OK) || (decoded_frame.framebuffer == NULL))
+	ImxVpuDecReturnCodes dec_ret = imx_vpu_jpeg_dec_decode(ctx->jpeg_decoder, buf, size);
+	if (dec_ret != IMX_VPU_DEC_RETURN_CODE_OK)
 	{
-		if (dec_ret == IMX_VPU_DEC_RETURN_CODE_OK)
-			fprintf(stderr, "could not decode this JPEG image : unspecified error (framebuffer is NULL)\n");
-		else
-			fprintf(stderr, "could not decode this JPEG image : %s\n", imx_vpu_dec_error_string(dec_ret));
+		fprintf(stderr, "could not decode this JPEG image : %s\n", imx_vpu_dec_error_string(dec_ret));
 		return RETVAL_ERROR;
 	}
+
+	/* Input data is not needed anymore, so free the input buffer */
+	free(buf);
+
 
 	/* Get some information about the the frame
 	 * Note that the info is only available *after* calling imx_vpu_jpeg_dec_decode() */
 	imx_vpu_jpeg_dec_get_info(ctx->jpeg_decoder, &info);
+
 	fprintf(
 		stderr,
 		"aligned frame size: %u x %u pixel  actual frame size: %u x %u pixel  Y/Cb/Cr stride: %u/%u/%u  Y/Cb/Cr size: %u/%u/%u  Y/Cb/Cr offset: %u/%u/%u  color format: %s\n",
@@ -110,18 +106,22 @@ Retval run(Context *ctx)
 		imx_vpu_color_format_string(info.color_format)
 	);
 
-	/* Input data is not needed anymore, so free the input buffer */
-	free(buf);
+	if (info.framebuffer == NULL)
+	{
+		fprintf(stderr, "could not decode this JPEG image : no framebuffer returned\n");
+		return RETVAL_ERROR;
+	}
+
 
 	/* Map the DMA buffer of the decoded picture, write out the decoded pixels, and unmap the buffer again */
 	num_out_byte = info.y_size + info.cbcr_size * 2;
 	fprintf(stderr, "decoded output picture:  writing %u byte\n", num_out_byte);
-	mapped_virtual_address = imx_vpu_dma_buffer_map(decoded_frame.framebuffer->dma_buffer, IMX_VPU_MAPPING_FLAG_READ);
+	mapped_virtual_address = imx_vpu_dma_buffer_map(info.framebuffer->dma_buffer, IMX_VPU_MAPPING_FLAG_READ);
 	fwrite(mapped_virtual_address, 1, num_out_byte, ctx->fout);
-	imx_vpu_dma_buffer_unmap(decoded_frame.framebuffer->dma_buffer);
+	imx_vpu_dma_buffer_unmap(info.framebuffer->dma_buffer);
 
-	/* Decoded picture is no longer needed, so inform the decoder that it can reclaim it */
-	imx_vpu_jpeg_dec_frame_finished(ctx->jpeg_decoder, &decoded_frame);
+	/* Decoded frame is no longer needed, so inform the decoder that it can reclaim it */
+	imx_vpu_jpeg_dec_frame_finished(ctx->jpeg_decoder, info.framebuffer);
 
 	return RETVAL_OK;
 }
