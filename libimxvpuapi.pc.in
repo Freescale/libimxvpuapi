@@ -1,0 +1,10 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+includedir=@includedir@
+
+Name: libimxvpuapi
+Description: interface library for i.MX6 VPU devices
+Version: @VERSION@
+Libs: -L${libdir} -limxvpuapi
+Cflags: -I${includedir}

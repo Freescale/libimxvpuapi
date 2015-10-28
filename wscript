@@ -124,6 +124,8 @@ def build(bld):
 		vnum = version
 	)
 
+	bld.install_files('${PREFIX}/include/imxvpuapi/', ['imxvpuapi/imxvpuapi.h', 'imxvpuapi/imxvpuapi_jpeg.h'])
+
 	examples = [ \
 		{ 'name': 'decode-example', 'source': ['example/decode-example.c'] }, \
 		{ 'name': 'encode-example', 'source': ['example/encode-example.c'] }, \
@@ -137,6 +139,13 @@ def build(bld):
 		use = 'imxvpuapi',
 		source = ['example/main.c', 'example/h264_utils.c'],
 		name = 'examples-common'
+	)
+
+	bld(
+		features = ['subst'],
+		source = "libimxvpuapi.pc.in",
+		target="libimxvpuapi.pc",
+		install_path="${LIBDIR}/pkgconfig"
 	)
 
 	for example in examples:
