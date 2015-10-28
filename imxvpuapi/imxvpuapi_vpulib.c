@@ -3352,6 +3352,10 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	*output_code = 0;
 	write_ptr_start = NULL;
 
+	/* Set this here to ensure that the handle is NULL if an error occurs
+	 * before acquire_output_buffer() is called */
+	encoded_frame->acquired_handle = NULL;
+
 	/* Get the physical address for the raw_frame that shall be encoded
 	 * and the virtual pointer to the output buffer */
 	raw_frame_phys_addr = imx_vpu_dma_buffer_get_physical_address(raw_frame->framebuffer->dma_buffer);

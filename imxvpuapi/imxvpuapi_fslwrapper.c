@@ -2072,6 +2072,10 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	encoded_data_size = 0;
 	*output_code = 0;
 
+	/* Set this here to ensure that the handle is NULL if an error occurs
+	 * before acquire_output_buffer() is called */
+	encoded_frame->acquired_handle = NULL;
+
 	/* When encoding h.264 or MPEG4, the VPU wrapper outputs the header separately.
 	 * imxvpuapi however does not. To solve this, gather output data until the
 	 * wrapper sets the VPU_ENC_INPUT_USED output code. This is safe, since the

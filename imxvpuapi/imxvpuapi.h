@@ -1487,7 +1487,9 @@ void imx_vpu_enc_configure_intra_qp(ImxVpuEncoder *encoder, int intra_qp);
  *
  * It is guaranteed that once the buffer was acquired, finish_output_buffer() will always be called, even if
  * an error occurs. This prevents potential memory/resource leaks if the finish_output_buffer() call somehow
- * unlocks or releases the buffer for further processing.
+ * unlocks or releases the buffer for further processing. The acquired_handle is also copied to encoded_frame
+ * even if an error occurs, unless the error occurred before the acquire_output_buffer() call, in which case
+ * the encoded_frame's acquired_handle field will be set to NULL.
  *
  * The other fields in encoding_params specify additional encoding parameters, which can vary from frame to
  * frame.
