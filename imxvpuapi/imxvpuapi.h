@@ -639,6 +639,28 @@ char const *imx_vpu_frame_type_string(ImxVpuFrameType frame_type);
  * (abort_waiting would be a flag that gets raised when something from the outside signals
  * that waiting and decoding needs to be shut down now, for example because the user wants
  * to close the player, or because the user pressed Ctrl+C.)
+ *
+ * If any video sequence parameters (like frame width and height) in the input data change,
+ * the output code from imx_vpu_dec_decode() calls in step 10 will contain the
+ * IMX_VPU_DEC_OUTPUT_CODE_VIDEO_PARAMS_CHANGED flag. (This will never happen in step 5.)
+ * When this occurs, decoding cannot continue, because the registered framebuffers are
+ * of an incorrect size, and because the decoder's configuration is set up for the previous
+ * parameters. Therefore, in this case, first, the decoder has to be drained of decoded-
+ * but-not-yet-displayed frames like in step 12, then, it has to be closed, and opened
+ * again. The ImxVpuDecOpenParams structure that is then passed to the imx_vpu_dec_open()
+ * call should have its frame_width and frame_height values set to 0 to ensure the
+ * new sequence parameters are properly used. Then, the data that was fed into the
+ * imx_vpu_dec_decode() call that set the IMX_VPU_DEC_OUTPUT_CODE_VIDEO_PARAMS_CHANGED flag
+ * has to be fed again to imx_vpu_dec_decode(). The initial info callback from
+ * imx_vpu_dec_open() will again be called, and decoding continues as usual.
+ *
+ * It is also recommended to make sure that framebuffers and associated DMA buffers that
+ * were allocated before the video sequence parameter change be deallocated in the
+ * initial callback to avoid memory leaks.
+ *
+ * However, if the environment is a framework like GStreamer or libav/FFmpeg, it is likely
+ * this will never have to be done, since these have their own parsers that detect parameter
+ * changes and initiate reinitializations.
  */
 
 
@@ -718,17 +740,11 @@ typedef enum
 	 * be available until the input frame's data has been fully and
 	 * correctly delivered. */
 	IMX_VPU_DEC_OUTPUT_CODE_NOT_ENOUGH_INPUT_DATA        = (1UL << 5),
-	/* The VPU detected a resolution change. This resets the framebuffer
-	 * registration, meaning that the initial info callback that was
-	 * passed to imx_vpu_dec_open will be called again, with the new
-	 * resolution. The framebuffer registration process is repeated.
-	 * Make sure the old framebuffers are deallocated when this happens!
-	 * If the environment is a framework like GStreamer or libav, which
-	 * has parsers that detect resolution changes on its own, chances are,
-	 * this output code is never encountered, because in these frameworks,
-	 * the decoder is reopened with the updated resolution instead. */
-	// TODO: add this to vpulib backend
-	IMX_VPU_DEC_OUTPUT_CODE_RESOLUTION_CHANGED           = (1UL << 6)
+	/* The VPU detected a change in the video sequence parameters
+	 * (like frame width and height). Decoding cannot continue. See the
+	 * explanation in th step-by-step guide above for what steps to take
+	 * if this output code is set. */
+	IMX_VPU_DEC_OUTPUT_CODE_VIDEO_PARAMS_CHANGED         = (1UL << 6)
 }
 ImxVpuDecOutputCodes;
 
@@ -789,15 +805,13 @@ ImxVpuDecInitialInfo;
 
 
 /* Callback for handling new ImxVpuDecInitialInfo data. This is called when new
- * information about the bitstream becomes available. output_code is useful
+ * information about the bitstream becomes available. output_code can be useful
  * to check why this callback was invoked. IMX_VPU_DEC_OUTPUT_CODE_INITIAL_INFO_AVAILABLE
- * is always set. If IMX_VPU_DEC_OUTPUT_CODE_RESOLUTION_CHANGED is also set,
- * it means that this callback was called before, and now got called again, because
- * the resolution is now different. Either way, every time this callback gets called,
- * new framebuffers should be allocated and registered with imx_vpu_dec_register_framebuffers().
- * user_data is a user-defined pointer that is passed to this callback. It has the same value
- * as the callback_user_data pointer from the imx_vpu_dec_open() call.
- * It returns 0 if something failed, nonzero if successful. */
+ * is always set. Every time this callback gets called, new framebuffers should be
+ * allocated and registered with imx_vpu_dec_register_framebuffers().
+ * user_data is a user-defined pointer that is passed to this callback. It has the same
+ * value as the callback_user_data pointer from the imx_vpu_dec_open() call.
+ * The callback returns 0 if something failed, nonzero if successful. */
 typedef int (*imx_vpu_dec_new_initial_info_callback)(ImxVpuDecoder *decoder, ImxVpuDecInitialInfo *new_initial_info, unsigned int output_code, void *user_data);
 
 
@@ -871,7 +885,9 @@ void imx_vpu_dec_set_codec_data(ImxVpuDecoder *decoder, uint8_t const *codec_dat
 /* Decodes an encoded input frame. "encoded_frame" must always be set, even in drain mode. See ImxVpuEncodedFrame
  * for details about its contents. output_code is a bit mask, must not be NULL, and returns important information
  * about the decoding process. The value is a bitwise OR combination of the codes in ImxVpuDecOutputCodes. Also
- * look at imx_vpu_dec_get_decoded_frame() about how to retrieve decoded frames (if these exist). */
+ * look at imx_vpu_dec_get_decoded_frame() about how to retrieve decoded frames (if these exist). Note that if
+ * the IMX_VPU_DEC_OUTPUT_CODE_VIDEO_PARAMS_CHANGED flag is set in the output_code, decoding cannot continue,
+ * and the decoder should be closed. See the notes below step-by-step guide above for details about this. */
 ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFrame const *encoded_frame, unsigned int *output_code);
 
 /* Retrieves a decoded frame. The structure referred to by "decoded_frame" will be filled with data about

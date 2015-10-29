@@ -432,7 +432,7 @@ static unsigned int dec_convert_outcode(VpuDecBufRetCode code)
 	if (code & VPU_DEC_OUTPUT_MOSAIC_DIS)  out |= IMX_VPU_DEC_OUTPUT_CODE_DROPPED; /* mosaic frames are dropped */
 	if (code & VPU_DEC_NO_ENOUGH_BUF)      out |= IMX_VPU_DEC_OUTPUT_CODE_NOT_ENOUGH_OUTPUT_FRAMES;
 	if (code & VPU_DEC_NO_ENOUGH_INBUF)    out |= IMX_VPU_DEC_OUTPUT_CODE_NOT_ENOUGH_INPUT_DATA;
-	if (code & VPU_DEC_RESOLUTION_CHANGED) out |= IMX_VPU_DEC_OUTPUT_CODE_RESOLUTION_CHANGED;
+	if (code & VPU_DEC_RESOLUTION_CHANGED) out |= IMX_VPU_DEC_OUTPUT_CODE_VIDEO_PARAMS_CHANGED;
 	return out;
 }
 
@@ -1115,24 +1115,29 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 			IMX_VPU_INFO("flushed decoder");
 	}
 
+	/* Check if video sequence parameters changed. If so, abort any
+	 * additional checks and processing; the decoder has to be drained
+	 * and reopened to support the changed parameters. */
 	if (buf_ret_code & VPU_DEC_RESOLUTION_CHANGED)
 	{
-		/* Resolution changed; reset internal states, since in the next
-		 * VPU_DecDecodeBuf() call, new initial info will become available */
+		VpuDecInitInfo wrapper_init_info;
 
-		IMX_VPU_INFO("resolution changed - resetting internal states");
+		IMX_VPU_DEBUG("video sequence parameters changed");
+		*output_code |= IMX_VPU_DEC_OUTPUT_CODE_VIDEO_PARAMS_CHANGED;
 
-		decoder->recalculate_num_avail_framebuffers = FALSE;
+		/* Do a dummy VPU_DecGetInitialInfo() call, since until then, the
+		 * FSL wrapper is locked, and will only continue to work if the
+		 * initial info is pulled out. In particular, draining won't work
+		 * until then, but this needs to be possible, since the user will
+		 * drain and reopen the decoder. */
+		ret = VPU_DecGetInitialInfo(decoder->handle, &wrapper_init_info);
+		if (ret != VPU_DEC_RET_SUCCESS)
+		{
+			ImxVpuDecReturnCodes imxret = dec_convert_retcode(ret);
+			IMX_VPU_ERROR("getting dummy init info failed: %s", imx_vpu_dec_error_string(imxret));
+		}
 
-		decoder->num_context = 0;
-
-		if (decoder->context_for_frames != NULL)
-			IMX_VPU_FREE(decoder->context_for_frames, sizeof(void*) * decoder->num_framebuffers);
-		if (decoder->wrapper_framebuffers != NULL)
-			IMX_VPU_FREE(decoder->wrapper_framebuffers, sizeof(VpuFrameBuffer*) * decoder->num_framebuffers);
-
-		decoder->context_for_frames = NULL;
-		decoder->wrapper_framebuffers = NULL;
+		return IMX_VPU_DEC_RETURN_CODE_OK;
 	}
 
 	if (buf_ret_code & VPU_DEC_NO_ENOUGH_INBUF)

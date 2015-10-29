@@ -2138,6 +2138,16 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 			decoder->dec_output_info.indexFrameDisplay = jpeg_frame_idx;
 		}
 
+		/* Check if video sequence parameters changed. If so, abort any
+		 * additional checks and processing; the decoder has to be drained
+		 * and reopened to support the changed parameters. */
+		if (decoder->dec_output_info.decodingSuccess & (1 << 20))
+		{
+			IMX_VPU_DEBUG("video sequence parameters changed");
+			*output_code |= IMX_VPU_DEC_OUTPUT_CODE_VIDEO_PARAMS_CHANGED;
+			return IMX_VPU_DEC_RETURN_CODE_OK;
+		}
+
 		/* Check if there were enough output framebuffers */
 		if (decoder->dec_output_info.indexFrameDecoded == VPU_DECODER_DECODEIDX_ALL_FRAMES_DECODED)
 		{
@@ -2145,9 +2155,9 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 			*output_code |= IMX_VPU_DEC_OUTPUT_CODE_NOT_ENOUGH_OUTPUT_FRAMES;
 		}
 
-		/* Check if decoding was incomplete (first bit is then 0, fourth bit 1).
+		/* Check if decoding was incomplete (bit #0 is then 0, bit #4 1).
 		 * Incomplete decoding indicates incomplete input data. */
-		if (decoder->dec_output_info.decodingSuccess & 0x10)
+		if (decoder->dec_output_info.decodingSuccess & (1 << 4))
 		{
 			IMX_VPU_DEBUG("not enough input data was available");
 			*output_code = IMX_VPU_DEC_OUTPUT_CODE_NOT_ENOUGH_INPUT_DATA;

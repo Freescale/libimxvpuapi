@@ -52,6 +52,8 @@ struct _Context
 	ImxVpuFramebufferSizes calculated_sizes;
 
 	unsigned int frame_id_counter;
+
+	ImxVpuDecOpenParams open_params;
 };
 
 
@@ -103,6 +105,20 @@ int initial_info_callback(ImxVpuDecoder *decoder, ImxVpuDecInitialInfo *new_init
 	);
 
 
+	/* If any framebuffers were allocated previously, deallocate them now.
+	 * This can happen when video sequence parameters change, for example. */
+
+	if (ctx->framebuffers != NULL)
+		free(ctx->framebuffers);
+
+	if (ctx->fb_dmabuffers != NULL)
+	{
+		for (i = 0; i < ctx->num_framebuffers; ++i)
+			imx_vpu_dma_buffer_deallocate(ctx->fb_dmabuffers[i]);
+		free(ctx->fb_dmabuffers);
+	}
+
+
 	/* Allocate memory blocks for the framebuffer and DMA buffer structures,
 	 * and allocate the DMA buffers themselves */
 
@@ -147,7 +163,6 @@ int initial_info_callback(ImxVpuDecoder *decoder, ImxVpuDecInitialInfo *new_init
 Context* init(FILE *input_file, FILE *output_file)
 {
 	Context *ctx;
-	ImxVpuDecOpenParams open_params;
 
 	ctx = calloc(1, sizeof(Context));
 	ctx->fin = input_file;
@@ -158,9 +173,9 @@ Context* init(FILE *input_file, FILE *output_file)
 
 	/* Set the open params. Enable frame reordering, use h.264 as the codec format.
 	 * The memset() call ensures the other values are set to their default. */
-	memset(&open_params, 0, sizeof(open_params));
-	open_params.codec_format = IMX_VPU_CODEC_FORMAT_H264;
-	open_params.enable_frame_reordering = 1;
+	memset(&(ctx->open_params), 0, sizeof(ImxVpuDecOpenParams));
+	ctx->open_params.codec_format = IMX_VPU_CODEC_FORMAT_H264;
+	ctx->open_params.enable_frame_reordering = 1;
 
 	/* Load the VPU firmware */
 	imx_vpu_dec_load();
@@ -175,7 +190,7 @@ Context* init(FILE *input_file, FILE *output_file)
 	);
 
 	/* Open a decoder instance, using the previously allocated bitstream buffer */
-	imx_vpu_dec_open(&(ctx->vpudec), &open_params, ctx->bitstream_buffer, initial_info_callback, ctx);
+	imx_vpu_dec_open(&(ctx->vpudec), &(ctx->open_params), ctx->bitstream_buffer, initial_info_callback, ctx);
 
 	return ctx;
 }
@@ -231,11 +246,43 @@ static int decode_frame(Context *ctx)
 		return RETVAL_ERROR;
 	}
 
-	/* A decoded raw frame is available for further processing. Retrieve it, do something
-	 * with it, and once the raw frame is no longer needed, mark it as displayed. This
-	 * marks it internally as available for further decoding by the VPU. */
+	if (output_code & IMX_VPU_DEC_OUTPUT_CODE_VIDEO_PARAMS_CHANGED)
+	{
+		/* Video sequence parameters changed. Decoding cannot continue with the
+		 * existing decoder. Drain it, and open a new one to resume decoding. */
+
+		imx_vpu_dec_enable_drain_mode(ctx->vpudec, 1);
+
+		for (;;)
+		{
+			Retval rret = decode_frame(ctx);
+			if (rret == RETVAL_EOS)
+				break;
+			else if (rret == RETVAL_ERROR)
+				return RETVAL_ERROR;
+		}
+
+		imx_vpu_dec_enable_drain_mode(ctx->vpudec, 0);
+
+		imx_vpu_dec_close(ctx->vpudec);
+
+		imx_vpu_dec_open(&(ctx->vpudec), &(ctx->open_params), ctx->bitstream_buffer, initial_info_callback, ctx);
+
+		/* Feed the data that caused the IMX_VPU_DEC_OUTPUT_CODE_VIDEO_PARAMS_CHANGED
+		 * output code flag again, but this time into the new decoder */
+		if ((ret = imx_vpu_dec_decode(ctx->vpudec, &encoded_frame, &output_code)) != IMX_VPU_DEC_RETURN_CODE_OK)
+		{
+			fprintf(stderr, "imx_vpu_dec_decode() failed: %s\n", imx_vpu_dec_error_string(ret));
+			return RETVAL_ERROR;
+		}
+	}
+
 	if (output_code & IMX_VPU_DEC_OUTPUT_CODE_DECODED_FRAME_AVAILABLE)
 	{
+		/* A decoded raw frame is available for further processing. Retrieve it, do something
+		 * with it, and once the raw frame is no longer needed, mark it as displayed. This
+		 * marks it internally as available for further decoding by the VPU. */
+
 		ImxVpuRawFrame decoded_frame;
 		unsigned int frame_id;
 		uint8_t *mapped_virtual_address;
