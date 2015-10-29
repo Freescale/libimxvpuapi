@@ -3337,7 +3337,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	uint8_t *write_ptr, *write_ptr_start, *write_ptr_end;
 	BOOL timeout;
 	BOOL add_header;
-	size_t mjpeg_header_size;
+	size_t mjpeg_header_size = 0;
 	size_t encoded_data_size;
 
 	ret = IMX_VPU_ENC_RETURN_CODE_OK;
