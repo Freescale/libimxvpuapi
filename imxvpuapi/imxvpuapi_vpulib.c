@@ -763,7 +763,7 @@ struct _ImxVpuDecoder
 
 
 #define IMX_VPU_DEC_HANDLE_ERROR(MSG_START, RET_CODE) \
-	imx_vpu_dec_handle_error_full(__FILE__, __LINE__, __FUNCTION__, (MSG_START), (RET_CODE))
+	imx_vpu_dec_handle_error_full(__FILE__, __LINE__, __func__, (MSG_START), (RET_CODE))
 
 
 #define VPU_DECODER_DISPLAYIDX_ALL_FRAMES_DISPLAYED -1
@@ -2409,7 +2409,7 @@ struct _ImxVpuEncoder
 
 
 #define IMX_VPU_ENC_HANDLE_ERROR(MSG_START, RET_CODE) \
-	imx_vpu_enc_handle_error_full(__FILE__, __LINE__, __FUNCTION__, (MSG_START), (RET_CODE))
+	imx_vpu_enc_handle_error_full(__FILE__, __LINE__, __func__, (MSG_START), (RET_CODE))
 
 
 static ImxVpuEncReturnCodes imx_vpu_enc_handle_error_full(char const *fn, int linenr, char const *funcn, char const *msg_start, RetCode ret_code)

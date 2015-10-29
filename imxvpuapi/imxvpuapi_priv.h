@@ -35,8 +35,8 @@ extern "C" {
 #define IMX_VPU_ALIGN_VAL_TO(LENGTH, ALIGN_SIZE)  ( ((uintptr_t)(((uint8_t*)(LENGTH)) + (ALIGN_SIZE) - 1) / (ALIGN_SIZE)) * (ALIGN_SIZE) )
 
 
-#define IMX_VPU_ALLOC(SIZE) imx_vpu_cur_heap_alloc_fn((SIZE), imx_vpu_cur_heap_alloc_context, __FILE__, __LINE__, __FUNCTION__)
-#define IMX_VPU_FREE(PTR, SIZE) imx_vpu_cur_heap_free_fn((PTR), (SIZE), imx_vpu_cur_heap_alloc_context, __FILE__, __LINE__, __FUNCTION__)
+#define IMX_VPU_ALLOC(SIZE) imx_vpu_cur_heap_alloc_fn((SIZE), imx_vpu_cur_heap_alloc_context, __FILE__, __LINE__, __func__)
+#define IMX_VPU_FREE(PTR, SIZE) imx_vpu_cur_heap_free_fn((PTR), (SIZE), imx_vpu_cur_heap_alloc_context, __FILE__, __LINE__, __func__)
 
 extern void *imx_vpu_cur_heap_alloc_context;
 extern ImxVpuHeapAllocFunc imx_vpu_cur_heap_alloc_fn;
@@ -51,12 +51,12 @@ extern ImxVpuHeapFreeFunc imx_vpu_cur_heap_free_fn;
 #define IMX_VPU_TRACE_FULL(FILE_, LINE_, FUNCTION_, ...)   do { if (imx_vpu_cur_log_level_threshold >= IMX_VPU_LOG_LEVEL_TRACE)   { imx_vpu_cur_logging_fn(IMX_VPU_LOG_LEVEL_TRACE,   FILE_, LINE_, FUNCTION_, __VA_ARGS__); } } while(0)
 
 
-#define IMX_VPU_ERROR(...)    IMX_VPU_ERROR_FULL  (__FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
-#define IMX_VPU_WARNING(...)  IMX_VPU_WARNING_FULL(__FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
-#define IMX_VPU_INFO(...)     IMX_VPU_INFO_FULL   (__FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
-#define IMX_VPU_DEBUG(...)    IMX_VPU_DEBUG_FULL  (__FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
-#define IMX_VPU_LOG(...)      IMX_VPU_LOG_FULL    (__FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
-#define IMX_VPU_TRACE(...)    IMX_VPU_TRACE_FULL  (__FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
+#define IMX_VPU_ERROR(...)    IMX_VPU_ERROR_FULL  (__FILE__, __LINE__, __func__, __VA_ARGS__)
+#define IMX_VPU_WARNING(...)  IMX_VPU_WARNING_FULL(__FILE__, __LINE__, __func__, __VA_ARGS__)
+#define IMX_VPU_INFO(...)     IMX_VPU_INFO_FULL   (__FILE__, __LINE__, __func__, __VA_ARGS__)
+#define IMX_VPU_DEBUG(...)    IMX_VPU_DEBUG_FULL  (__FILE__, __LINE__, __func__, __VA_ARGS__)
+#define IMX_VPU_LOG(...)      IMX_VPU_LOG_FULL    (__FILE__, __LINE__, __func__, __VA_ARGS__)
+#define IMX_VPU_TRACE(...)    IMX_VPU_TRACE_FULL  (__FILE__, __LINE__, __func__, __VA_ARGS__)
 
 
 extern ImxVpuLogLevel imx_vpu_cur_log_level_threshold;
