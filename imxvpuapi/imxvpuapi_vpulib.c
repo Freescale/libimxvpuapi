@@ -299,6 +299,8 @@ static BOOL imx_vpu_load(void)
 	}
 	else
 	{
+		IMX_VPU_INFO("libimxvpuapi version %s vpulib backend", IMXVPUAPI_VERSION);
+
 		if (vpu_Init(NULL) == RETCODE_SUCCESS)
 		{
 			IMX_VPU_DEBUG("loaded VPU");

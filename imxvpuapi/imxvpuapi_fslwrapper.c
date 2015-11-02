@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
+#include <config.h>
 #include <vpu_wrapper.h>
 #include "imxvpuapi.h"
 #include "imxvpuapi_priv.h"
@@ -534,7 +535,11 @@ ImxVpuDecReturnCodes imx_vpu_dec_load(void)
 	}
 	else
 	{
-		ImxVpuDecReturnCodes ret = dec_convert_retcode(VPU_DecLoad());
+		ImxVpuDecReturnCodes ret;
+
+		IMX_VPU_INFO("libimxvpuapi version %s fslwrapper backend", IMXVPUAPI_VERSION);
+
+		ret = dec_convert_retcode(VPU_DecLoad());
 		if (ret != IMX_VPU_DEC_RETURN_CODE_OK)
 			IMX_VPU_ERROR("loading decoder failed: %s", imx_vpu_dec_error_string(ret));
 		else

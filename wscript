@@ -51,12 +51,14 @@ def options(opt):
 	opt.add_option('--enable-static', action = 'store_true', default = False, help = 'build static library [default: build shared library]')
 	opt.add_option('--use-fslwrapper-backend', action = 'store_true', default = False, help = 'use the Freescale VPU wrapper (= libfslvpuwrap) backend instead of the vpulib (= imx-vpu) one [default: %default]')
 	opt.load('compiler_c')
+	opt.load('gnu_dirs')
 
 
 def configure(conf):
 	import os
 
 	conf.load('compiler_c')
+	conf.load('gnu_dirs')
 
 	# check and add compiler flags
 
@@ -106,14 +108,23 @@ def configure(conf):
 		conf.env['VPUAPI_USELIBS'] = ['FSLVPUWRAPPER']
 		conf.env['VPUAPI_BACKEND_SOURCE'] = ['imxvpuapi/imxvpuapi_fslwrapper.c']
 
+
+	# Process the library version number
+
+	version_node = conf.srcnode.find_node('VERSION')
+	with open(version_node.abspath()) as x:
+		version = x.readline().splitlines()[0]
+
+	conf.env['IMXVPUAPI_VERSION'] = version
+	conf.define('IMXVPUAPI_VERSION', version)
+
+
+	# Write the config header
+
 	conf.write_config_header('config.h')
 
 
 def build(bld):
-	version_node = bld.srcnode.find_node('VERSION')
-	with open(version_node.abspath()) as x:
-		version = x.readline().splitlines()[0]
-
 	bld(
 		features = ['c', 'cstlib' if bld.env['BUILD_STATIC'] else 'cshlib'],
 		includes = ['.'],
@@ -121,7 +132,7 @@ def build(bld):
 		source = ['imxvpuapi/imxvpuapi.c', 'imxvpuapi/imxvpuapi_jpeg.c', 'imxvpuapi/imxvpuapi_parse_jpeg.c'] + bld.env['VPUAPI_BACKEND_SOURCE'],
 		name = 'imxvpuapi',
 		target = 'imxvpuapi',
-		vnum = version
+		vnum = bld.env['IMXVPUAPI_VERSION']
 	)
 
 	bld.install_files('${PREFIX}/include/imxvpuapi/', ['imxvpuapi/imxvpuapi.h', 'imxvpuapi/imxvpuapi_jpeg.h'])

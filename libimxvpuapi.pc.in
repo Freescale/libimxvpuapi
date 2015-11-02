@@ -5,6 +5,6 @@ includedir=@includedir@
 
 Name: libimxvpuapi
 Description: interface library for i.MX6 VPU devices
-Version: @VERSION@
+Version: @IMXVPUAPI_VERSION@
 Libs: -L${libdir} -limxvpuapi
 Cflags: -I${includedir}
