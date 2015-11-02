@@ -236,6 +236,10 @@ static int decode_frame(Context *ctx)
 		 * is just a monotonically increasing integer. */
 		encoded_frame.context = (void *)((uintptr_t)(ctx->frame_id_counter));
 
+		/* Not using the PTS/DTS values in this example */
+		encoded_frame.pts = 0;
+		encoded_frame.dts = 0;
+
 		fprintf(stderr, "encoded input frame:  frame id: 0x%x  size: %u byte\n", ctx->frame_id_counter, encoded_frame.data_size);
 	}
 
@@ -311,8 +315,9 @@ static int decode_frame(Context *ctx)
 	{
 		/* A frame was dropped. The context of the dropped frame can be retrieved
 		 * if this is necessary for timestamping etc. */
-		unsigned int dropped_frame_id = (unsigned int)((uintptr_t)(imx_vpu_dec_get_dropped_frame_context(ctx->vpudec)));
-		fprintf(stderr, "dropped frame:  frame id: 0x%x\n", dropped_frame_id);
+		void* dropped_frame_id;
+		imx_vpu_dec_get_dropped_frame_info(ctx->vpudec, &dropped_frame_id, NULL, NULL);
+		fprintf(stderr, "dropped frame:  frame id: 0x%x\n", (unsigned int)((uintptr_t)dropped_frame_id));
 	}
 
 	if (output_code & IMX_VPU_DEC_OUTPUT_CODE_EOS)
