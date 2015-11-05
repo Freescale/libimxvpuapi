@@ -1,0 +1,25 @@
+Source: libimxvpuapi
+Priority: extra
+Maintainer: Carlos Rafael Giani <unknown>
+Build-Depends:
+ debhelper (>= 8.0.0),
+ libvpu-imx6-dev,
+Standards-Version: 3.9.3
+Section: libs
+Homepage: https://github.com/Freescale/libimxvpuapi
+Vcs-Browser: https://github.com/Freescale/libimxvpuapi
+
+Package: libimxvpuapi-dev
+Section: libdevel
+Architecture: any
+Depends: libimxvpuapi0 (= ${binary:Version})
+Description: development files for libimxvpuapi
+ This package provides the development files required to build software against libimxvpuapi.
+
+Package: libimxvpuapi0
+Section: libs
+Architecture: any
+Multi-Arch: same
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: frontend for the i.MX6 VPU hardware video engine
+ This library provides an API for using the iMX6 VPU video engine. It is an alternative to Freescale's VPU wrapper. Both the wrapper and this library are layered on top of imx-vpu , the low-level iMX6 VPU interface.
