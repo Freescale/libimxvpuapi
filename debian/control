@@ -3,6 +3,7 @@ Priority: extra
 Maintainer: Carlos Rafael Giani <unknown>
 Build-Depends:
  debhelper (>= 8.0.0),
+ python,
  libvpu-imx6-dev,
 Standards-Version: 3.9.3
 Section: libs
