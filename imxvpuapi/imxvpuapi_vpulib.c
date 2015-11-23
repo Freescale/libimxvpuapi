@@ -524,6 +524,11 @@ static void default_dmabufalloc_deallocate(ImxVpuDMABufferAllocator *allocator, 
 
 	DefaultDMABuffer *defaultbuf = (DefaultDMABuffer *)buffer;
 
+	if (IOFreeVirtMem(&(defaultbuf->mem_desc)) != 0)
+		IMX_VPU_ERROR("shutting down virtual address for %d bytes of physical memory failed", defaultbuf->size);
+	else
+		IMX_VPU_DEBUG("shut down virtual address for %d bytes of physical memory", defaultbuf->size);
+
 	if (IOFreePhyMem(&(defaultbuf->mem_desc)) != 0)
 		IMX_VPU_ERROR("deallocating %d bytes of physical memory failed", defaultbuf->size);
 	else
