@@ -119,6 +119,13 @@ def configure(conf):
 	conf.define('IMXVPUAPI_VERSION', version)
 
 
+	# Workaround to ensure previously generated .pc files aren't stale
+
+	pcnode = conf.path.get_bld().find_node('libimxvpuapi.pc')
+	if pcnode:
+		pcnode.delete()
+
+
 	# Write the config header
 
 	conf.write_config_header('config.h')
