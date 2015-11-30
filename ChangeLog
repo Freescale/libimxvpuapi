@@ -1,0 +1,10 @@
+==== version 0.10.1 (2015-11-30) ====
+
+* add debian packaging files
+* update waf to version 1.8.16
+* add workaround in wscript to prevent stale pkg-config .pc files
+* fix memory leak by adding missing IOFreeVirtMem() call in vpulib backend
+
+==== version 0.10.0 (2015-11-02) ====
+
+Initial release

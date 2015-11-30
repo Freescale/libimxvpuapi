@@ -1,5 +1,13 @@
+libimxvpuapi (0.10.1) stable; urgency=low
+
+  * Update waf to version 1.8.16
+  * Add workaround in wscript to prevent stale pkg-config .pc files
+  * Fix memory leak by adding missing IOFreeVirtMem() call in vpulib backend
+
+ -- Carlos Rafael Giani <dv@pseudoterminal.org>  Thu, 30 Nov 2015 11:11:56 +0100
+
 libimxvpuapi (0.10.0) stable; urgency=low
 
   * Initial Release.
 
- -- Carlos Rafael Giani <unknown>  Thu, 05 Nov 2015 12:43:32 +0100
+ -- Carlos Rafael Giani <dv@pseudoterminal.org>  Thu, 05 Nov 2015 12:43:32 +0100
