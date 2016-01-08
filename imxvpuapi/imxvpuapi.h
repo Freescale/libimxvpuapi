@@ -72,9 +72,9 @@ ImxVpuAllocationFlags;
  * both be set */
 typedef enum
 {
-	/* Map memory for CPU read access */
-	IMX_VPU_MAPPING_FLAG_WRITE   = (1UL << 0),
 	/* Map memory for CPU write access */
+	IMX_VPU_MAPPING_FLAG_WRITE   = (1UL << 0),
+	/* Map memory for CPU read access */
 	IMX_VPU_MAPPING_FLAG_READ    = (1UL << 1)
 	/* XXX: When adding extra flags here, follow the pattern: IMX_VPU_MAPPING_FLAG_<NAME> = (1UL << <INDEX>) */
 }
@@ -618,6 +618,8 @@ char const *imx_vpu_frame_type_string(ImxVpuFrameType frame_type);
  *    convenience function for this is strongly recommended.
  * 9. Call imx_vpu_dec_register_framebuffers() and pass in the ImxVpuFramebuffer array
  *    and the number of ImxVpuFramebuffer instances.
+ *    Note that this call does _not_ copy the framebuffer array, it just stores the pointer
+ *    to it internally, so make sure the array is valid until the decoder is closed!
  *    This should be the last action in the callback.
  * 10. Continue calling imx_vpu_dec_decode(). Make sure the input data is not NULL.
  *     If the IMX_VPU_DEC_OUTPUT_CODE_DECODED_FRAME_AVAILABLE flag is set in the output code,
@@ -652,18 +654,20 @@ char const *imx_vpu_frame_type_string(ImxVpuFrameType frame_type);
  *
  *   mutex_lock(&mutex);
  *
- *   while (!imx_vpu_dec_check_if_can_decode(decode) && !abort_waiting)
+ *   while (dec_initialized && !imx_vpu_dec_check_if_can_decode(decode) && !abort_waiting)
  *     condition_wait(&condition_variable, &mutex);
  *
  *   if (!abort_waiting)
- *     imx_vpu_dec_decode_frame(decoder, encoded_frame, &output_code);
+ *     imx_vpu_dec_decode(decoder, encoded_frame, &output_code);
  *   ...
  *
  *   mutex_unlock(&mutex);
  *
  * (abort_waiting would be a flag that gets raised when something from the outside signals
  * that waiting and decoding needs to be shut down now, for example because the user wants
- * to close the player, or because the user pressed Ctrl+C.)
+ * to close the player, or because the user pressed Ctrl+C. dec_initialized would be a flag
+ * that is initially cleared, and raised in the initial info callback; it is pointless to
+ * call imx_vpu_dec_check_if_can_decode() before the callback was executed.)
  *
  * If any video sequence parameters (like frame width and height) in the input data change,
  * the output code from imx_vpu_dec_decode() calls in step 10 will contain the
@@ -740,7 +744,11 @@ typedef enum
 	 * to a following imx_vpu_dec_decode() call; instead, new data
 	 * should be loaded. If this code is not present, then the decoder
 	 * didn't use it yet, so give it to the decoder again until this
-	 * code is set or an error is returned. */
+	 * code is set or an error is returned.
+	 * NOTE: this flag is obsolete. It used to mean something with the
+	 * fslwrapper backend; however, with the vpulib backend, it will
+	 * always use the input unless an error occurs or EOS is signaled
+	 * in drain mode. */
 	IMX_VPU_DEC_OUTPUT_CODE_INPUT_USED                   = (1UL << 0),
 	/* EOS was reached; no more unfinished frames are queued internally.
 	 * This can be reached either by bitstreams with no frame delay,
@@ -892,9 +900,17 @@ ImxVpuDecReturnCodes imx_vpu_dec_flush(ImxVpuDecoder *decoder);
  * set in it. Registering can happen only once during the lifetime of a decoder instance. If for some reason
  * framebuffers need to be re-registered, the instance must be closed, and a new one opened.
  * The caller must ensure that the specified framebuffer array remains valid until the decoder instance
- * is closed. Note that internally, values might be written to the array (though it will never be reallocated
+ * is closed, since this function does not copy it; it just stores a pointer to the array internally. Also
+ * note that internally, values might be written to the array (though it will never be reallocated
  * and/or freed from the inside). Also, the framebuffers' DMA buffers will be memory-mapped until the decoder
  * is closed.
+ *
+ * Since this function only stores a pointer to the framebuffer array internally, and does not actually copy
+ * the array, it is possible - and valid - to modify the "context" fields of the framebuffers even after
+ * this call was made. This is useful if for example system resources are associated later with the
+ * framebuffers. In this case, it is perfectly OK to set "context" to NULL initially, and later, when the
+ * resources are available, associated them to the framebuffers by setting the context fields, even if
+ * imx_vpu_dec_register_framebuffers() was already called earlier.
  *
  * The framebuffers must contain valid values. The convenience functions imx_vpu_calc_framebuffer_sizes() and
  * imx_vpu_fill_framebuffer_params() can be used for this. Note that all framebuffers must have the same
@@ -937,7 +953,8 @@ void imx_vpu_dec_get_dropped_frame_info(ImxVpuDecoder *decoder, void **context, 
  * to decode. This is directly related to the set of free framebuffers. If this function returns 0, decoding
  * should not be attempted until after imx_vpu_dec_mark_framebuffer_as_displayed() was called. If this
  * happens, imx_vpu_dec_check_if_can_decode() should be called again to check if the situation changed and
- * decoding can be done again. See the explanation above for details. */
+ * decoding can be done again. Also, calling this function before the initial info callback was executed is
+ * not recommended and causes undefined behavior. See the explanation above for details. */
 int imx_vpu_dec_check_if_can_decode(ImxVpuDecoder *decoder);
 
 /* Marks a framebuffer as displayed. This always needs to be called once the application is done with a decoded
