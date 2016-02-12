@@ -2408,6 +2408,7 @@ struct _ImxVpuEncoder
 	ImxVpuCodecFormat codec_format;
 	unsigned int frame_width, frame_height;
 	unsigned int frame_rate_numerator, frame_rate_denominator;
+	unsigned int aud_enable;
 
 	unsigned int num_framebuffers;
 	FrameBuffer *internal_framebuffers;
@@ -2996,7 +2997,20 @@ ImxVpuEncReturnCodes imx_vpu_enc_open(ImxVpuEncoder **encoder, ImxVpuEncOpenPara
 			enc_open_param.EncStdParam.avcParam.avc_deblkFilterOffsetAlpha = open_params->codec_params.h264_params.deblock_filter_offset_alpha;
 			enc_open_param.EncStdParam.avcParam.avc_deblkFilterOffsetBeta = open_params->codec_params.h264_params.deblock_filter_offset_beta;
 			enc_open_param.EncStdParam.avcParam.avc_chromaQpOffset = open_params->codec_params.h264_params.chroma_qp_offset;
-			enc_open_param.EncStdParam.avcParam.avc_audEnable = open_params->codec_params.h264_params.enable_access_unit_delimiters;
+
+			/* The encoder outputs AUDs which are in an improper
+                         * order. For example:
+			 *
+			 *   SPS PPS AUD VCL AUD VCL AUD VCL ...
+			 *
+			 * whereas the proper order (as for example x264 does
+			 * it) should be:
+			 *
+			 *   AUD SPS PPS VCL AUD VCL AUD VCL ...
+			 *
+			 * for this reason, the automatic AUD placement is not
+			 * used and the AUDs are inserted manually instead. */
+			(*encoder)->aud_enable = open_params->codec_params.h264_params.enable_access_unit_delimiters;
 
 			/* XXX: h.264 MVC support is currently not implemented */
 			enc_open_param.EncStdParam.avcParam.mvc_extension = 0;
@@ -3374,6 +3388,8 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	BOOL add_header;
 	size_t mjpeg_header_size = 0;
 	size_t encoded_data_size;
+	uint8_t h264_aud[] = {0x00, 0x00, 0x00, 0x01,
+			      0x09, 0xf0};
 
 	ret = IMX_VPU_ENC_RETURN_CODE_OK;
 
@@ -3557,6 +3573,12 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 		}
 	}
 
+	if (encoder->codec_format == IMX_VPU_CODEC_FORMAT_H264 &&
+	    encoder->aud_enable)
+	{
+		encoded_data_size += sizeof(h264_aud);
+	}
+
 	encoded_frame->data_size = encoded_data_size;
 	write_ptr_start = encoding_params->acquire_output_buffer(encoding_params->output_buffer_context, encoded_data_size, &(encoded_frame->acquired_handle));
 	if (write_ptr_start == NULL)
@@ -3568,6 +3590,14 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 
 	write_ptr = write_ptr_start;
 	write_ptr_end = write_ptr + encoded_data_size;
+
+	if (encoder->codec_format == IMX_VPU_CODEC_FORMAT_H264 &&
+	    encoder->aud_enable)
+	{
+		/* AUD should come before SPS/PPS. */
+		memcpy(write_ptr, h264_aud, sizeof(h264_aud));
+		write_ptr += sizeof(h264_aud);
+	}
 
 	if (add_header)
 	{
