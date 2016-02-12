@@ -48,7 +48,7 @@ extern "C" {
 /**************************************************/
 
 
-/* Format and for printf-compatibel format-strings
+/* Format and for printf-compatible format-strings
  * example use: printf("physical address: %" IMX_VPU_PHYS_ADDR_FORMAT, phys_addr */
 #define IMX_VPU_PHYS_ADDR_FORMAT "#lx"
 /* Typedef for physical addresses */
