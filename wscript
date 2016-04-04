@@ -172,6 +172,7 @@ def build(bld):
 			features = ['c', 'cprogram'],
 			includes = ['.', 'example'],
 			cflags = ['-std=gnu99'],
+			uselib = bld.env['VPUAPI_USELIBS'],
 			use = 'imxvpuapi examples-common',
 			source = example['source'],
 			target = 'example/' + example['name'],
