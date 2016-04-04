@@ -357,6 +357,7 @@ static ImxVpuEncReturnCodes imx_vpu_jpeg_enc_open_internal(ImxVpuJPEGEncoder *jp
 	imx_vpu_enc_set_default_open_params(IMX_VPU_CODEC_FORMAT_MJPEG, &open_params);
 	open_params.frame_width = jpeg_encoder->frame_width;
 	open_params.frame_height = jpeg_encoder->frame_height;
+	open_params.codec_params.mjpeg_params.quality_factor = jpeg_encoder->quality_factor;
 
 	if ((ret = imx_vpu_enc_open(&(jpeg_encoder->encoder), &open_params, jpeg_encoder->bitstream_buffer)) != IMX_VPU_ENC_RETURN_CODE_OK)
 		goto error;
