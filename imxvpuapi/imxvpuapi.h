@@ -775,8 +775,12 @@ typedef enum
 	IMX_VPU_DEC_OUTPUT_CODE_NOT_ENOUGH_INPUT_DATA        = (1UL << 5),
 	/* The VPU detected a change in the video sequence parameters
 	 * (like frame width and height). Decoding cannot continue. See the
-	 * explanation in th step-by-step guide above for what steps to take
-	 * if this output code is set. */
+	 * explanation in the step-by-step guide above for what steps to take
+	 * if this output code is set. Note that this refers to detected
+	 * changes in the *input data*, not to the decoded frames. This means
+	 * that this flag is set immediately when input data with param changes
+	 * is fed to the decoder, even if this is for example a h.264 high
+	 * profile stream with lots of frame reordering and frame delays. */
 	IMX_VPU_DEC_OUTPUT_CODE_VIDEO_PARAMS_CHANGED         = (1UL << 6)
 }
 ImxVpuDecOutputCodes;

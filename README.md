@@ -51,7 +51,7 @@ Unless otherwise noted, the maximum supported resolution is 1920x1088.
   Encoding: Supports baseline profile and Annex I, J, K (RS and ASO are 0), T, and max. level 70.
 
 * h.264:
-  Decoding: Supports baseline, main, high profiles, max. level 4.1.
+  Decoding: Supports baseline, main, high profiles, max. level 4.1. (10-bit decoding is not supported.)
   Encoding: Supports baseline and constrained baseline profile, max. level 4.0.
 
 * WMV3 (also known as Windows Media Video 9):
