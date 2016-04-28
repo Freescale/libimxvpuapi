@@ -1169,6 +1169,17 @@ typedef enum
 ImxVpuEncMESearchRanges;
 
 
+typedef enum
+{
+	IMX_VPU_ENC_HEADER_DATA_TYPE_H264_SPS_RBSP = 0,
+	IMX_VPU_ENC_HEADER_DATA_TYPE_H264_PPS_RBSP,
+	IMX_VPU_ENC_HEADER_DATA_TYPE_MPEG4_VOS,
+	IMX_VPU_ENC_HEADER_DATA_TYPE_MPEG4_VIS,
+	IMX_VPU_ENC_HEADER_DATA_TYPE_MPEG4_VOL
+}
+ImxVpuEncHeaderDataTypes;
+
+
 /* Slice mode information to be used when opening an encoder instance. */
 typedef struct
 {
@@ -1508,8 +1519,29 @@ ImxVpuEncReturnCodes imx_vpu_enc_flush(ImxVpuEncoder *encoder);
  * the "min_num_required_framebuffers" field of ImxVpuEncInitialInfo. */
 ImxVpuEncReturnCodes imx_vpu_enc_register_framebuffers(ImxVpuEncoder *encoder, ImxVpuFramebuffer *framebuffers, unsigned int num_framebuffers);
 
-/* Retrieves initial information available after calling imx_vpu_enc_open(). */
+/* Retrieves initial information available after calling imx_vpu_enc_open().
+ * Internally this also generates stream headers (SPS/PPS RBSP for h.264,
+ * VOS/VIS/VOL headers for MPEG4). */
 ImxVpuEncReturnCodes imx_vpu_enc_get_initial_info(ImxVpuEncoder *encoder, ImxVpuEncInitialInfo *info);
+
+/* Retrieves a const pointer to a header, as well as that header's size in bytes.
+ * Do not try to modify the data the pointer refers to. To modify heade data, use
+ * imx_vpu_enc_set_header_data() instead.
+ * Using headers that belong to one format even though the encoder is configured
+ * for another format (for example, querying h.264 SPS RBSP even though MPEG-4 is
+ * configured) leads to undefined behavior.
+ * Header data will not be available before the imx_vpu_enc_get_initial_info() call.*/
+void imx_vpu_enc_query_header_data(ImxVpuEncoder *encoder, ImxVpuEncHeaderDataTypes header_data_type, uint8_t const **header_data, size_t *header_data_size);
+/* Sets new header data. Useful for inserting additional information into the
+ * headers. The data pointer to by the header_data pointer is copied to an
+ * internally allocated buffer. Any previously existing header data buffer will
+ * first be deallocated.
+ * If allocation fails, this returns IMX_VPU_ENC_RETURN_CODE_ERROR. Do not try to
+ * further use the encoder, since header data is missing. Otherwise, this returns
+ * IMX_VPU_ENC_RETURN_CODE_OK.
+ * Set this only after the imx_vpu_enc_get_initial_info() call, otherwise the header
+ * data will be overwritten. */
+ImxVpuEncReturnCodes imx_vpu_enc_set_header_data(ImxVpuEncoder *encoder, ImxVpuEncHeaderDataTypes header_data_type, uint8_t const *header_data, size_t header_data_size);
 
 /* Set the fields in "encoding_params" to valid defaults
  * Useful if the caller wants to modify only a few fields (or none at all) */

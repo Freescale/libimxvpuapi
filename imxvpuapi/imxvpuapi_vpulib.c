@@ -3333,6 +3333,86 @@ ImxVpuEncReturnCodes imx_vpu_enc_get_initial_info(ImxVpuEncoder *encoder, ImxVpu
 }
 
 
+void imx_vpu_enc_query_header_data(ImxVpuEncoder *encoder, ImxVpuEncHeaderDataTypes header_data_type, uint8_t const **header_data, size_t *header_data_size)
+{
+	assert(encoder != NULL);
+	assert(header_data != NULL);
+	assert(header_data_size != NULL);
+
+	switch (header_data_type)
+	{
+		case IMX_VPU_ENC_HEADER_DATA_TYPE_H264_SPS_RBSP:
+			*header_data = encoder->headers.h264_headers.sps_rbsp;
+			*header_data_size = encoder->headers.h264_headers.sps_rbsp_size;
+			break;
+		case IMX_VPU_ENC_HEADER_DATA_TYPE_H264_PPS_RBSP:
+			*header_data = encoder->headers.h264_headers.pps_rbsp;
+			*header_data_size = encoder->headers.h264_headers.pps_rbsp_size;
+			break;
+		case IMX_VPU_ENC_HEADER_DATA_TYPE_MPEG4_VOS:
+			*header_data = encoder->headers.mpeg4_headers.vos_header;
+			*header_data_size = encoder->headers.mpeg4_headers.vos_header_size;
+			break;
+		case IMX_VPU_ENC_HEADER_DATA_TYPE_MPEG4_VIS:
+			*header_data = encoder->headers.mpeg4_headers.vis_header;
+			*header_data_size = encoder->headers.mpeg4_headers.vis_header_size;
+			break;
+		case IMX_VPU_ENC_HEADER_DATA_TYPE_MPEG4_VOL:
+			*header_data = encoder->headers.mpeg4_headers.vol_header;
+			*header_data_size = encoder->headers.mpeg4_headers.vol_header_size;
+			break;
+		default:
+			assert(0);
+	}
+}
+
+
+ImxVpuEncReturnCodes imx_vpu_enc_set_header_data(ImxVpuEncoder *encoder, ImxVpuEncHeaderDataTypes header_data_type, uint8_t const *header_data, size_t header_data_size)
+{
+	assert(encoder != NULL);
+	assert(header_data != NULL);
+	assert(header_data_size > 0);
+
+#define COPY_HEADER_DATA(HEADER_FIELD) \
+	do \
+	{ \
+		if (encoder->headers.HEADER_FIELD != NULL) \
+			IMX_VPU_FREE(encoder->headers.HEADER_FIELD, encoder->headers.HEADER_FIELD ## _size); \
+		encoder->headers.HEADER_FIELD = IMX_VPU_ALLOC(header_data_size); \
+		encoder->headers.HEADER_FIELD ## _size = header_data_size; \
+		if (encoder->headers.HEADER_FIELD == NULL) \
+			return IMX_VPU_ENC_RETURN_CODE_ERROR; \
+		memcpy(encoder->headers.HEADER_FIELD, header_data, header_data_size); \
+	} \
+	while (0)
+
+	switch (header_data_type)
+	{
+		case IMX_VPU_ENC_HEADER_DATA_TYPE_H264_SPS_RBSP:
+			COPY_HEADER_DATA(h264_headers.sps_rbsp);
+			break;
+		case IMX_VPU_ENC_HEADER_DATA_TYPE_H264_PPS_RBSP:
+			COPY_HEADER_DATA(h264_headers.pps_rbsp);
+			break;
+		case IMX_VPU_ENC_HEADER_DATA_TYPE_MPEG4_VOS:
+			COPY_HEADER_DATA(mpeg4_headers.vos_header);
+			break;
+		case IMX_VPU_ENC_HEADER_DATA_TYPE_MPEG4_VIS:
+			COPY_HEADER_DATA(mpeg4_headers.vis_header);
+			break;
+		case IMX_VPU_ENC_HEADER_DATA_TYPE_MPEG4_VOL:
+			COPY_HEADER_DATA(mpeg4_headers.vol_header);
+			break;
+		default:
+			assert(0);
+	}
+
+#undef COPY_HEADER_DATA
+
+	return IMX_VPU_ENC_RETURN_CODE_OK;
+}
+
+
 void imx_vpu_enc_set_default_encoding_params(ImxVpuEncoder *encoder, ImxVpuEncParams *encoding_params)
 {
 	assert(encoding_params != NULL);

@@ -2014,6 +2014,30 @@ ImxVpuEncReturnCodes imx_vpu_enc_get_initial_info(ImxVpuEncoder *encoder, ImxVpu
 }
 
 
+void imx_vpu_enc_query_header_data(ImxVpuEncoder *encoder, ImxVpuEncHeaderDataTypes header_data_type, uint8_t const **header_data, size_t *header_data_size)
+{
+	assert(header_data != NULL);
+	assert(header_data_size != NULL);
+
+	IMXVPUAPI_UNUSED_PARAM(encoder);
+	IMXVPUAPI_UNUSED_PARAM(header_data_type);
+
+	*header_data = NULL;
+	*header_data_size = 0;
+}
+
+
+ImxVpuEncReturnCodes imx_vpu_enc_set_header_data(ImxVpuEncoder *encoder, ImxVpuEncHeaderDataTypes header_data_type, uint8_t const *header_data, size_t header_data_size)
+{
+	IMXVPUAPI_UNUSED_PARAM(encoder);
+	IMXVPUAPI_UNUSED_PARAM(header_data_type);
+	IMXVPUAPI_UNUSED_PARAM(header_data);
+	IMXVPUAPI_UNUSED_PARAM(header_data_size);
+
+	return IMX_VPU_ENC_RETURN_CODE_OK;
+}
+
+
 void imx_vpu_enc_set_default_encoding_params(ImxVpuEncoder *encoder, ImxVpuEncParams *encoding_params)
 {
 	assert(encoding_params != NULL);
