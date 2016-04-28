@@ -82,7 +82,8 @@ Context* init(FILE *input_file, FILE *output_file)
 	 * Then, set a bitrate of 0 kbps, which tells the VPU to use constant quality
 	 * mode instead (controlled by the quant_param field in ImxVpuEncParams).
 	 * Frame width & height are also necessary, as are the frame rate numerator
-	 * and denominator. */
+	 * and denominator. Also, access unit delimiters are enabled to demonstrate
+	 * their use. */
 	memset(&open_params, 0, sizeof(open_params));
 	imx_vpu_enc_set_default_open_params(IMX_VPU_CODEC_FORMAT_H264, &open_params);
 	open_params.bitrate = 0;
@@ -90,6 +91,7 @@ Context* init(FILE *input_file, FILE *output_file)
 	open_params.frame_height = FRAME_HEIGHT;
 	open_params.frame_rate_numerator = FPS_N;
 	open_params.frame_rate_denominator = FPS_D;
+	open_params.codec_params.h264_params.enable_access_unit_delimiters = 1;
 
 
 	/* Load the VPU firmware */
