@@ -1,3 +1,13 @@
+==== version 0.10.2 (2016-05-01) ====
+
+* fix AUD NAL positioning in h.264 encoder output
+  (SPS/PPS/AUD were ordered incorrectly - AUD has to come first, not last)
+* fix build error with examples when --enable-static is used
+* pass quality factor in simplified JPEG encoder interface correctly
+* add functions for querying and setting header data
+  useful for modifying headers, like VUI data in the SPS RBSP
+* documentation updates
+
 ==== version 0.10.1 (2015-11-30) ====
 
 * add debian packaging files
