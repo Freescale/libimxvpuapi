@@ -140,3 +140,20 @@ libimxvpuapi comes with these examples in the `example/` directory:
 * `jpeg-enc-example.c` : demonstrates how to use the simplified JPEG API for encoding JPEG files
 
 (Other source files in the `example/` directory are common utility code used by all examples above.)
+
+
+VPU timeout issues
+------------------
+
+If errors like `imx_vpu_dec_decode() failed: timeout` or `VPU blocking: timeout` are observed, check if the
+following workarounds for known problems help:
+
+* Overclocked VPU: The VPU is clocked at 266 MHz by default (according to the VPU documentation). Some
+  configurations clock the VPU at 352 MHz, and can exhibit VPU timeout problems, particularly during
+  h.264 encoding. Try running the VPU at 266 MHz.
+
+* Known issue with IPU configuration: As shown by [this Github entry](https://github.com/Freescale/libimxvpuapi/issues/11),
+  the `CONFIG_IMX_IPUV3_CORE` kernel config flag can cause problems with the VPU. Disable it, then try again.
+
+* Low-level VPU library bug: imx-vpu versions prior to 5.4.31 also have been observed to cause VPU timeouts.
+  These seem to be related to the 5.4.31 fix described as: "Fix VPU blocked in BWB module".
