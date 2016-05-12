@@ -311,17 +311,15 @@ typedef enum
 {
 	/* MPEG-1 part 2 and MPEG-2 part 2.
 	 *
-	 * Decoding: Fully compatible with the ISO/IEC 13182-2 specification and
-	 * the main and high profiles. Both progressive and interlaced content is
-	 * supported. */
+	 * Decoding: Fully compatible with the ISO/IEC 13182-2 specification and the main and high
+	 *           profiles. Both progressive and interlaced content is supported.
+	 */
 	IMX_VPU_CODEC_FORMAT_MPEG2 = 0,
 
 	/* MPEG-4 part 2.
 	 *
 	 * Decoding: Supports simple and advanced simple profile (except for GMC).
-	 * NOTE: DivX 3/5/6 are not supported and require special licensing by
-	 * Freescale.
-	 *
+	 *           NOTE: DivX 3/5/6 are not supported and require special licensing by Freescale.
 	 * Encoding: Supports the simple profile and max. level 5/6.
 	 */
 	IMX_VPU_CODEC_FORMAT_MPEG4,
@@ -336,14 +334,17 @@ typedef enum
 	/* h.264.
 	 *
 	 * Decoding: Supports baseline, main, high profiles, max. level 4.1.
+	 *           (10-bit decoding is not supported.)
+	 *           Only Annex.B byte-stream formatted input is supported.
 	 * Encoding: Supports baseline and constrained baseline profile, max. level 4.0.
+	 *           Only Annex.B byte-stream formatted output is supported.
 	 */
 	IMX_VPU_CODEC_FORMAT_H264,
 
 	/* WMV3, also known as Windows Media Video 9. Compatible to VC-1 simple and main profiles.
 	 *
-	 * Decoding: Fully supported WMV3 decoding, excluding the deprecated WMV3
-	 * interlace support (which has been obsoleted by the interlacing in the
+	 * Decoding: Fully supported WMV3 decoding, excluding the deprecated WMV3 interlace support
+	 *           (which has been obsoleted by the interlacing in the VC-1 advanced profile).
 	 * VC-1 advanced profile). */
 	IMX_VPU_CODEC_FORMAT_WMV3,
 
@@ -356,19 +357,18 @@ typedef enum
 	/* Motion JPEG.
 	 *
 	 * Decoding: Only baseline JPEG frames are supported. Maximum resolution is 8192x8192.
-	 *
 	 * Encoding: Only baseline JPEG frames are supported. Maximum resolution is 8192x8192.
-	 * MJPEG always operates in constant quality mode, even if the encoder open params
-	 * have a nonzero bitrate set.
+	 *           NOTE: Encoder always operates in constant quality mode, even if the open
+	 *           params have a nonzero bitrate set.
 	 */
 	IMX_VPU_CODEC_FORMAT_MJPEG,
 
 	/* VP8.
 	 *
-	 * Decoder: fully compatible with the VP8 decoding specification.
-	 * Both simple and normal in-loop deblocking are supported.
-	 * NOTE: VPU specs state that the maximum supported resolution is 1280x720, but tests
-	 * show that up to 1920x1088 pixels do work.
+	 * Decoding: fully compatible with the VP8 decoding specification.
+	 *           Both simple and normal in-loop deblocking are supported.
+	 *           NOTE: VPU specs state that the maximum supported resolution is 1280x720, but
+	 *           tests show that up to 1920x1088 pixels do work.
 	 */
 	IMX_VPU_CODEC_FORMAT_VP8
 
