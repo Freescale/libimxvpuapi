@@ -682,6 +682,7 @@ void imx_vpu_fill_framebuffer_params(ImxVpuFramebuffer *framebuffer, ImxVpuFrame
 	framebuffer->context = context;
 	framebuffer->y_stride = calculated_sizes->y_stride;
 	framebuffer->cbcr_stride = calculated_sizes->cbcr_stride;
+	framebuffer->total_size = calculated_sizes->total_size;
 	framebuffer->y_offset = 0;
 	framebuffer->cb_offset = calculated_sizes->y_size;
 	framebuffer->cr_offset = calculated_sizes->y_size + calculated_sizes->cbcr_size;
@@ -3464,7 +3465,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	EncOutputInfo enc_output_info;
 	FrameBuffer source_framebuffer;
 	imx_vpu_phys_addr_t raw_frame_phys_addr;
-	uint8_t *write_ptr, *write_ptr_start, *write_ptr_end;
+	uint8_t *write_ptr, *write_ptr_start = NULL, *write_ptr_end;
 	BOOL timeout;
 	BOOL add_header;
 	size_t mjpeg_header_size = 0;
@@ -3477,8 +3478,8 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	assert(encoded_frame != NULL);
 	assert(encoding_params != NULL);
 	assert(output_code != NULL);
-	assert(encoding_params->acquire_output_buffer != NULL);
-	assert(encoding_params->finish_output_buffer != NULL);
+	assert(encoding_params->write_output_buffer != NULL || encoding_params->acquire_output_buffer != NULL);
+	assert(encoding_params->write_output_buffer != NULL || encoding_params->finish_output_buffer != NULL);
 
 	*output_code = 0;
 	write_ptr_start = NULL;
@@ -3656,23 +3657,32 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	}
 
 	encoded_frame->data_size = encoded_data_size;
-	write_ptr_start = encoding_params->acquire_output_buffer(encoding_params->output_buffer_context, encoded_data_size, &(encoded_frame->acquired_handle));
-	if (write_ptr_start == NULL)
+	if(NULL == encoding_params->write_output_buffer)
 	{
-		IMX_VPU_ERROR("could not acquire buffer with %zu byte for encoded frame data", encoded_data_size);
-		ret = IMX_VPU_ENC_RETURN_CODE_ERROR;
-		goto finish;
+        write_ptr_start = encoding_params->acquire_output_buffer(encoding_params->output_buffer_context, encoded_data_size, &(encoded_frame->acquired_handle));
+        if (write_ptr_start == NULL)
+        {
+            IMX_VPU_ERROR("could not acquire buffer with %zu byte for encoded frame data", encoded_data_size);
+            ret = IMX_VPU_ENC_RETURN_CODE_ERROR;
+            goto finish;
+        }
+
+        write_ptr = write_ptr_start;
+        write_ptr_end = write_ptr + encoded_data_size;
 	}
-
-	write_ptr = write_ptr_start;
-	write_ptr_end = write_ptr + encoded_data_size;
-
 	/* AUD should come before SPS/PPS - see the code in
 	 * imx_vpu_enc_open() for details */
 	if (encoder->aud_enable)
 	{
-		memcpy(write_ptr, h264_aud, sizeof(h264_aud));
-		write_ptr += sizeof(h264_aud);
+	    if(NULL == encoding_params->write_output_buffer)
+	    {
+	        memcpy(write_ptr, h264_aud, sizeof(h264_aud));
+	        write_ptr += sizeof(h264_aud);
+	    }
+	    else
+	    {
+	        encoding_params->write_output_buffer(encoding_params->output_buffer_context, h264_aud, sizeof(h264_aud), raw_frame->pts, raw_frame->dts);
+	    }
 		IMX_VPU_LOG("added h.264 AUD");
 	}
 
@@ -3682,8 +3692,15 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 		do \
 		{ \
 			size_t size = encoder->headers.HEADER_FIELD ## _size; \
-			memcpy(write_ptr, encoder->headers.HEADER_FIELD, size); \
-			write_ptr += size; \
+	        if(NULL == encoding_params->write_output_buffer) \
+	        { \
+                memcpy(write_ptr, encoder->headers.HEADER_FIELD, size); \
+                write_ptr += size; \
+	        } \
+	        else \
+	        { \
+	            encoding_params->write_output_buffer(encoding_params->output_buffer_context, encoder->headers.HEADER_FIELD, size, raw_frame->pts, raw_frame->dts); \
+	        } \
 			IMX_VPU_LOG("added %s with %zu byte", (DESCRIPTION), size); \
 		} \
 		while (0)
@@ -3707,8 +3724,15 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 
 			case IMX_VPU_CODEC_FORMAT_MJPEG:
 			{
-				memcpy(write_ptr, encoder->headers.mjpeg_header_data, mjpeg_header_size);
-				write_ptr += mjpeg_header_size;
+	            if(NULL == encoding_params->write_output_buffer)
+	            {
+                    memcpy(write_ptr, encoder->headers.mjpeg_header_data, mjpeg_header_size);
+                    write_ptr += mjpeg_header_size;
+	            }
+	            else
+	            {
+	                encoding_params->write_output_buffer(encoding_params->output_buffer_context, encoder->headers.mjpeg_header_data, mjpeg_header_size, raw_frame->pts, raw_frame->dts);
+	            }
 				IMX_VPU_LOG("added JPEG header with %zu byte", mjpeg_header_size);
 				break;
 			}
@@ -3728,25 +3752,32 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	/* Get the encoded data out of the bitstream buffer into the output buffer */
 	if (enc_output_info.bitstreamBuffer != 0)
 	{
-		ptrdiff_t available_space = write_ptr_end - write_ptr;
-		uint8_t const *output_data_ptr = GET_BITSTREAM_VIRT_ADDR(enc_output_info.bitstreamBuffer);
+        uint8_t const *output_data_ptr = GET_BITSTREAM_VIRT_ADDR(enc_output_info.bitstreamBuffer);
 
-		if (available_space < (ptrdiff_t)(enc_output_info.bitstreamSize))
-		{
-			IMX_VPU_ERROR(
-				"insufficient space in output buffer for encoded data: need %u byte, got %td",
-				enc_output_info.bitstreamSize,
-				available_space
-			);
-			ret = IMX_VPU_ENC_RETURN_CODE_ERROR;
+        if(NULL == encoding_params->write_output_buffer)
+        {
+            ptrdiff_t available_space = write_ptr_end - write_ptr;
 
-			goto finish;
-		}
+            if (available_space < (ptrdiff_t)(enc_output_info.bitstreamSize))
+            {
+                IMX_VPU_ERROR(
+                    "insufficient space in output buffer for encoded data: need %u byte, got %td",
+                    enc_output_info.bitstreamSize,
+                    available_space
+                );
+                ret = IMX_VPU_ENC_RETURN_CODE_ERROR;
 
-		memcpy(write_ptr, output_data_ptr, enc_output_info.bitstreamSize);
-		IMX_VPU_LOG("added main encoded frame data with %u byte", enc_output_info.bitstreamSize);
-		write_ptr += enc_output_info.bitstreamSize;
+                goto finish;
+            }
+            memcpy(write_ptr, output_data_ptr, enc_output_info.bitstreamSize);
+            write_ptr += enc_output_info.bitstreamSize;
+        }
+        else
+        {
+            encoding_params->write_output_buffer(encoding_params->output_buffer_context, output_data_ptr, enc_output_info.bitstreamSize, raw_frame->pts, raw_frame->dts);
+        }
 
+        IMX_VPU_LOG("added main encoded frame data with %u byte", enc_output_info.bitstreamSize);
 		*output_code |= IMX_VPU_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE;
 	}
 

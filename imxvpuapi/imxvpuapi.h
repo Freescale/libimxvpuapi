@@ -400,7 +400,7 @@ typedef struct
 {
 	/* Stride of the Y and of the Cb&Cr components.
 	 * Specified in bytes. */
-	unsigned int y_stride, cbcr_stride;
+	unsigned int y_stride, cbcr_stride, total_size;
 
 	/* DMA buffer which contains the pixels. */
 	ImxVpuDMABuffer *dma_buffer;
@@ -1431,6 +1431,10 @@ typedef void* (*ImxVpuEncAcquireOutputBuffer)(void *context, size_t size, void *
  * ImxVpuEncParams. acquired_handle equals the value of *acquired_handle in
  * ImxVpuEncAcquireOutputBuffer. */
 typedef void (*ImxVpuEncFinishOutputBuffer)(void *context, void *acquired_handle);
+/* Function pointer used during encoding for passing the output encoded data to the user
+ * If this function is not NULL it is used instead of ImxVpuEncAcquireOutputBuffer.
+ * Also ImxVpuEncFinishOutputBuffer will not be called */
+typedef int32_t (*ImxVpuOutputDataWrite)(void *context, uint8_t const *data, uint32_t dataSize, uint64_t pts, uint64_t dts);
 
 
 typedef struct
@@ -1456,6 +1460,15 @@ typedef struct
 	 * documentation for how they are used. */
 	ImxVpuEncAcquireOutputBuffer acquire_output_buffer;
 	ImxVpuEncFinishOutputBuffer finish_output_buffer;
+
+	/* Function for directly passing the output data to the user
+	 * without copying it first.
+	 * Using this function will inhibit calls to acquire_output_buffer & finish_output_buffer.
+	 * Please note that if this function is NULL then acquire_output_buffer & finish_output_buffer must be set.
+	 */
+	ImxVpuOutputDataWrite write_output_buffer;
+
+	/* User supplied value that will be passed to the functions */
 	void *output_buffer_context;
 
 	/* Quantization parameter. Its value and valid range depends on
