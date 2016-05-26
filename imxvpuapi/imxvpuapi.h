@@ -1391,6 +1391,17 @@ typedef struct
 	 * plane, otherwise they are separated in their own planes.
 	 * See the ImxVpuColorFormat documentation for the consequences of this. */
 	int chroma_interleave;
+
+    /* If this is 1 then the ImxVpuOutputDataWrite must be used so that
+     * the output data can be passed to the user in streaming mode before the
+     * entire frame encoding is complete.
+     * This is good when streaming the data over a network or similar medium.
+     * In this mode headers are written to the stream before the encoder finished.
+     * This may cause wrong headers in stream if the encoder failed.
+     * See ImxVpuEncParams for more details on ImxVpuOutputDataWrite
+     * The default for this value is 0 (This is mapped to the VPUs ring buffer mode)
+     */
+	int streaming_mode;
 }
 ImxVpuEncOpenParams;
 

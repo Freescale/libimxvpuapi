@@ -87,8 +87,8 @@
 
 #define VC1_NAL_FRAME_LAYER_MAX_SIZE   4
 
-#define VPU_WAIT_TIMEOUT             500 /* milliseconds to wait for frame completion */
-#define VPU_MAX_TIMEOUT_COUNTS       4   /* how many timeouts are allowed in series */
+#define VPU_WAIT_TIMEOUT             8 /* milliseconds to wait for frame completion */
+#define VPU_MAX_TIMEOUT_COUNTS       128   /* how many timeouts are allowed in series */
 
 #define MJPEG_ENC_HEADER_DATA_MAX_SIZE  2048
 
@@ -2410,12 +2410,15 @@ struct _ImxVpuEncoder
 	unsigned int frame_width, frame_height;
 	unsigned int frame_rate_numerator, frame_rate_denominator;
 	unsigned int aud_enable;
+	unsigned int gop_size;
+	unsigned int gop_monitor;
 
 	unsigned int num_framebuffers;
 	FrameBuffer *internal_framebuffers;
 	ImxVpuFramebuffer *framebuffers;
 
 	BOOL first_frame;
+	BOOL ring_buffer_mode;
 
 	union
 	{
@@ -2443,6 +2446,13 @@ struct _ImxVpuEncoder
 	}
 	headers;
 };
+
+struct _ImxWriteParams
+{
+    uint8_t *write_ptr, *write_ptr_start, *write_ptr_end;
+    size_t mjpeg_header_size;
+};
+
 
 
 #define IMX_VPU_ENC_HANDLE_ERROR(MSG_START, RET_CODE) \
@@ -2775,6 +2785,115 @@ char const * imx_vpu_enc_error_string(ImxVpuEncReturnCodes code)
 }
 
 
+
+
+static int
+imx_vpu_enc_readbs_ring_buffer(ImxVpuEncoder *encoder, ImxVpuEncParams *encoding_params, ImxVpuRawFrame const *raw_frame)
+{
+    RetCode ret;
+    int space = 0, room;
+    PhysicalAddress pa_read_ptr, pa_write_ptr;
+    uint8_t *target_addr;
+    uint8_t *bs_va_endaddr;
+    uint32_t size;
+
+    bs_va_endaddr = encoder->bitstream_buffer_virtual_address + VPU_ENC_MAIN_BITSTREAM_BUFFER_SIZE;
+
+    ret = vpu_EncGetBitstreamBuffer(encoder->handle, &pa_read_ptr, &pa_write_ptr,
+                    (Uint32 *)&size);
+    if (ret != RETCODE_SUCCESS) {
+        IMX_VPU_ERROR("EncGetBitstreamBuffer failed");
+        return -1;
+    }
+
+    /* No space in ring buffer */
+    if (size <= 0)
+        return 0;
+
+    space = size;
+
+    target_addr = encoder->bitstream_buffer_virtual_address + (pa_read_ptr - encoder->bitstream_buffer_physical_address);
+    if ( (target_addr + space) > bs_va_endaddr) {
+        room = bs_va_endaddr - target_addr;
+        encoding_params->write_output_buffer(encoding_params->output_buffer_context, target_addr, room, raw_frame->pts, raw_frame->dts);
+        encoding_params->write_output_buffer(encoding_params->output_buffer_context, encoder->bitstream_buffer_virtual_address, (space - room), raw_frame->pts, raw_frame->dts);
+    } else {
+        encoding_params->write_output_buffer(encoding_params->output_buffer_context, target_addr, space, raw_frame->pts, raw_frame->dts);
+    }
+
+    ret = vpu_EncUpdateBitstreamBuffer(encoder->handle, space);
+    if (ret != RETCODE_SUCCESS) {
+        IMX_VPU_ERROR("EncUpdateBitstreamBuffer failed");
+        return -1;
+    }
+
+    return space;
+}
+
+static void imx_vpu_enc_write_header_data(ImxVpuEncoder *encoder, ImxVpuRawFrame const *raw_frame, ImxVpuEncParams *encoding_params, struct _ImxWriteParams *write_params, unsigned int *output_code)
+{
+
+#define ADD_HEADER_DATA(HEADER_FIELD, DESCRIPTION) \
+        do \
+        { \
+            size_t size = encoder->headers.HEADER_FIELD ## _size; \
+            if(NULL == encoding_params->write_output_buffer) \
+            { \
+                memcpy(write_params->write_ptr, encoder->headers.HEADER_FIELD, size); \
+                write_params->write_ptr += size; \
+            } \
+            else \
+            { \
+                encoding_params->write_output_buffer(encoding_params->output_buffer_context, encoder->headers.HEADER_FIELD, size, raw_frame->pts, raw_frame->dts); \
+            } \
+            IMX_VPU_LOG("added %s with %zu byte", (DESCRIPTION), size); \
+        } \
+        while (0)
+
+    switch (encoder->codec_format)
+    {
+        case IMX_VPU_CODEC_FORMAT_H264:
+        {
+            ADD_HEADER_DATA(h264_headers.sps_rbsp, "h.264 SPS RBSP");
+            ADD_HEADER_DATA(h264_headers.pps_rbsp, "h.264 PPS RBSP");
+            break;
+        }
+
+        case IMX_VPU_CODEC_FORMAT_MPEG4:
+        {
+            ADD_HEADER_DATA(mpeg4_headers.vos_header, "MPEG-4 VOS header");
+            ADD_HEADER_DATA(mpeg4_headers.vis_header, "MPEG-4 VIS header");
+            ADD_HEADER_DATA(mpeg4_headers.vol_header, "MPEG-4 VOL header");
+            break;
+        }
+
+        case IMX_VPU_CODEC_FORMAT_MJPEG:
+        {
+            if(NULL == encoding_params->write_output_buffer)
+            {
+                memcpy(write_params->write_ptr, encoder->headers.mjpeg_header_data, write_params->mjpeg_header_size);
+                write_params->write_ptr +=write_params->mjpeg_header_size;
+            }
+            else
+            {
+                encoding_params->write_output_buffer(encoding_params->output_buffer_context, encoder->headers.mjpeg_header_data, write_params->mjpeg_header_size, raw_frame->pts, raw_frame->dts);
+            }
+            IMX_VPU_LOG("added JPEG header with %zu byte", write_params->mjpeg_header_size);
+            break;
+        }
+
+        default:
+            break;
+    }
+
+    *output_code |= IMX_VPU_ENC_OUTPUT_CODE_CONTAINS_HEADER;
+#undef ADD_HEADER_DATA
+
+}
+
+
+
+
 ImxVpuEncReturnCodes imx_vpu_enc_load(void)
 {
 	return imx_vpu_load() ? IMX_VPU_ENC_RETURN_CODE_OK : IMX_VPU_ENC_RETURN_CODE_ERROR;
@@ -2828,6 +2947,7 @@ void imx_vpu_enc_set_default_open_params(ImxVpuCodecFormat codec_format, ImxVpuE
 	open_params->use_me_zero_pmv = 0;
 	open_params->additional_intra_cost_weight = 0;
 	open_params->chroma_interleave = 0;
+	open_params->streaming_mode = 0;
 
 	switch (codec_format)
 	{
@@ -2930,6 +3050,9 @@ ImxVpuEncReturnCodes imx_vpu_enc_open(ImxVpuEncoder **encoder, ImxVpuEncOpenPara
 	enc_open_param.IntraCostWeight = open_params->additional_intra_cost_weight;
 	enc_open_param.chromaInterleave = open_params->chroma_interleave;
 
+	/* Store the gop size. This value will be used to calculate whether headers should be inserted in ring buffer mode */
+	(*encoder)->gop_size = open_params->gop_size;
+
 	/* The specification states that both values must be set if user defined
 	 * values are used, so disable both if both values are -1, and enable
 	 * both otherwise */
@@ -2956,9 +3079,9 @@ ImxVpuEncReturnCodes imx_vpu_enc_open(ImxVpuEncoder **encoder, ImxVpuEncOpenPara
 	/* The i.MX6 does not support dynamic allocation */
 	enc_open_param.dynamicAllocEnable = 0;
 
-	/* Ring buffer mode isn't needed, so disable it, instructing
-	 * the VPU to use the line buffer mode instead */
-	enc_open_param.ringBufferEnable = 0;
+	/* Ring buffer mode  */
+	enc_open_param.ringBufferEnable = open_params->streaming_mode;
+	(*encoder)->ring_buffer_mode = (BOOL)open_params->streaming_mode;
 
 	/* Currently, no tiling is supported */
 	enc_open_param.linear2TiledEnable = 1;
@@ -3454,23 +3577,36 @@ void imx_vpu_enc_configure_intra_qp(ImxVpuEncoder *encoder, int intra_qp)
 	vpu_EncGiveCommand(encoder->handle, ENC_SET_INTRA_QP, &intra_qp);
 }
 
-
 ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame const *raw_frame, ImxVpuEncodedFrame *encoded_frame, ImxVpuEncParams *encoding_params, unsigned int *output_code)
 {
 #define GET_BITSTREAM_VIRT_ADDR(BITSTREAM_PHYS_ADDR) (encoder->bitstream_buffer_virtual_address + ((BITSTREAM_PHYS_ADDR) - encoder->bitstream_buffer_physical_address))
 
-	ImxVpuEncReturnCodes ret;
+#define WRITE_AUD() \
+    do{ \
+        if(NULL == encoding_params->write_output_buffer) \
+        { \
+            memcpy(write_params.write_ptr, h264_aud, sizeof(h264_aud)); \
+            write_params.write_ptr += sizeof(h264_aud); \
+        } \
+        else \
+        { \
+            encoding_params->write_output_buffer(encoding_params->output_buffer_context, h264_aud, sizeof(h264_aud), raw_frame->pts, raw_frame->dts); \
+        } \
+    }while(0)
+
+
+    uint8_t const h264_aud[] = { 0x00, 0x00, 0x00, 0x01, 0x09, 0xF0 };
+
+    ImxVpuEncReturnCodes ret;
 	RetCode enc_ret;
 	EncParam enc_param;
 	EncOutputInfo enc_output_info;
 	FrameBuffer source_framebuffer;
 	imx_vpu_phys_addr_t raw_frame_phys_addr;
-	uint8_t *write_ptr, *write_ptr_start = NULL, *write_ptr_end;
 	BOOL timeout;
 	BOOL add_header;
-	size_t mjpeg_header_size = 0;
 	size_t encoded_data_size;
-	uint8_t const h264_aud[] = { 0x00, 0x00, 0x00, 0x01, 0x09, 0xF0 };
+	struct _ImxWriteParams write_params;
 
 	ret = IMX_VPU_ENC_RETURN_CODE_OK;
 
@@ -3480,9 +3616,10 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	assert(output_code != NULL);
 	assert(encoding_params->write_output_buffer != NULL || encoding_params->acquire_output_buffer != NULL);
 	assert(encoding_params->write_output_buffer != NULL || encoding_params->finish_output_buffer != NULL);
+	assert(encoding_params->write_output_buffer != NULL || encoder->ring_buffer_mode == FALSE);
 
 	*output_code = 0;
-	write_ptr_start = NULL;
+	memset(&write_params, 0, sizeof(write_params));
 
 	/* Set this here to ensure that the handle is NULL if an error occurs
 	 * before acquire_output_buffer() is called */
@@ -3504,7 +3641,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 		vpu_EncGiveCommand(encoder->handle, ENC_GET_JPEG_HEADER, &mjpeg_param);
 		IMX_VPU_LOG("added JPEG header with %d byte", mjpeg_param.size);
 
-		mjpeg_header_size = mjpeg_param.size;
+		write_params.mjpeg_header_size = mjpeg_param.size;
 
 		*output_code |= IMX_VPU_ENC_OUTPUT_CODE_CONTAINS_HEADER;
 	}
@@ -3550,6 +3687,40 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	if (ret != IMX_VPU_ENC_RETURN_CODE_OK)
 		goto finish;
 
+	if(encoder->ring_buffer_mode)
+	{
+	    /* We are in streaming mode - The header should be written before the frame is complete or any part of it for that matter */
+	    /* Check to see if an header should be added to the output */
+	    switch (encoder->codec_format)
+	    {
+	        case IMX_VPU_CODEC_FORMAT_MJPEG:
+	        {
+	            add_header = TRUE;
+	            break;
+	        }
+
+	        case IMX_VPU_CODEC_FORMAT_H264:
+	        case IMX_VPU_CODEC_FORMAT_MPEG4:
+	            add_header = encoder->first_frame || encoding_params->force_I_frame || encoder->gop_monitor == 0;
+	            break;
+
+	        default:
+	            add_header = FALSE;
+	    }
+
+	    /* AUD should come before SPS/PPS - see the code in
+         * imx_vpu_enc_open() for details */
+	    if(encoder->aud_enable)
+	    {
+	        WRITE_AUD();
+	        IMX_VPU_LOG("added h.264 AUD");
+	    }
+	    if(add_header)
+	    {
+	        imx_vpu_enc_write_header_data(encoder, raw_frame, encoding_params, &write_params, output_code);
+	    }
+	}
+
 	/* Wait for frame completion */
 	{
 		int cnt;
@@ -3563,12 +3734,25 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 		{
 			if (vpu_WaitForInt(VPU_WAIT_TIMEOUT) != RETCODE_SUCCESS)
 			{
-				IMX_VPU_INFO("timeout after waiting %d ms for frame completion", VPU_WAIT_TIMEOUT);
+			    if(encoder->ring_buffer_mode)
+			    {
+			        if(0 > imx_vpu_enc_readbs_ring_buffer(encoder, encoding_params, raw_frame))
+			        {
+			            IMX_VPU_ERROR("Unable to read ring buffer");
+			            timeout = false;
+			            break;
+			        }
+			    }
+			    usleep(VPU_WAIT_TIMEOUT*1000);
 			}
 			else
 			{
 				timeout = FALSE;
 				break;
+			}
+			if(cnt > 0 && 0 == (cnt & 63))
+			{
+                IMX_VPU_INFO("timeout after waiting %d ms for frame completion", VPU_WAIT_TIMEOUT*64);
 			}
 		}
 	}
@@ -3613,173 +3797,127 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 		enc_output_info.numOfSlices
 	);
 
-
-	switch (encoder->codec_format)
+	if(encoder->ring_buffer_mode)
 	{
-		case IMX_VPU_CODEC_FORMAT_MJPEG:
-		{
-			add_header = TRUE;
-			break;
-		}
-
-		case IMX_VPU_CODEC_FORMAT_H264:
-		case IMX_VPU_CODEC_FORMAT_MPEG4:
-			add_header = encoder->first_frame || encoding_params->force_I_frame || (encoded_frame->frame_type == IMX_VPU_FRAME_TYPE_IDR) || (encoded_frame->frame_type == IMX_VPU_FRAME_TYPE_I);
-			break;
-
-		default:
-			add_header = FALSE;
-	}
-
-	encoded_data_size = enc_output_info.bitstreamSize;
-	if (encoder->aud_enable)
-		encoded_data_size += sizeof(h264_aud);
-
-	if (add_header)
-	{
-		switch (encoder->codec_format)
-		{
-			case IMX_VPU_CODEC_FORMAT_MJPEG:
-				encoded_data_size += mjpeg_header_size;
-				break;
-
-			case IMX_VPU_CODEC_FORMAT_H264:
-				encoded_data_size += encoder->headers.h264_headers.sps_rbsp_size + encoder->headers.h264_headers.pps_rbsp_size;
-				break;
-
-			case IMX_VPU_CODEC_FORMAT_MPEG4:
-				encoded_data_size += encoder->headers.mpeg4_headers.vos_header_size + encoder->headers.mpeg4_headers.vis_header_size + encoder->headers.mpeg4_headers.vol_header_size;
-				break;
-
-			default:
-				break;
-		}
-	}
-
-	encoded_frame->data_size = encoded_data_size;
-	if(NULL == encoding_params->write_output_buffer)
-	{
-        write_ptr_start = encoding_params->acquire_output_buffer(encoding_params->output_buffer_context, encoded_data_size, &(encoded_frame->acquired_handle));
-        if (write_ptr_start == NULL)
+        if(0 <= imx_vpu_enc_readbs_ring_buffer(encoder, encoding_params, raw_frame))
         {
-            IMX_VPU_ERROR("could not acquire buffer with %zu byte for encoded frame data", encoded_data_size);
-            ret = IMX_VPU_ENC_RETURN_CODE_ERROR;
-            goto finish;
+            *output_code |= IMX_VPU_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE;
+        }
+	}
+	else
+	{
+	    /* Check to see if an header should be added to the output */
+	    switch (encoder->codec_format)
+	    {
+	        case IMX_VPU_CODEC_FORMAT_MJPEG:
+	        {
+	            add_header = TRUE;
+	            break;
+	        }
+
+	        case IMX_VPU_CODEC_FORMAT_H264:
+	        case IMX_VPU_CODEC_FORMAT_MPEG4:
+	            add_header = encoder->first_frame || encoding_params->force_I_frame || (encoded_frame->frame_type == IMX_VPU_FRAME_TYPE_IDR) || (encoded_frame->frame_type == IMX_VPU_FRAME_TYPE_I);
+	            break;
+
+	        default:
+	            add_header = FALSE;
+	    }
+
+	    encoded_data_size = enc_output_info.bitstreamSize;
+        if (encoder->aud_enable)
+            encoded_data_size += sizeof(h264_aud);
+
+        if (add_header)
+        {
+            switch (encoder->codec_format)
+            {
+                case IMX_VPU_CODEC_FORMAT_MJPEG:
+                    encoded_data_size += write_params.mjpeg_header_size;
+                    break;
+
+                case IMX_VPU_CODEC_FORMAT_H264:
+                    encoded_data_size += encoder->headers.h264_headers.sps_rbsp_size + encoder->headers.h264_headers.pps_rbsp_size;
+                    break;
+
+                case IMX_VPU_CODEC_FORMAT_MPEG4:
+                    encoded_data_size += encoder->headers.mpeg4_headers.vos_header_size + encoder->headers.mpeg4_headers.vis_header_size + encoder->headers.mpeg4_headers.vol_header_size;
+                    break;
+
+                default:
+                    break;
+            }
         }
 
-        write_ptr = write_ptr_start;
-        write_ptr_end = write_ptr + encoded_data_size;
+        encoded_frame->data_size = encoded_data_size;
+        if(NULL == encoding_params->write_output_buffer)
+        {
+            write_params.write_ptr_start = encoding_params->acquire_output_buffer(encoding_params->output_buffer_context, encoded_data_size, &(encoded_frame->acquired_handle));
+            if (write_params.write_ptr_start == NULL)
+            {
+                IMX_VPU_ERROR("could not acquire buffer with %zu byte for encoded frame data", encoded_data_size);
+                ret = IMX_VPU_ENC_RETURN_CODE_ERROR;
+                goto finish;
+            }
+
+            write_params.write_ptr = write_params.write_ptr_start;
+            write_params.write_ptr_end = write_params.write_ptr + encoded_data_size;
+        }
+
+        /* AUD should come before SPS/PPS - see the code in
+         * imx_vpu_enc_open() for details */
+        if(encoder->aud_enable)
+        {
+            WRITE_AUD();
+            IMX_VPU_LOG("added h.264 AUD");
+        }
+        if(add_header)
+        {
+            imx_vpu_enc_write_header_data(encoder, raw_frame, encoding_params, &write_params, output_code);
+        }
+        /* Get the encoded data out of the bitstream buffer into the output buffer */
+        if (enc_output_info.bitstreamBuffer != 0)
+        {
+            uint8_t const *output_data_ptr = GET_BITSTREAM_VIRT_ADDR(enc_output_info.bitstreamBuffer);
+
+            if(NULL == encoding_params->write_output_buffer)
+            {
+                ptrdiff_t available_space = write_params.write_ptr_end - write_params.write_ptr;
+
+                if (available_space < (ptrdiff_t)(enc_output_info.bitstreamSize))
+                {
+                    IMX_VPU_ERROR(
+                        "insufficient space in output buffer for encoded data: need %u byte, got %td",
+                        enc_output_info.bitstreamSize,
+                        available_space
+                    );
+                    ret = IMX_VPU_ENC_RETURN_CODE_ERROR;
+
+                    goto finish;
+                }
+                memcpy(write_params.write_ptr, output_data_ptr, enc_output_info.bitstreamSize);
+                write_params.write_ptr += enc_output_info.bitstreamSize;
+            }
+            else
+            {
+                encoding_params->write_output_buffer(encoding_params->output_buffer_context, output_data_ptr, enc_output_info.bitstreamSize, raw_frame->pts, raw_frame->dts);
+            }
+
+            IMX_VPU_LOG("added main encoded frame data with %u byte", enc_output_info.bitstreamSize);
+            *output_code |= IMX_VPU_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE;
+        }
 	}
-	/* AUD should come before SPS/PPS - see the code in
-	 * imx_vpu_enc_open() for details */
-	if (encoder->aud_enable)
-	{
-	    if(NULL == encoding_params->write_output_buffer)
-	    {
-	        memcpy(write_ptr, h264_aud, sizeof(h264_aud));
-	        write_ptr += sizeof(h264_aud);
-	    }
-	    else
-	    {
-	        encoding_params->write_output_buffer(encoding_params->output_buffer_context, h264_aud, sizeof(h264_aud), raw_frame->pts, raw_frame->dts);
-	    }
-		IMX_VPU_LOG("added h.264 AUD");
-	}
-
-	if (add_header)
-	{
-#define ADD_HEADER_DATA(HEADER_FIELD, DESCRIPTION) \
-		do \
-		{ \
-			size_t size = encoder->headers.HEADER_FIELD ## _size; \
-	        if(NULL == encoding_params->write_output_buffer) \
-	        { \
-                memcpy(write_ptr, encoder->headers.HEADER_FIELD, size); \
-                write_ptr += size; \
-	        } \
-	        else \
-	        { \
-	            encoding_params->write_output_buffer(encoding_params->output_buffer_context, encoder->headers.HEADER_FIELD, size, raw_frame->pts, raw_frame->dts); \
-	        } \
-			IMX_VPU_LOG("added %s with %zu byte", (DESCRIPTION), size); \
-		} \
-		while (0)
-
-		switch (encoder->codec_format)
-		{
-			case IMX_VPU_CODEC_FORMAT_H264:
-			{
-				ADD_HEADER_DATA(h264_headers.sps_rbsp, "h.264 SPS RBSP");
-				ADD_HEADER_DATA(h264_headers.pps_rbsp, "h.264 PPS RBSP");
-				break;
-			}
-
-			case IMX_VPU_CODEC_FORMAT_MPEG4:
-			{
-				ADD_HEADER_DATA(mpeg4_headers.vos_header, "MPEG-4 VOS header");
-				ADD_HEADER_DATA(mpeg4_headers.vis_header, "MPEG-4 VIS header");
-				ADD_HEADER_DATA(mpeg4_headers.vol_header, "MPEG-4 VOL header");
-				break;
-			}
-
-			case IMX_VPU_CODEC_FORMAT_MJPEG:
-			{
-	            if(NULL == encoding_params->write_output_buffer)
-	            {
-                    memcpy(write_ptr, encoder->headers.mjpeg_header_data, mjpeg_header_size);
-                    write_ptr += mjpeg_header_size;
-	            }
-	            else
-	            {
-	                encoding_params->write_output_buffer(encoding_params->output_buffer_context, encoder->headers.mjpeg_header_data, mjpeg_header_size, raw_frame->pts, raw_frame->dts);
-	            }
-				IMX_VPU_LOG("added JPEG header with %zu byte", mjpeg_header_size);
-				break;
-			}
-
-			default:
-				break;
-		}
-
-		*output_code |= IMX_VPU_ENC_OUTPUT_CODE_CONTAINS_HEADER;
-#undef ADD_HEADER_DATA
-	}
-
 
 	/* Add this flag since the raw frame has been successfully consumed */
 	*output_code |= IMX_VPU_ENC_OUTPUT_CODE_INPUT_USED;
 
-	/* Get the encoded data out of the bitstream buffer into the output buffer */
-	if (enc_output_info.bitstreamBuffer != 0)
-	{
-        uint8_t const *output_data_ptr = GET_BITSTREAM_VIRT_ADDR(enc_output_info.bitstreamBuffer);
+	/* Increment the gop monitor. This is necessary to correctly insert headers in ring buffer mode */
+	++encoder->gop_monitor;
+    if(encoder->gop_monitor == encoder->gop_size)
+    {
+        encoder->gop_monitor = 0;
+    }
 
-        if(NULL == encoding_params->write_output_buffer)
-        {
-            ptrdiff_t available_space = write_ptr_end - write_ptr;
-
-            if (available_space < (ptrdiff_t)(enc_output_info.bitstreamSize))
-            {
-                IMX_VPU_ERROR(
-                    "insufficient space in output buffer for encoded data: need %u byte, got %td",
-                    enc_output_info.bitstreamSize,
-                    available_space
-                );
-                ret = IMX_VPU_ENC_RETURN_CODE_ERROR;
-
-                goto finish;
-            }
-            memcpy(write_ptr, output_data_ptr, enc_output_info.bitstreamSize);
-            write_ptr += enc_output_info.bitstreamSize;
-        }
-        else
-        {
-            encoding_params->write_output_buffer(encoding_params->output_buffer_context, output_data_ptr, enc_output_info.bitstreamSize, raw_frame->pts, raw_frame->dts);
-        }
-
-        IMX_VPU_LOG("added main encoded frame data with %u byte", enc_output_info.bitstreamSize);
-		*output_code |= IMX_VPU_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE;
-	}
 
 	/* Since the encoder does not perform any kind of delay
 	 * or reordering, this is appropriate, because in that
@@ -3792,10 +3930,11 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	encoder->first_frame = FALSE;
 
 finish:
-	if (write_ptr_start != NULL)
+	if (write_params.write_ptr_start != NULL)
 		encoding_params->finish_output_buffer(encoding_params->output_buffer_context, encoded_frame->acquired_handle);
 
 	return ret;
 
 #undef GET_BITSTREAM_VIRT_ADDR
+#undef WRITE_AUD
 }
