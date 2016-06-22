@@ -80,7 +80,6 @@ typedef enum
 }
 ImxVpuMappingFlags;
 
-
 typedef struct _ImxVpuDMABuffer ImxVpuDMABuffer;
 typedef struct _ImxVpuWrappedDMABuffer ImxVpuWrappedDMABuffer;
 typedef struct _ImxVpuDMABufferAllocator ImxVpuDMABufferAllocator;
@@ -394,6 +393,21 @@ typedef enum
 }
 ImxVpuColorFormat;
 
+typedef enum
+{
+    IMX_VPU_ROTATE_0 = 0,
+    IMX_VPU_ROTATE_90 = 90,
+    IMX_VPU_ROTATE_180 = 180,
+    IMX_VPU_ROTATE_270 = 270
+}ImxVpuRotateFlags;
+
+typedef enum
+{
+    IMX_VPU_MIRROR_NONE = 0,
+    IMX_VPU_MIRROR_VER,
+    IMX_VPU_MIRROR_HOR,
+    IMX_VPU_MIRROR_HOR_VER
+}ImxVpuMirrorFlags;
 
 /* Framebuffers are frame containers, and are used both for en- and decoding. */
 typedef struct
@@ -1290,6 +1304,12 @@ typedef struct
 	/* Format encoded data to produce. */
 	ImxVpuCodecFormat codec_format;
 
+	/* This can control the rotation of the frame while encoding.
+	 * Unfortunately this value must be set before encoding actually starts
+	 * so we pass it here in the open params
+	 */
+	ImxVpuRotateFlags rotate_flags;
+
 	/* Width and height of the incoming frames, in pixels. These
 	 * do not have to be aligned to any boundaries. */
 	unsigned int frame_width, frame_height;
@@ -1464,6 +1484,9 @@ typedef struct
 	 * control is disabled (= if the bitrate value is nonzero in
 	 * ImxVpuEncOpenParams). Default value is 0. */
 	int enable_autoskip;
+
+    /* Set the mirroring for the frame. */
+	ImxVpuMirrorFlags mirrorFlags;
 
 	/* Functions for acquiring and finishing output buffers. See the
 	 * typedef documentations above for details about how these

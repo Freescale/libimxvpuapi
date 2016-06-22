@@ -2409,6 +2409,7 @@ struct _ImxVpuEncoder
 	imx_vpu_phys_addr_t bitstream_buffer_physical_address;
 
 	ImxVpuCodecFormat codec_format;
+	ImxVpuRotateFlags rotate_angle;
 	unsigned int frame_width, frame_height;
 	unsigned int frame_rate_numerator, frame_rate_denominator;
 	unsigned int aud_enable;
@@ -2926,6 +2927,7 @@ void imx_vpu_enc_set_default_open_params(ImxVpuCodecFormat codec_format, ImxVpuE
 	assert(open_params != NULL);
 
 	open_params->codec_format = codec_format;
+	open_params->rotate_flags = IMX_VPU_ROTATE_0;
 	open_params->frame_width = 0;
 	open_params->frame_height = 0;
 	open_params->frame_rate_numerator = 1;
@@ -3015,6 +3017,8 @@ ImxVpuEncReturnCodes imx_vpu_enc_open(ImxVpuEncoder **encoder, ImxVpuEncOpenPara
 	memset(&enc_open_param, 0, sizeof(enc_open_param));
 	(*encoder)->first_frame = TRUE;
 
+	/* Set the rotation angle */
+	(*encoder)->rotate_angle = open_params->rotate_flags;
 
 	/* Map the bitstream buffer. This mapping will persist until the encoder is closed. */
 	(*encoder)->bitstream_buffer_virtual_address = imx_vpu_dma_buffer_map(bitstream_buffer, 0);
@@ -3032,8 +3036,22 @@ ImxVpuEncReturnCodes imx_vpu_enc_open(ImxVpuEncoder **encoder, ImxVpuEncOpenPara
 	enc_open_param.bitstreamBufferSize = VPU_ENC_MAIN_BITSTREAM_BUFFER_SIZE;
 
 	/* Miscellaneous codec format independent values */
-	enc_open_param.picWidth = open_params->frame_width;
-	enc_open_param.picHeight = open_params->frame_height;
+	switch(open_params->rotate_flags)
+	{
+	    case IMX_VPU_ROTATE_90:
+	    case IMX_VPU_ROTATE_270:
+	        enc_open_param.picWidth = open_params->frame_height;
+	        enc_open_param.picHeight = open_params->frame_width;
+	        break;
+	    default:
+	        enc_open_param.picWidth = open_params->frame_width;
+	        enc_open_param.picHeight = open_params->frame_height;
+	        break;
+	}
+	/* Fix the width & heoght to reflect rotation */
+	open_params->frame_width = enc_open_param.picWidth;
+	open_params->frame_height = enc_open_param.picHeight;
+
 	enc_open_param.frameRateInfo = (open_params->frame_rate_numerator & 0xffffUL) | (((open_params->frame_rate_denominator - 1) & 0xffffUL) << 16);
 	enc_open_param.bitRate = open_params->bitrate;
 	enc_open_param.initialDelay = open_params->initial_delay;
@@ -3208,8 +3226,8 @@ ImxVpuEncReturnCodes imx_vpu_enc_open(ImxVpuEncoder **encoder, ImxVpuEncOpenPara
 
 	/* Store some parameters internally for later use */
 	(*encoder)->codec_format = open_params->codec_format;
-	(*encoder)->frame_width = open_params->frame_width;
-	(*encoder)->frame_height = open_params->frame_height;
+    (*encoder)->frame_width = enc_open_param.picWidth;
+    (*encoder)->frame_height = enc_open_param.picHeight;
 	(*encoder)->frame_rate_numerator = open_params->frame_rate_numerator;
 	(*encoder)->frame_rate_denominator = open_params->frame_rate_denominator;
 
@@ -3391,24 +3409,38 @@ ImxVpuEncReturnCodes imx_vpu_enc_register_framebuffers(ImxVpuEncoder *encoder, I
 			goto cleanup;
 	}
 
-
-	/* Set default rotator settings for motion JPEG */
-	if (encoder->codec_format == IMX_VPU_CODEC_FORMAT_MJPEG)
 	{
-		/* the datatypes are int, but this is undocumented; determined by looking
-		 * into the imx-vpu library's vpu_lib.c vpu_EncGiveCommand() definition */
-		int rotation_angle = 0;
-		int mirror = 0;
+        /* the datatypes are int, but this is undocumented; determined by looking
+         * into the imx-vpu library's vpu_lib.c vpu_EncGiveCommand() definition */
+        int mirror = 0;
+        int enable_mirror = 1; /* Mirroring is enabled by default since it can be controlled online */
 
-		vpu_EncGiveCommand(encoder->handle, SET_ROTATION_ANGLE, (void *)(&rotation_angle));
-		vpu_EncGiveCommand(encoder->handle, SET_MIRROR_DIRECTION,(void *)(&mirror));
+        if(IMX_VPU_ROTATE_0 != encoder->rotate_angle)
+        {
+            int enable_rot = 1;
+            vpu_EncGiveCommand(encoder->handle, ENABLE_ROTATION, (void*)&enable_rot);
+            vpu_EncGiveCommand(encoder->handle, SET_ROTATION_ANGLE, (void *)&encoder->rotate_angle);
+        }
+        else
+        {
+            /* No need for rotation so let's disable it */
+            int enable_rot = 0;
+            vpu_EncGiveCommand(encoder->handle, ENABLE_ROTATION, (void*)&enable_rot);
+        }
+        vpu_EncGiveCommand(encoder->handle, ENABLE_MIRRORING, (void*)&enable_mirror);
+        vpu_EncGiveCommand(encoder->handle, SET_MIRROR_DIRECTION,(void *)(&mirror));
 
-#ifdef HAVE_ENC_ENABLE_SOF_STUFF
-		{
-			int append_nullbytes_to_sof_field = 0;
-			vpu_EncGiveCommand(encoder->handle, ENC_ENABLE_SOF_STUFF, (void*)(&append_nullbytes_to_sof_field));
-		}
-#endif
+        /* Set default rotator settings for motion JPEG */
+        if (encoder->codec_format == IMX_VPU_CODEC_FORMAT_MJPEG)
+        {
+
+#       ifdef HAVE_ENC_ENABLE_SOF_STUFF
+            {
+                int append_nullbytes_to_sof_field = 0;
+                vpu_EncGiveCommand(encoder->handle, ENC_ENABLE_SOF_STUFF, (void*)(&append_nullbytes_to_sof_field));
+            }
+#       endif
+	}
 	}
 
 
@@ -3683,7 +3715,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 
 
 	/* Do the actual encoding */
-
+    vpu_EncGiveCommand(encoder->handle, SET_MIRROR_DIRECTION, (void*)&encoding_params->mirrorFlags);
 	enc_ret = vpu_EncStartOneFrame(encoder->handle, &enc_param);
 	ret = IMX_VPU_ENC_HANDLE_ERROR("could not start frame encoding", enc_ret);
 	if (ret != IMX_VPU_ENC_RETURN_CODE_OK)
