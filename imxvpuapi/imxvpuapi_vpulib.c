@@ -60,13 +60,13 @@
 #define MIN_NUM_FREE_FB_REQUIRED 5
 #define FRAME_ALIGN 16
 
-#define VPU_MEMORY_ALIGNMENT		 0x8
+#define VPU_MEMORY_ALIGNMENT               0x8
 #define VPU_DEC_MAIN_BITSTREAM_BUFFER_SIZE (1024*1024*3)
 #define VPU_ENC_MAIN_BITSTREAM_BUFFER_SIZE (1024*1024*1)
-#define VPU_ENC_MPEG4_SCRATCH_SIZE		 0x080000
-#define VPU_MAX_SLICE_BUFFER_SIZE		  (1920*1088*15/20)
-#define VPU_PS_SAVE_BUFFER_SIZE			(1024*512)
-#define VPU_VP8_MB_PRED_BUFFER_SIZE		(68*(1920*1088/256))
+#define VPU_ENC_MPEG4_SCRATCH_SIZE         0x080000
+#define VPU_MAX_SLICE_BUFFER_SIZE          (1920*1088*15/20)
+#define VPU_PS_SAVE_BUFFER_SIZE            (1024*512)
+#define VPU_VP8_MB_PRED_BUFFER_SIZE        (68*(1920*1088/256))
 
 /* The decoder's bitstream buffer shares space with other fields,
  * to not have to allocate several DMA blocks. The actual bitstream buffer is called
@@ -77,20 +77,20 @@
 
 #define VPU_ENC_MIN_REQUIRED_BITSTREAM_BUFFER_SIZE  (VPU_ENC_MAIN_BITSTREAM_BUFFER_SIZE + VPU_ENC_MPEG4_SCRATCH_SIZE)
 
-#define VPU_ENC_NUM_EXTRA_SUBSAMPLE_FRAMEBUFFERS  2
+#define VPU_ENC_NUM_EXTRA_SUBSAMPLE_FRAMEBUFFERS    2
 
 #define VP8_SEQUENCE_HEADER_SIZE  32
-#define VP8_FRAME_HEADER_SIZE	 12
+#define VP8_FRAME_HEADER_SIZE     12
 
 #define WMV3_RCV_SEQUENCE_LAYER_SIZE (6 * 4)
-#define WMV3_RCV_FRAME_LAYER_SIZE	4
+#define WMV3_RCV_FRAME_LAYER_SIZE    4
 
 #define VC1_NAL_FRAME_LAYER_MAX_SIZE   4
 
-#define VPU_RB_WAIT_TIMEOUT			 10 /* milliseconds to wait for frame completion */
-#define VPU_RB_MAX_TIMEOUT_COUNTS	   64   /* how many timeouts are allowed in series */
-#define VPU_WAIT_TIMEOUT  (VPU_RB_WAIT_TIMEOUT*50)
-#define VPU_MAX_TIMEOUT_COUNTS 4
+#define VPU_RB_WAIT_TIMEOUT         10 /* milliseconds to wait for frame completion */
+#define VPU_RB_MAX_TIMEOUT_COUNTS   64 /* how many timeouts are allowed in series */
+#define VPU_WAIT_TIMEOUT            (VPU_RB_WAIT_TIMEOUT*50)
+#define VPU_MAX_TIMEOUT_COUNTS      4
 
 #define MJPEG_ENC_HEADER_DATA_MAX_SIZE  2048
 
@@ -450,13 +450,13 @@ ImxVpuInterlacingMode convert_interlacing_mode(ImxVpuCodecFormat codec_format, D
 typedef struct
 {
 	ImxVpuDMABuffer parent;
-	vpu_mem_desc mem_desc;
+	vpu_mem_desc    mem_desc;
 
 	/* Not the same as mem_desc->size
 	 * the value in mem_desc is potentially larger due to alignment */
 	size_t size;
 
-	uint8_t*			aligned_virtual_address;
+	uint8_t*            aligned_virtual_address;
 	imx_vpu_phys_addr_t aligned_physical_address;
 }
 DefaultDMABuffer;
@@ -667,9 +667,9 @@ void imx_vpu_calc_framebuffer_sizes(ImxVpuColorFormat color_format, unsigned int
 	 * while in the chroma_interleave == 1 case, there is one shared chroma plane
 	 * for both Cb and Cr data, with cbcr_size bytes */
 	calculated_sizes->total_size = calculated_sizes->y_size
-								 + (chroma_interleave ? calculated_sizes->cbcr_size : (calculated_sizes->cbcr_size * 2))
-								 + calculated_sizes->mvcol_size
-								 + alignment;
+                                 + (chroma_interleave ? calculated_sizes->cbcr_size : (calculated_sizes->cbcr_size * 2))
+                                 + calculated_sizes->mvcol_size
+                                 + alignment;
 
 	calculated_sizes->chroma_interleave = chroma_interleave;
 }
@@ -701,7 +701,7 @@ void imx_vpu_fill_framebuffer_params(ImxVpuFramebuffer *framebuffer, ImxVpuFrame
 
 /* Frames are not just occupied or free. They can be in one of three modes:
  * - FrameMode_Free: framebuffer is not being used for decoding, and does not hold
-	 a displayable frame
+     a displayable frame
  * - FrameMode_ReservedForDecoding: framebuffer contains frame data that is
  *   being decoded; this data can not be displayed yet though
  * - FrameMode_ContainsDisplayableFrame: framebuffer contains frame that has
@@ -778,12 +778,12 @@ struct _ImxVpuDecoder
 	imx_vpu_dec_handle_error_full(__FILE__, __LINE__, __func__, (MSG_START), (RET_CODE))
 
 
-#define VPU_DECODER_DISPLAYIDX_ALL_FRAMES_DISPLAYED -1
+#define VPU_DECODER_DISPLAYIDX_ALL_FRAMES_DISPLAYED          -1
 #define VPU_DECODER_DISPLAYIDX_SKIP_MODE_NO_FRAME_TO_DISPLAY -2
-#define VPU_DECODER_DISPLAYIDX_NO_FRAME_TO_DISPLAY -3
+#define VPU_DECODER_DISPLAYIDX_NO_FRAME_TO_DISPLAY           -3
 
 #define VPU_DECODER_DECODEIDX_ALL_FRAMES_DECODED -1
-#define VPU_DECODER_DECODEIDX_FRAME_NOT_DECODED -2
+#define VPU_DECODER_DECODEIDX_FRAME_NOT_DECODED  -2
 
 
 static ImxVpuDecReturnCodes imx_vpu_dec_handle_error_full(char const *fn, int linenr, char const *funcn, char const *msg_start, RetCode ret_code);
@@ -905,16 +905,16 @@ char const * imx_vpu_dec_error_string(ImxVpuDecReturnCodes code)
 {
 	switch (code)
 	{
-		case IMX_VPU_DEC_RETURN_CODE_OK:						return "ok";
-		case IMX_VPU_DEC_RETURN_CODE_ERROR:					 return "unspecified error";
-		case IMX_VPU_DEC_RETURN_CODE_INVALID_PARAMS:			return "invalid params";
-		case IMX_VPU_DEC_RETURN_CODE_INVALID_HANDLE:			return "invalid handle";
-		case IMX_VPU_DEC_RETURN_CODE_INVALID_FRAMEBUFFER:	   return "invalid framebuffer";
+		case IMX_VPU_DEC_RETURN_CODE_OK:                        return "ok";
+		case IMX_VPU_DEC_RETURN_CODE_ERROR:                     return "unspecified error";
+		case IMX_VPU_DEC_RETURN_CODE_INVALID_PARAMS:            return "invalid params";
+		case IMX_VPU_DEC_RETURN_CODE_INVALID_HANDLE:            return "invalid handle";
+		case IMX_VPU_DEC_RETURN_CODE_INVALID_FRAMEBUFFER:       return "invalid framebuffer";
 		case IMX_VPU_DEC_RETURN_CODE_INSUFFICIENT_FRAMEBUFFERS: return "insufficient framebuffers";
-		case IMX_VPU_DEC_RETURN_CODE_INVALID_STRIDE:			return "invalid stride";
-		case IMX_VPU_DEC_RETURN_CODE_WRONG_CALL_SEQUENCE:	   return "wrong call sequence";
-		case IMX_VPU_DEC_RETURN_CODE_TIMEOUT:				   return "timeout";
-		case IMX_VPU_DEC_RETURN_CODE_ALREADY_CALLED:			return "already called";
+		case IMX_VPU_DEC_RETURN_CODE_INVALID_STRIDE:            return "invalid stride";
+		case IMX_VPU_DEC_RETURN_CODE_WRONG_CALL_SEQUENCE:       return "wrong call sequence";
+		case IMX_VPU_DEC_RETURN_CODE_TIMEOUT:                   return "timeout";
+		case IMX_VPU_DEC_RETURN_CODE_ALREADY_CALLED:            return "already called";
 		default: return "<unknown>";
 	}
 }
@@ -1297,11 +1297,11 @@ ImxVpuDecReturnCodes imx_vpu_dec_register_framebuffers(ImxVpuDecoder *decoder, I
 	if (decoder->codec_format != IMX_VPU_CODEC_FORMAT_MJPEG)
 	{
 		dec_ret = vpu_DecRegisterFrameBuffer(
-			decoder->handle,
-			decoder->internal_framebuffers,
-			num_framebuffers,
-			framebuffers[0].y_stride, /* The stride value is assumed to be the same for all framebuffers */
-			&buf_info
+            decoder->handle,
+            decoder->internal_framebuffers,
+            num_framebuffers,
+            framebuffers[0].y_stride, /* The stride value is assumed to be the same for all framebuffers */
+            &buf_info
 		);
 		ret = IMX_VPU_DEC_HANDLE_ERROR("could not register framebuffers", dec_ret);
 		if (ret != IMX_VPU_DEC_RETURN_CODE_OK)
@@ -2103,28 +2103,28 @@ ImxVpuDecReturnCodes imx_vpu_dec_decode(ImxVpuDecoder *decoder, ImxVpuEncodedFra
 
 		/* Log some information about the decoded frame */
 		IMX_VPU_LOG(
-			"output info:  indexFrameDisplay %d  indexFrameDecoded %d  NumDecFrameBuf %d  picType %d  idrFlg %d  numOfErrMBs %d  hScaleFlag %d  vScaleFlag %d  notSufficientPsBuffer %d  notSufficientSliceBuffer %d  decodingSuccess %d  interlacedFrame %d  mp4PackedPBframe %d  h264Npf %d  pictureStructure %d  topFieldFirst %d  repeatFirstField %d  fieldSequence %d  decPicWidth %d  decPicHeight %d",
-			decoder->dec_output_info.indexFrameDisplay,
-			decoder->dec_output_info.indexFrameDecoded,
-			decoder->dec_output_info.NumDecFrameBuf,
-			decoder->dec_output_info.picType,
-			decoder->dec_output_info.idrFlg,
-			decoder->dec_output_info.numOfErrMBs,
-			decoder->dec_output_info.hScaleFlag,
-			decoder->dec_output_info.vScaleFlag,
-			decoder->dec_output_info.notSufficientPsBuffer,
-			decoder->dec_output_info.notSufficientSliceBuffer,
-			decoder->dec_output_info.decodingSuccess,
-			decoder->dec_output_info.interlacedFrame,
-			decoder->dec_output_info.mp4PackedPBframe,
-			decoder->dec_output_info.h264Npf,
-			decoder->dec_output_info.pictureStructure,
-			decoder->dec_output_info.topFieldFirst,
-			decoder->dec_output_info.repeatFirstField,
-			decoder->dec_output_info.fieldSequence,
-			decoder->dec_output_info.decPicWidth,
-			decoder->dec_output_info.decPicHeight
-		);
+            "output info:  indexFrameDisplay %d  indexFrameDecoded %d  NumDecFrameBuf %d  picType %d  idrFlg %d  numOfErrMBs %d  hScaleFlag %d  vScaleFlag %d  notSufficientPsBuffer %d  notSufficientSliceBuffer %d  decodingSuccess %d  interlacedFrame %d  mp4PackedPBframe %d  h264Npf %d  pictureStructure %d  topFieldFirst %d  repeatFirstField %d  fieldSequence %d  decPicWidth %d  decPicHeight %d",
+            decoder->dec_output_info.indexFrameDisplay,
+            decoder->dec_output_info.indexFrameDecoded,
+            decoder->dec_output_info.NumDecFrameBuf,
+            decoder->dec_output_info.picType,
+            decoder->dec_output_info.idrFlg,
+            decoder->dec_output_info.numOfErrMBs,
+            decoder->dec_output_info.hScaleFlag,
+            decoder->dec_output_info.vScaleFlag,
+            decoder->dec_output_info.notSufficientPsBuffer,
+            decoder->dec_output_info.notSufficientSliceBuffer,
+            decoder->dec_output_info.decodingSuccess,
+            decoder->dec_output_info.interlacedFrame,
+            decoder->dec_output_info.mp4PackedPBframe,
+            decoder->dec_output_info.h264Npf,
+            decoder->dec_output_info.pictureStructure,
+            decoder->dec_output_info.topFieldFirst,
+            decoder->dec_output_info.repeatFirstField,
+            decoder->dec_output_info.fieldSequence,
+            decoder->dec_output_info.decPicWidth,
+            decoder->dec_output_info.decPicHeight
+        );
 
 
 		/* VP8 requires some workarounds */
@@ -2774,15 +2774,15 @@ char const * imx_vpu_enc_error_string(ImxVpuEncReturnCodes code)
 {
 	switch (code)
 	{
-		case IMX_VPU_ENC_RETURN_CODE_OK:						return "ok";
-		case IMX_VPU_ENC_RETURN_CODE_ERROR:					 return "unspecified error";
-		case IMX_VPU_ENC_RETURN_CODE_INVALID_PARAMS:			return "invalid params";
-		case IMX_VPU_ENC_RETURN_CODE_INVALID_HANDLE:			return "invalid handle";
-		case IMX_VPU_ENC_RETURN_CODE_INVALID_FRAMEBUFFER:	   return "invalid framebuffer";
+		case IMX_VPU_ENC_RETURN_CODE_OK:                        return "ok";
+		case IMX_VPU_ENC_RETURN_CODE_ERROR:                     return "unspecified error";
+		case IMX_VPU_ENC_RETURN_CODE_INVALID_PARAMS:            return "invalid params";
+		case IMX_VPU_ENC_RETURN_CODE_INVALID_HANDLE:            return "invalid handle";
+		case IMX_VPU_ENC_RETURN_CODE_INVALID_FRAMEBUFFER:       return "invalid framebuffer";
 		case IMX_VPU_ENC_RETURN_CODE_INSUFFICIENT_FRAMEBUFFERS: return "insufficient framebuffers";
-		case IMX_VPU_ENC_RETURN_CODE_INVALID_STRIDE:			return "invalid stride";
-		case IMX_VPU_ENC_RETURN_CODE_WRONG_CALL_SEQUENCE:	   return "wrong call sequence";
-		case IMX_VPU_ENC_RETURN_CODE_TIMEOUT:				   return "timeout";
+		case IMX_VPU_ENC_RETURN_CODE_INVALID_STRIDE:            return "invalid stride";
+		case IMX_VPU_ENC_RETURN_CODE_WRONG_CALL_SEQUENCE:       return "wrong call sequence";
+		case IMX_VPU_ENC_RETURN_CODE_TIMEOUT:                   return "timeout";
 		default: return "<unknown>";
 	}
 }
@@ -2981,7 +2981,7 @@ void imx_vpu_enc_set_default_open_params(ImxVpuCodecFormat codec_format, ImxVpuE
 
 		case IMX_VPU_CODEC_FORMAT_MJPEG:
 			open_params->codec_params.mjpeg_params.quality_factor = 85;
-
+			break;
 		default:
 			break;
 	}
@@ -3038,15 +3038,15 @@ ImxVpuEncReturnCodes imx_vpu_enc_open(ImxVpuEncoder **encoder, ImxVpuEncOpenPara
 	/* Miscellaneous codec format independent values */
 	switch(open_params->rotate_flags)
 	{
-	    case IMX_VPU_ROTATE_90:
-	    case IMX_VPU_ROTATE_270:
-	        enc_open_param.picWidth = open_params->frame_height;
-	        enc_open_param.picHeight = open_params->frame_width;
-	        break;
-	    default:
-	        enc_open_param.picWidth = open_params->frame_width;
-	        enc_open_param.picHeight = open_params->frame_height;
-	        break;
+		case IMX_VPU_ROTATE_90:
+		case IMX_VPU_ROTATE_270:
+			enc_open_param.picWidth = open_params->frame_height;
+			enc_open_param.picHeight = open_params->frame_width;
+			break;
+		default:
+			enc_open_param.picWidth = open_params->frame_width;
+			enc_open_param.picHeight = open_params->frame_height;
+			break;
 	}
 	/* Fix the width & heoght to reflect rotation */
 	open_params->frame_width = enc_open_param.picWidth;
@@ -3226,8 +3226,8 @@ ImxVpuEncReturnCodes imx_vpu_enc_open(ImxVpuEncoder **encoder, ImxVpuEncOpenPara
 
 	/* Store some parameters internally for later use */
 	(*encoder)->codec_format = open_params->codec_format;
-    (*encoder)->frame_width = enc_open_param.picWidth;
-    (*encoder)->frame_height = enc_open_param.picHeight;
+	(*encoder)->frame_width = enc_open_param.picWidth;
+	(*encoder)->frame_height = enc_open_param.picHeight;
 	(*encoder)->frame_rate_numerator = open_params->frame_rate_numerator;
 	(*encoder)->frame_rate_denominator = open_params->frame_rate_denominator;
 
@@ -3410,35 +3410,35 @@ ImxVpuEncReturnCodes imx_vpu_enc_register_framebuffers(ImxVpuEncoder *encoder, I
 	}
 
 	{
-        /* the datatypes are int, but this is undocumented; determined by looking
-         * into the imx-vpu library's vpu_lib.c vpu_EncGiveCommand() definition */
-        int mirror = 0;
-        int enable_mirror = 1; /* Mirroring is enabled by default since it can be controlled online */
+		/* the datatypes are int, but this is undocumented; determined by looking
+		 * into the imx-vpu library's vpu_lib.c vpu_EncGiveCommand() definition */
+		int mirror = 0;
+		int enable_mirror = 1; /* Mirroring is enabled by default since it can be controlled online */
 
-        if(IMX_VPU_ROTATE_0 != encoder->rotate_angle)
-        {
-            int enable_rot = 1;
-            vpu_EncGiveCommand(encoder->handle, ENABLE_ROTATION, (void*)&enable_rot);
-            vpu_EncGiveCommand(encoder->handle, SET_ROTATION_ANGLE, (void *)&encoder->rotate_angle);
-        }
-        else
-        {
-            /* No need for rotation so let's disable it */
-            int enable_rot = 0;
-            vpu_EncGiveCommand(encoder->handle, ENABLE_ROTATION, (void*)&enable_rot);
-        }
-        vpu_EncGiveCommand(encoder->handle, ENABLE_MIRRORING, (void*)&enable_mirror);
-        vpu_EncGiveCommand(encoder->handle, SET_MIRROR_DIRECTION,(void *)(&mirror));
+		if(IMX_VPU_ROTATE_0 != encoder->rotate_angle)
+		{
+			int enable_rot = 1;
+			vpu_EncGiveCommand(encoder->handle, ENABLE_ROTATION, (void*)&enable_rot);
+			vpu_EncGiveCommand(encoder->handle, SET_ROTATION_ANGLE, (void *)&encoder->rotate_angle);
+		}
+		else
+		{
+			/* No need for rotation so let's disable it */
+			int enable_rot = 0;
+			vpu_EncGiveCommand(encoder->handle, ENABLE_ROTATION, (void*)&enable_rot);
+		}
+		vpu_EncGiveCommand(encoder->handle, ENABLE_MIRRORING, (void*)&enable_mirror);
+		vpu_EncGiveCommand(encoder->handle, SET_MIRROR_DIRECTION,(void *)(&mirror));
 
-        /* Set default rotator settings for motion JPEG */
-        if (encoder->codec_format == IMX_VPU_CODEC_FORMAT_MJPEG)
-        {
+		/* Set default rotator settings for motion JPEG */
+		if (encoder->codec_format == IMX_VPU_CODEC_FORMAT_MJPEG)
+		{
 
 #       ifdef HAVE_ENC_ENABLE_SOF_STUFF
-            {
-                int append_nullbytes_to_sof_field = 0;
-                vpu_EncGiveCommand(encoder->handle, ENC_ENABLE_SOF_STUFF, (void*)(&append_nullbytes_to_sof_field));
-            }
+			{
+				int append_nullbytes_to_sof_field = 0;
+				vpu_EncGiveCommand(encoder->handle, ENC_ENABLE_SOF_STUFF, (void*)(&append_nullbytes_to_sof_field));
+			}
 #       endif
 	}
 	}

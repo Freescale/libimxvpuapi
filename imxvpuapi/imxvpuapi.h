@@ -61,7 +61,7 @@ typedef unsigned long imx_vpu_phys_addr_t;
 typedef enum
 {
 	IMX_VPU_ALLOCATION_FLAG_WRITECOMBINE = (1UL << 0),
-	IMX_VPU_ALLOCATION_FLAG_UNCACHED	 = (1UL << 1)
+	IMX_VPU_ALLOCATION_FLAG_UNCACHED     = (1UL << 1)
 	/* XXX: When adding extra flags here, follow the pattern: IMX_VPU_ALLOCATION_FLAG_<NAME> = (1UL << <INDEX>) */
 }
 ImxVpuAllocationFlags;
@@ -75,7 +75,7 @@ typedef enum
 	/* Map memory for CPU write access */
 	IMX_VPU_MAPPING_FLAG_WRITE   = (1UL << 0),
 	/* Map memory for CPU read access */
-	IMX_VPU_MAPPING_FLAG_READ	= (1UL << 1)
+	IMX_VPU_MAPPING_FLAG_READ    = (1UL << 1)
 	/* XXX: When adding extra flags here, follow the pattern: IMX_VPU_MAPPING_FLAG_<NAME> = (1UL << <INDEX>) */
 }
 ImxVpuMappingFlags;
@@ -100,25 +100,25 @@ typedef struct _ImxVpuDMABufferAllocator ImxVpuDMABufferAllocator;
  * The vfuncs are:
  *
  * allocate(): Allocates a DMA buffer. "size" is the size of the buffer in bytes. "alignment" is the address
- *			 alignment in bytes. An alignment of 1 or 0 means that no alignment is required.
- *			 "flags" is a bitwise OR combination of flags (or 0 if no flags are used, in which case
- *			 cached pages are used by default). See ImxVpuAllocationFlags for a list of valid flags.
- *			 If allocation fails, NULL is returned.
+ *             alignment in bytes. An alignment of 1 or 0 means that no alignment is required.
+ *             "flags" is a bitwise OR combination of flags (or 0 if no flags are used, in which case
+ *             cached pages are used by default). See ImxVpuAllocationFlags for a list of valid flags.
+ *             If allocation fails, NULL is returned.
  *
  * deallocate(): Deallocates a DMA buffer. The buffer must have been allocated with the same allocator.
  *
  * map(): Maps a DMA buffer to the local address space, and returns the virtual address to this space.
- *		"flags" is a bitwise OR combination of flags (or 0 if no flags are used, in which case it will map
- *		in regular read/write mode). See ImxVpuMappingFlags for a list of valid flags.
+ *        "flags" is a bitwise OR combination of flags (or 0 if no flags are used, in which case it will map
+ *        in regular read/write mode). See ImxVpuMappingFlags for a list of valid flags.
  *
  * unmap(): Unmaps a DMA buffer. If the buffer isn't currently mapped, this function does nothing.
  *
  * get_fd(): Gets the file descriptor associated with the DMA buffer. This is the preferred way of interacting
- *		   with DMA buffers. If the underlying allocator does not support FDs, this function returns -1.
+ *           with DMA buffers. If the underlying allocator does not support FDs, this function returns -1.
  *
  * get_physical_address(): Gets the physical address associated with the DMA buffer. This address points to the
- *						 start of the buffer in the physical address space. If no physical addresses are
- *						 supported by the allocator, this function returns 0.
+ *                         start of the buffer in the physical address space. If no physical addresses are
+ *                         supported by the allocator, this function returns 0.
  *
  * get_size(): Returns the size of the buffer, in bytes.
  *
@@ -311,14 +311,14 @@ typedef enum
 	/* MPEG-1 part 2 and MPEG-2 part 2.
 	 *
 	 * Decoding: Fully compatible with the ISO/IEC 13182-2 specification and the main and high
-	 *		   profiles. Both progressive and interlaced content is supported.
+	 *           profiles. Both progressive and interlaced content is supported.
 	 */
 	IMX_VPU_CODEC_FORMAT_MPEG2 = 0,
 
 	/* MPEG-4 part 2.
 	 *
 	 * Decoding: Supports simple and advanced simple profile (except for GMC).
-	 *		   NOTE: DivX 3/5/6 are not supported and require special licensing by Freescale.
+	 *           NOTE: DivX 3/5/6 are not supported and require special licensing by Freescale.
 	 * Encoding: Supports the simple profile and max. level 5/6.
 	 */
 	IMX_VPU_CODEC_FORMAT_MPEG4,
@@ -333,17 +333,17 @@ typedef enum
 	/* h.264.
 	 *
 	 * Decoding: Supports baseline, main, high profiles, max. level 4.1.
-	 *		   (10-bit decoding is not supported.)
-	 *		   Only Annex.B byte-stream formatted input is supported.
+	 *           (10-bit decoding is not supported.)
+	 *           Only Annex.B byte-stream formatted input is supported.
 	 * Encoding: Supports baseline and constrained baseline profile, max. level 4.0.
-	 *		   Only Annex.B byte-stream formatted output is supported.
+	 *           Only Annex.B byte-stream formatted output is supported.
 	 */
 	IMX_VPU_CODEC_FORMAT_H264,
 
 	/* WMV3, also known as Windows Media Video 9. Compatible to VC-1 simple and main profiles.
 	 *
 	 * Decoding: Fully supported WMV3 decoding, excluding the deprecated WMV3 interlace support
-	 *		   (which has been obsoleted by the interlacing in the VC-1 advanced profile).
+	 *           (which has been obsoleted by the interlacing in the VC-1 advanced profile).
 	 * VC-1 advanced profile). */
 	IMX_VPU_CODEC_FORMAT_WMV3,
 
@@ -357,17 +357,17 @@ typedef enum
 	 *
 	 * Decoding: Only baseline JPEG frames are supported. Maximum resolution is 8192x8192.
 	 * Encoding: Only baseline JPEG frames are supported. Maximum resolution is 8192x8192.
-	 *		   NOTE: Encoder always operates in constant quality mode, even if the open
-	 *		   params have a nonzero bitrate set.
+	 *           NOTE: Encoder always operates in constant quality mode, even if the open
+	 *           params have a nonzero bitrate set.
 	 */
 	IMX_VPU_CODEC_FORMAT_MJPEG,
 
 	/* VP8.
 	 *
 	 * Decoding: fully compatible with the VP8 decoding specification.
-	 *		   Both simple and normal in-loop deblocking are supported.
-	 *		   NOTE: VPU specs state that the maximum supported resolution is 1280x720, but
-	 *		   tests show that up to 1920x1088 pixels do work.
+	 *           Both simple and normal in-loop deblocking are supported.
+	 *           NOTE: VPU specs state that the maximum supported resolution is 1280x720, but
+	 *           tests show that up to 1920x1088 pixels do work.
 	 */
 	IMX_VPU_CODEC_FORMAT_VP8
 
@@ -380,33 +380,33 @@ ImxVpuCodecFormat;
 typedef enum
 {
 	/* planar 4:2:0; if the chroma_interleave parameter is 1, the corresponding format is NV12, otherwise it is I420 */
-	IMX_VPU_COLOR_FORMAT_YUV420			= 0,
+	IMX_VPU_COLOR_FORMAT_YUV420            = 0,
 	/* planar 4:2:2; if the chroma_interleave parameter is 1, the corresponding format is NV16 */
 	IMX_VPU_COLOR_FORMAT_YUV422_HORIZONTAL = 1,
 	/* 4:2:2 vertical, actually 2:2:4 (according to the VPU docs); no corresponding format known for the chroma_interleave=1 case */
 	/* NOTE: this format is rarely used, and has only been seen in a few JPEG files */
 	IMX_VPU_COLOR_FORMAT_YUV422_VERTICAL   = 2,
 	/* planar 4:4:4; if the chroma_interleave parameter is 1, the corresponding format is NV24 */
-	IMX_VPU_COLOR_FORMAT_YUV444			= 3,
+	IMX_VPU_COLOR_FORMAT_YUV444            = 3,
 	/* 8-bit greayscale */
-	IMX_VPU_COLOR_FORMAT_YUV400			= 4
+	IMX_VPU_COLOR_FORMAT_YUV400            = 4
 }
 ImxVpuColorFormat;
 
 typedef enum
 {
-    IMX_VPU_ROTATE_0 = 0,
-    IMX_VPU_ROTATE_90 = 90,
-    IMX_VPU_ROTATE_180 = 180,
-    IMX_VPU_ROTATE_270 = 270
+	IMX_VPU_ROTATE_0   = 0,
+	IMX_VPU_ROTATE_90  = 90,
+	IMX_VPU_ROTATE_180 = 180,
+	IMX_VPU_ROTATE_270 = 270
 }ImxVpuRotateFlags;
 
 typedef enum
 {
-    IMX_VPU_MIRROR_NONE = 0,
-    IMX_VPU_MIRROR_VER,
-    IMX_VPU_MIRROR_HOR,
-    IMX_VPU_MIRROR_HOR_VER
+	IMX_VPU_MIRROR_NONE = 0,
+	IMX_VPU_MIRROR_VER,
+	IMX_VPU_MIRROR_HOR,
+	IMX_VPU_MIRROR_HOR_VER
 }ImxVpuMirrorFlags;
 
 /* Framebuffers are frame containers, and are used both for en- and decoding. */
@@ -595,9 +595,9 @@ char const *imx_vpu_frame_type_string(ImxVpuFrameType frame_type);
  *
  * Typically, loading/unloading is done in two ways:
  * (1) imx_dec_vpu_load() gets called in the startup phase of the process, and
- *	 imx_vpu_dec_unload() in the shutdown phase.
+ *     imx_vpu_dec_unload() in the shutdown phase.
  * (2) imx_dec_vpu_load() gets called every time before a decoder is to be created,
- *	 and imx_vpu_dec_unload() every time after a decoder was shut down.
+ *     and imx_vpu_dec_unload() every time after a decoder was shut down.
  *
  * Both methods are fine; however, for (2), it is important to keep in mind that
  * the imx_vpu_dec_load() / imx_vpu_dec_unload() functions are *not* thread safe,
@@ -605,59 +605,59 @@ char const *imx_vpu_frame_type_string(ImxVpuFrameType frame_type);
  *
  * How to create, use, and shutdown a decoder:
  * 1. Call imx_vpu_dec_get_bitstream_buffer_info(), and allocate a DMA buffer
- *	with the given size and alignment. This is the minimum required size.
- *	The buffer can be larger, but must not be smaller than the given size.
+ *    with the given size and alignment. This is the minimum required size.
+ *    The buffer can be larger, but must not be smaller than the given size.
  * 2. Fill an instance of ImxVpuDecOpenParams with the values specific to the
- *	input data. Check the documentation of ImxVpuDecOpenParams for details
- *	about its fields.
+ *    input data. Check the documentation of ImxVpuDecOpenParams for details
+ *    about its fields.
  * 3. Call imx_vpu_dec_open(), passing in a pointer to the filled ImxVpuDecOpenParams
- *	instance, the bitstream DMA buffer which was allocated in step 1, a callback
- *	of type imx_vpu_dec_new_initial_info_callback, and a user defined pointer
- *	that is passed to the callback (if not needed, just set it to NULL).
+ *    instance, the bitstream DMA buffer which was allocated in step 1, a callback
+ *    of type imx_vpu_dec_new_initial_info_callback, and a user defined pointer
+ *    that is passed to the callback (if not needed, just set it to NULL).
  * 4. If out-of-band codec data is present, set it with imx_vpu_dec_set_codec_data().
  * 5. Call imx_vpu_dec_decode(), and push data to it. Once initial information about
- *	the bitstream becomes available, the callback from step 3 is invoked.
+ *    the bitstream becomes available, the callback from step 3 is invoked.
  * 6. Inside the callback, the new initial info is available. The new_initial_info pointer
- *	is never NULL. In this callback, framebuffers are allocated and registered, as
- *	explained in the next steps. Steps 7-9 are performed inside the callback.
+ *    is never NULL. In this callback, framebuffers are allocated and registered, as
+ *    explained in the next steps. Steps 7-9 are performed inside the callback.
  * 7. (Optional) Perform the necessary size and alignment calculations by calling
- *	imx_vpu_calc_framebuffer_sizes(). Pass in either the frame width & height from
- *	ImxVpuDecInitialInfo , or some explicit values that were determined externally.
- *	(The width & height do not have to be aligned; the function does this automatically.)
+ *    imx_vpu_calc_framebuffer_sizes(). Pass in either the frame width & height from
+ *    ImxVpuDecInitialInfo , or some explicit values that were determined externally.
+ *    (The width & height do not have to be aligned; the function does this automatically.)
  * 8. Create an array of at least as many ImxVpuFramebuffer instances as specified in
- *	min_num_required_framebuffers. Each instance must point to a DMA buffer that is big
- *	enough to hold a raw decoded frame. If step 7 was performed, allocating as many bytes
- *	as indicated by total_size is enough. Make sure the Y,Cb,Cr,MvCol offsets in each
- *	ImxVpuFramebuffer instance are valid. Using the imx_vpu_fill_framebuffer_params()
- *	convenience function for this is strongly recommended.
+ *    min_num_required_framebuffers. Each instance must point to a DMA buffer that is big
+ *    enough to hold a raw decoded frame. If step 7 was performed, allocating as many bytes
+ *    as indicated by total_size is enough. Make sure the Y,Cb,Cr,MvCol offsets in each
+ *    ImxVpuFramebuffer instance are valid. Using the imx_vpu_fill_framebuffer_params()
+ *    convenience function for this is strongly recommended.
  * 9. Call imx_vpu_dec_register_framebuffers() and pass in the ImxVpuFramebuffer array
- *	and the number of ImxVpuFramebuffer instances.
- *	Note that this call does _not_ copy the framebuffer array, it just stores the pointer
- *	to it internally, so make sure the array is valid until the decoder is closed!
- *	This should be the last action in the callback.
+ *    and the number of ImxVpuFramebuffer instances.
+ *    Note that this call does _not_ copy the framebuffer array, it just stores the pointer
+ *    to it internally, so make sure the array is valid until the decoder is closed!
+ *    This should be the last action in the callback.
  * 10. Continue calling imx_vpu_dec_decode(). Make sure the input data is not NULL.
- *	 If the IMX_VPU_DEC_OUTPUT_CODE_DECODED_FRAME_AVAILABLE flag is set in the output code,
- *	 call imx_vpu_dec_get_decoded_frame() with a pointer to an ImxVpuRawFrame instance.
- *	 The instance will get filled by the function with information about the decoded frame.
- *	 Once the decoded frame has been processed by the user, it is important to call
- *	 imx_vpu_dec_mark_framebuffer_as_displayed() to let the decoder know that the
- *	 framebuffer is available for storing new decoded frames again.
- *	 If IMX_VPU_DEC_OUTPUT_CODE_DROPPED is set, it is possible to retrieve information about
- *	 the dropped frame (context pointer, PTS/DTS values) with imx_vpu_dec_get_dropped_frame_info().
- *	 If IMX_VPU_DEC_OUTPUT_CODE_EOS is set, or if imx_vpu_dec_decode() returns a value other
- *	 than IMX_VPU_DEC_RETURN_CODE_OK, stop playback and close the decoder.
+ *     If the IMX_VPU_DEC_OUTPUT_CODE_DECODED_FRAME_AVAILABLE flag is set in the output code,
+ *     call imx_vpu_dec_get_decoded_frame() with a pointer to an ImxVpuRawFrame instance.
+ *     The instance will get filled by the function with information about the decoded frame.
+ *     Once the decoded frame has been processed by the user, it is important to call
+ *     imx_vpu_dec_mark_framebuffer_as_displayed() to let the decoder know that the
+ *     framebuffer is available for storing new decoded frames again.
+ *     If IMX_VPU_DEC_OUTPUT_CODE_DROPPED is set, it is possible to retrieve information about
+ *     the dropped frame (context pointer, PTS/DTS values) with imx_vpu_dec_get_dropped_frame_info().
+ *     If IMX_VPU_DEC_OUTPUT_CODE_EOS is set, or if imx_vpu_dec_decode() returns a value other
+ *     than IMX_VPU_DEC_RETURN_CODE_OK, stop playback and close the decoder.
  * 11. In case a flush/reset is desired (typically after seeking), call imx_vpu_dec_flush().
- *	 Note that any internal context/PTS/DTS values from the encoded and raw frames will be thrown
- *	 away after this call; if for example the context is an index, the system that hands
- *	 out the indices should be informed that any previously handed out index is now unused.
+ *     Note that any internal context/PTS/DTS values from the encoded and raw frames will be thrown
+ *     away after this call; if for example the context is an index, the system that hands
+ *     out the indices should be informed that any previously handed out index is now unused.
  * 12. When there is no more incoming data, and pending decoded frames need to be retrieved
- *	 from the decoder, enable drain mode with imx_vpu_dec_enable_drain_mode(). This is
- *	 typically necessary when the data source reached its end, playback is finishing, and
- *	 there is a delay of N frames at the beginning.
- *	 After this call, continue calling imx_vpu_dec_decode() to retrieve the pending
- *	 decoded frames, but the data and the codec data pointers of encoded_framt must be NULL.
- *	 As in step 10, if IMX_VPU_DEC_OUTPUT_CODE_EOS is set, or if imx_vpu_dec_decode() returns
- *	 a value other than IMX_VPU_DEC_RETURN_CODE_OK, stop playback and close the decoder.
+ *     from the decoder, enable drain mode with imx_vpu_dec_enable_drain_mode(). This is
+ *     typically necessary when the data source reached its end, playback is finishing, and
+ *     there is a delay of N frames at the beginning.
+ *     After this call, continue calling imx_vpu_dec_decode() to retrieve the pending
+ *     decoded frames, but the data and the codec data pointers of encoded_framt must be NULL.
+ *     As in step 10, if IMX_VPU_DEC_OUTPUT_CODE_EOS is set, or if imx_vpu_dec_decode() returns
+ *     a value other than IMX_VPU_DEC_RETURN_CODE_OK, stop playback and close the decoder.
  * 13. After playback is finished, close the decoder with imx_vpu_dec_close().
  * 14. Deallocate framebuffer memory blocks and the bitstream buffer memory block.
  *
@@ -669,10 +669,10 @@ char const *imx_vpu_frame_type_string(ImxVpuFrameType frame_type);
  *   mutex_lock(&mutex);
  *
  *   while (dec_initialized && !imx_vpu_dec_check_if_can_decode(decode) && !abort_waiting)
- *	 condition_wait(&condition_variable, &mutex);
+ *     condition_wait(&condition_variable, &mutex);
  *
  *   if (!abort_waiting)
- *	 imx_vpu_dec_decode(decoder, encoded_frame, &output_code);
+ *     imx_vpu_dec_decode(decoder, encoded_frame, &output_code);
  *   ...
  *
  *   mutex_unlock(&mutex);
@@ -763,30 +763,30 @@ typedef enum
 	 * fslwrapper backend; however, with the vpulib backend, it will
 	 * always use the input unless an error occurs or EOS is signaled
 	 * in drain mode. */
-	IMX_VPU_DEC_OUTPUT_CODE_INPUT_USED				   = (1UL << 0),
+	IMX_VPU_DEC_OUTPUT_CODE_INPUT_USED                 = (1UL << 0),
 	/* EOS was reached; no more unfinished frames are queued internally.
 	 * This can be reached either by bitstreams with no frame delay,
 	 * or by running the decoder in drain mode (enabled by calling
 	 * imx_vpu_dec_enable_drain_mode() ).
 	 */
-	IMX_VPU_DEC_OUTPUT_CODE_EOS						  = (1UL << 1),
+	IMX_VPU_DEC_OUTPUT_CODE_EOS                        = (1UL << 1),
 	/* A fully decoded frame is now available, and can be retrieved
 	 * by calling imx_vpu_dec_get_decoded_frame(). */
-	IMX_VPU_DEC_OUTPUT_CODE_DECODED_FRAME_AVAILABLE	  = (1UL << 2),
+	IMX_VPU_DEC_OUTPUT_CODE_DECODED_FRAME_AVAILABLE    = (1UL << 2),
 	/* A frame was dropped by the decoder. The dropped frame's
 	 * context, PTS, DTS values can be retrieved by calling
 	 * imx_vpu_dec_get_dropped_frame_info(). */
-	IMX_VPU_DEC_OUTPUT_CODE_DROPPED					  = (1UL << 3),
+	IMX_VPU_DEC_OUTPUT_CODE_DROPPED                    = (1UL << 3),
 	/* There aren't enough free framebuffers available for decoding.
 	 * This usually happens when imx_vpu_dec_mark_framebuffer_as_displayed()
 	 * wasn't called before imx_vpu_dec_decode(), which can occur in
 	 * multithreaded environments. imx_vpu_dec_check_if_can_decode() is useful
 	 * to avoid this. Also see the guide above for more. */
-	IMX_VPU_DEC_OUTPUT_CODE_NOT_ENOUGH_OUTPUT_FRAMES	 = (1UL << 4),
+	IMX_VPU_DEC_OUTPUT_CODE_NOT_ENOUGH_OUTPUT_FRAMES   = (1UL << 4),
 	/* Input data for a frame is incomplete. No decoded frame will
 	 * be available until the input frame's data has been fully and
 	 * correctly delivered. */
-	IMX_VPU_DEC_OUTPUT_CODE_NOT_ENOUGH_INPUT_DATA		= (1UL << 5),
+	IMX_VPU_DEC_OUTPUT_CODE_NOT_ENOUGH_INPUT_DATA      = (1UL << 5),
 	/* The VPU detected a change in the video sequence parameters
 	 * (like frame width and height). Decoding cannot continue. See the
 	 * explanation in the step-by-step guide above for what steps to take
@@ -795,7 +795,7 @@ typedef enum
 	 * that this flag is set immediately when input data with param changes
 	 * is fed to the decoder, even if this is for example a h.264 high
 	 * profile stream with lots of frame reordering and frame delays. */
-	IMX_VPU_DEC_OUTPUT_CODE_VIDEO_PARAMS_CHANGED		 = (1UL << 6)
+	IMX_VPU_DEC_OUTPUT_CODE_VIDEO_PARAMS_CHANGED       = (1UL << 6)
 }
 ImxVpuDecOutputCodes;
 
@@ -1003,9 +1003,9 @@ ImxVpuDecReturnCodes imx_vpu_dec_mark_framebuffer_as_displayed(ImxVpuDecoder *de
  *
  * Typically, loading/unloading is done in two ways:
  * (1) imx_vpu_enc_load() gets called in the startup phase of the process, and
- *	 imx_vpu_enc_unload() in the shutdown phase.
+ *     imx_vpu_enc_unload() in the shutdown phase.
  * (2) imx_vpu_enc_load() gets called every time before a encoder is to be created,
- *	 and imx_vpu_enc_unload() every time after a encoder was shut down.
+ *     and imx_vpu_enc_unload() every time after a encoder was shut down.
  *
  * Both methods are fine; however, for (2), it is important to keep in mind that
  * the imx_vpu_enc_load() / imx_vpu_enc_unload() functions are *not* thread safe,
@@ -1013,69 +1013,69 @@ ImxVpuDecReturnCodes imx_vpu_dec_mark_framebuffer_as_displayed(ImxVpuDecoder *de
  *
  * How to create, use, and shutdown an encoder:
  * 1. Call imx_vpu_enc_get_bitstream_buffer_info(), and allocate a DMA buffer
- *	with the given size and alignment. This is the minimum required size.
- *	The buffer can be larger, but must not be smaller than the given size.
+ *    with the given size and alignment. This is the minimum required size.
+ *    The buffer can be larger, but must not be smaller than the given size.
  * 2. Fill an instance of ImxVpuEncOpenParams with the values specific to the
- *	input data. Check the documentation of ImxVpuEncOpenParams for details
- *	about its fields. It is recommended to set default values by calling
- *	imx_vpu_enc_set_default_open_params() and afterwards set any explicit valus.
+ *    input data. Check the documentation of ImxVpuEncOpenParams for details
+ *    about its fields. It is recommended to set default values by calling
+ *    imx_vpu_enc_set_default_open_params() and afterwards set any explicit valus.
  * 3. Call imx_vpu_enc_open(), passing in a pointer to the filled ImxVpuEncOpenParams
- *	instance, and the DMA buffer of the bitstream DMA buffer which was allocated in
- *	step 1.
+ *    instance, and the DMA buffer of the bitstream DMA buffer which was allocated in
+ *    step 1.
  * 4. Call imx_vpu_enc_get_initial_info(). The encoder's initial info contains the
- *	minimum number of framebuffers that must be allocated and registered, and the
- *	address alignment that must be used when allocating DMA memory  for these
- *	framebuffers.
+ *    minimum number of framebuffers that must be allocated and registered, and the
+ *    address alignment that must be used when allocating DMA memory  for these
+ *    framebuffers.
  * 5. (Optional) Perform the necessary size and alignment calculations by calling
- *	imx_vpu_calc_framebuffer_sizes(). Pass in the width & height of the frames that
- *	shall be encoded. (The width & height do not have to be aligned; the function
- *	does this automatically.)
+ *    imx_vpu_calc_framebuffer_sizes(). Pass in the width & height of the frames that
+ *    shall be encoded. (The width & height do not have to be aligned; the function
+ *    does this automatically.)
  * 6. Create an array of at least as many ImxVpuFramebuffer instances as specified in
- *	min_num_required_framebuffers. Each instance must point to a DMA buffer that is big
- *	enough to hold a frame. If step 5 was performed, allocating as many bytes as indicated
- *	by total_size is enough. Make sure the Y,Cb,Cr,MvCol offsets in each ImxVpuFramebuffer
- *	instance are valid. Using the imx_vpu_fill_framebuffer_params() convenience function
- *	for this is recommended. Note that these framebuffers are used for temporary internal
- *	encoding only, and will not contain input or output data.
+ *    min_num_required_framebuffers. Each instance must point to a DMA buffer that is big
+ *    enough to hold a frame. If step 5 was performed, allocating as many bytes as indicated
+ *    by total_size is enough. Make sure the Y,Cb,Cr,MvCol offsets in each ImxVpuFramebuffer
+ *    instance are valid. Using the imx_vpu_fill_framebuffer_params() convenience function
+ *    for this is recommended. Note that these framebuffers are used for temporary internal
+ *    encoding only, and will not contain input or output data.
  * 7. Call imx_vpu_enc_register_framebuffers() and pass in the ImxVpuFramebuffer array
- *	and the number of ImxVpuFramebuffer instances allocated in step 6.
+ *    and the number of ImxVpuFramebuffer instances allocated in step 6.
  * 8. (Optional) allocate a DMA buffer for the input frames. Only one buffer is necessary.
- *	Simply reuse the sizes used for the temporary buffers in step 7. If the incoming data
- *	is already stored in DMA buffers, this step can be omitted, since the encoder can then
- *	read the data directly.
+ *    Simply reuse the sizes used for the temporary buffers in step 7. If the incoming data
+ *    is already stored in DMA buffers, this step can be omitted, since the encoder can then
+ *    read the data directly.
  * 9. Create an instance of ImxVpuRawFrame, set its values to zero (typically by using memset()).
  * 10. Create an instance of ImxVpuEncodedFrame. Set its values to zero (typically by using memset()).
  * 11. Set the framebuffer pointer of the ImxVpuRawFrame's instance from step 9 to refer to the
- *	 input DMA buffer (either the one allocated in step 8, or the one containing the input data if
- *	 it already comes in DMA memory).
+ *     input DMA buffer (either the one allocated in step 8, or the one containing the input data if
+ *     it already comes in DMA memory).
  * 12. Fill an instance of ImxVpuEncParams with valid values. It is recommended to first set its
- *	 values to zero by using memset() and then call imx_vpu_enc_set_default_encoding_params()
- *	 to set default values. It is essential to make sure the acquire_output_buffer() and
- *	 finish_output_buffer() function pointers are set, as these are used for acquiring buffers
- *	 to write encoded output data into.
+ *     values to zero by using memset() and then call imx_vpu_enc_set_default_encoding_params()
+ *     to set default values. It is essential to make sure the acquire_output_buffer() and
+ *     finish_output_buffer() function pointers are set, as these are used for acquiring buffers
+ *     to write encoded output data into.
  * 13. If step 8 was performed, and therefore input data does *not* come in DMA memory, copy the
- *	 pixels from the raw input frames into the DMA buffer allocated in step 8. Otherwise, if
- *	 the raw input frames are already stored in DMA memory, this step can be omitted.
+ *     pixels from the raw input frames into the DMA buffer allocated in step 8. Otherwise, if
+ *     the raw input frames are already stored in DMA memory, this step can be omitted.
  * 14. Call imx_vpu_enc_encode(). Pass the raw frame, the encoded frame, and the encoding param
- *	 strucutres from steps 9, 10, and 12 to it.
- *	 This function will encode data, and acquire an output buffer to write the encoded data into
- *	 by using the acquire_output_buffer() function pointer set in step 12. Once it is done
- *	 encoding, it will call the finish_output_buffer() function from step 12. Any handle created
- *	 by acquire_output_buffer() will be copied over to the encoded data frame structure. When
- *	 imx_vpu_enc_encode() exits, this handle can then be used to further process the output data.
- *	 It is guaranteed that once acquire_output_buffer() was called, finish_output_buffer() will
- *	 be called, even if an error occurred.
- *	 The IMX_VPU_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE output code bit will always be set
- *	 unless the function returned a code other than IMX_VPU_ENC_RETURN_CODE_OK.
- *	 If the IMX_VPU_ENC_OUTPUT_CODE_CONTAINS_HEADER bit is set, then header data has been
- *	 written in the output memory block allocated in step 10. It is placed right before the
- *	 actual encoded frame data. imx_vpu_enc_encode() will pass over the combined size of the header
- *	 and the encoded frame data to acquire_output_buffer() in this case, ensuring that the output
- *	 buffers are big enough.
+ *     strucutres from steps 9, 10, and 12 to it.
+ *     This function will encode data, and acquire an output buffer to write the encoded data into
+ *     by using the acquire_output_buffer() function pointer set in step 12. Once it is done
+ *     encoding, it will call the finish_output_buffer() function from step 12. Any handle created
+ *     by acquire_output_buffer() will be copied over to the encoded data frame structure. When
+ *     imx_vpu_enc_encode() exits, this handle can then be used to further process the output data.
+ *     It is guaranteed that once acquire_output_buffer() was called, finish_output_buffer() will
+ *     be called, even if an error occurred.
+ *     The IMX_VPU_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE output code bit will always be set
+ *     unless the function returned a code other than IMX_VPU_ENC_RETURN_CODE_OK.
+ *     If the IMX_VPU_ENC_OUTPUT_CODE_CONTAINS_HEADER bit is set, then header data has been
+ *     written in the output memory block allocated in step 10. It is placed right before the
+ *     actual encoded frame data. imx_vpu_enc_encode() will pass over the combined size of the header
+ *     and the encoded frame data to acquire_output_buffer() in this case, ensuring that the output
+ *     buffers are big enough.
  * 15. Repeat steps 11 to 14 until there are no more frames to encode or an error occurs.
  * 16. After encoding is finished, close the encoder with imx_vpu_enc_close().
  * 17. Deallocate framebuffer memory blocks, the input DMA buffer block, the output memory block,
- *	 and the bitstream buffer memory block.
+ *     and the bitstream buffer memory block.
  *
  * Note that the encoder does not use any kind of frame reordering. h.264 data uses the
  * baseline profile. An input frame immediately results in an output frame (unless an error occured).
@@ -1130,15 +1130,15 @@ typedef enum
 	 * should be loaded. If this code is not present, then the encoder
 	 * didn't use it yet, so give it to the encoder again until this
 	 * code is set or an error is returned. */
-	IMX_VPU_ENC_OUTPUT_CODE_INPUT_USED				 = (1UL << 0),
+	IMX_VPU_ENC_OUTPUT_CODE_INPUT_USED              = (1UL << 0),
 	/* A fully encoded frame is now available. The encoded_frame argument
 	 * passed to imx_vpu_enc_encode() contains information about this frame. */
-	IMX_VPU_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE	= (1UL << 1),
+	IMX_VPU_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE = (1UL << 1),
 	/* The data in the encoded frame also contains header information
 	 * like SPS/PSS for h.264. Headers are always placed at the beginning
 	 * of the encoded data, and this code is never present if the
 	 * IMX_VPU_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE isn't set. */
-	IMX_VPU_ENC_OUTPUT_CODE_CONTAINS_HEADER			= (1UL << 2)
+	IMX_VPU_ENC_OUTPUT_CODE_CONTAINS_HEADER         = (1UL << 2)
 }
 ImxVpuEncOutputCodes;
 
@@ -1485,7 +1485,7 @@ typedef struct
 	 * ImxVpuEncOpenParams). Default value is 0. */
 	int enable_autoskip;
 
-    /* Set the mirroring for the frame. */
+	/* Set the mirroring for the frame. */
 	ImxVpuMirrorFlags mirrorFlags;
 
 	/* Functions for acquiring and finishing output buffers. See the
