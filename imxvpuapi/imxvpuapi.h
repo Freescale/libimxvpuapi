@@ -1422,6 +1422,8 @@ ImxVpuEncInitialInfo;
  * of ImxVpuEncodedFrame.
  * The return value is a pointer to a memory-mapped region of the
  * output buffer, or NULL if acquiring failed.
+ * If the write_output_data function pointer in the encoder params
+ * is non-NULL, this function is not called.
  * This function is only used by imx_vpu_enc_encode(). */
 typedef void* (*ImxVpuEncAcquireOutputBuffer)(void *context, size_t size, void **acquired_handle);
 /* Function pointer used during encoding for notifying that the encoder
@@ -1429,8 +1431,18 @@ typedef void* (*ImxVpuEncAcquireOutputBuffer)(void *context, size_t size, void *
  * allocated buffers; instead, it makes it possible to release, unmap etc.
  * context is the value of output_buffer_context specified in
  * ImxVpuEncParams. acquired_handle equals the value of *acquired_handle in
- * ImxVpuEncAcquireOutputBuffer. */
+ * ImxVpuEncAcquireOutputBuffer.
+ * If the write_output_data function pointer in the encoder params
+ * is non-NULL, this function is not called. */
 typedef void (*ImxVpuEncFinishOutputBuffer)(void *context, void *acquired_handle);
+/* Function pointer used during encoding for passing the output encoded data
+ * to the user. If this function is not NULL, then ImxVpuEncFinishOutputBuffer
+ * and ImxVpuEncAcquireOutputBuffer function are not called. Instead, this
+ * data write function is called whenever the library wants to write output.
+ * encoded_frame contains valid pts, dts, and context data which was copied
+ * over from the corresponding raw frame.
+ * */
+typedef int32_t (*ImxVpuWriteOutputData)(void *context, uint8_t const *data, uint32_t size, ImxVpuEncodedFrame *encoded_frame);
 
 
 typedef struct
@@ -1453,9 +1465,25 @@ typedef struct
 	/* Functions for acquiring and finishing output buffers. See the
 	 * typedef documentations above for details about how these
 	 * functions should behave, and the imx_vpu_enc_encode()
-	 * documentation for how they are used. */
+	 * documentation for how they are used.
+	 * Note that these functions are only used if write_output_data
+	 * is set to NULL.
+	 */
 	ImxVpuEncAcquireOutputBuffer acquire_output_buffer;
 	ImxVpuEncFinishOutputBuffer finish_output_buffer;
+
+	/* Function for directly passing the output data to the user
+	 * without copying it first.
+	 * Using this function will inhibit calls to acquire_output_buffer
+	 * and finish_output_buffer. See the typedef documentations
+	 * above for details about how this function should behave, and
+	 * the imx_vpu_enc_encode() documentation for how they are used.
+	 * Note that if this function is NULL then acquire_output_buffer
+	 * and finish_output_buffer must be set.
+	 */
+	ImxVpuWriteOutputData write_output_data;
+
+	/* User supplied value that will be passed to the functions */
 	void *output_buffer_context;
 
 	/* Quantization parameter. Its value and valid range depends on
@@ -1569,7 +1597,7 @@ void imx_vpu_enc_configure_intra_qp(ImxVpuEncoder *encoder, int intra_qp);
  * (which is given to acquire_output_buffer() as an argument). The return value of acquire_output_buffer()
  * is a pointer to the (potentially memory-mapped) region of the buffer. The encoded frame data is then
  * copied to this buffer, and finish_output_buffer() is called. This function can be used to inform the
- * caller tha the encoder is done with this buffer; it now contains encoded data, and will not be modified
+ * caller that the encoder is done with this buffer; it now contains encoded data, and will not be modified
  * further. encoded_frame is filled with information about the encoded frame data.
  * If acquiring the buffer fails, acquire_output_buffer() returns a NULL pointer.
  * NOTE: again, finish_output_buffer() is NOT a function to free the buffer; it just signals that the encoder
@@ -1587,6 +1615,12 @@ void imx_vpu_enc_configure_intra_qp(ImxVpuEncoder *encoder, int intra_qp);
  * unlocks or releases the buffer for further processing. The acquired_handle is also copied to encoded_frame
  * even if an error occurs, unless the error occurred before the acquire_output_buffer() call, in which case
  * the encoded_frame's acquired_handle field will be set to NULL.
+ *
+ * The aforementioned sequences involve a copy (encoded data is copied into the acquired buffer). As an
+ * alternative, a write-callback-style mode of operation can be used. This alternative mode is active if
+ * the write_output_data function pointer in encoding_params is not NULL. In this mode, neither
+ * acquire_output_buffer() nor finish_output_buffer() are called. Instead, whenever the encoder needs to
+ * write out data, it calls write_output_data().
  *
  * The other fields in encoding_params specify additional encoding parameters, which can vary from frame to
  * frame.

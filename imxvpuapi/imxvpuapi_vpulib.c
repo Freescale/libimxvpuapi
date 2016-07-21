@@ -3477,8 +3477,8 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	assert(encoded_frame != NULL);
 	assert(encoding_params != NULL);
 	assert(output_code != NULL);
-	assert(encoding_params->acquire_output_buffer != NULL);
-	assert(encoding_params->finish_output_buffer != NULL);
+	assert(encoding_params->write_output_data != NULL || encoding_params->acquire_output_buffer != NULL);
+	assert(encoding_params->write_output_data != NULL || encoding_params->finish_output_buffer != NULL);
 
 	*output_code = 0;
 	write_ptr_start = NULL;
@@ -3655,24 +3655,41 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 		}
 	}
 
-	encoded_frame->data_size = encoded_data_size;
-	write_ptr_start = encoding_params->acquire_output_buffer(encoding_params->output_buffer_context, encoded_data_size, &(encoded_frame->acquired_handle));
-	if (write_ptr_start == NULL)
-	{
-		IMX_VPU_ERROR("could not acquire buffer with %zu byte for encoded frame data", encoded_data_size);
-		ret = IMX_VPU_ENC_RETURN_CODE_ERROR;
-		goto finish;
-	}
+	/* Since the encoder does not perform any kind of delay
+	 * or reordering, this is appropriate, because in that
+	 * case, one input frame always immediately leads to
+	 * one output frame */
+	encoded_frame->context = raw_frame->context;
+	encoded_frame->pts = raw_frame->pts;
+	encoded_frame->dts = raw_frame->dts;
 
-	write_ptr = write_ptr_start;
-	write_ptr_end = write_ptr + encoded_data_size;
+	encoded_frame->data_size = encoded_data_size;
+
+	if (encoding_params->write_output_data == NULL)
+	{
+		write_ptr_start = encoding_params->acquire_output_buffer(encoding_params->output_buffer_context, encoded_data_size, &(encoded_frame->acquired_handle));
+		if (write_ptr_start == NULL)
+		{
+			IMX_VPU_ERROR("could not acquire buffer with %zu byte for encoded frame data", encoded_data_size);
+			ret = IMX_VPU_ENC_RETURN_CODE_ERROR;
+			goto finish;
+		}
+
+		write_ptr = write_ptr_start;
+		write_ptr_end = write_ptr + encoded_data_size;
+	}
 
 	/* AUD should come before SPS/PPS - see the code in
 	 * imx_vpu_enc_open() for details */
 	if (encoder->aud_enable)
 	{
-		memcpy(write_ptr, h264_aud, sizeof(h264_aud));
-		write_ptr += sizeof(h264_aud);
+		if (encoding_params->write_output_data == NULL)
+		{
+			memcpy(write_ptr, h264_aud, sizeof(h264_aud));
+			write_ptr += sizeof(h264_aud);
+		}
+		else
+			encoding_params->write_output_data(encoding_params->output_buffer_context, h264_aud, sizeof(h264_aud), encoded_frame);
 		IMX_VPU_LOG("added h.264 AUD");
 	}
 
@@ -3682,8 +3699,13 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 		do \
 		{ \
 			size_t size = encoder->headers.HEADER_FIELD ## _size; \
-			memcpy(write_ptr, encoder->headers.HEADER_FIELD, size); \
-			write_ptr += size; \
+			if (encoding_params->write_output_data == NULL) \
+			{ \
+				memcpy(write_ptr, encoder->headers.HEADER_FIELD, size); \
+				write_ptr += size; \
+			} \
+			else \
+				encoding_params->write_output_data(encoding_params->output_buffer_context, encoder->headers.HEADER_FIELD, size, encoded_frame); \
 			IMX_VPU_LOG("added %s with %zu byte", (DESCRIPTION), size); \
 		} \
 		while (0)
@@ -3707,8 +3729,13 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 
 			case IMX_VPU_CODEC_FORMAT_MJPEG:
 			{
-				memcpy(write_ptr, encoder->headers.mjpeg_header_data, mjpeg_header_size);
-				write_ptr += mjpeg_header_size;
+				if (encoding_params->write_output_data == NULL)
+				{
+					memcpy(write_ptr, encoder->headers.mjpeg_header_data, mjpeg_header_size);
+					write_ptr += mjpeg_header_size;
+				}
+				else
+					encoding_params->write_output_data(encoding_params->output_buffer_context, encoder->headers.mjpeg_header_data, mjpeg_header_size, encoded_frame);
 				IMX_VPU_LOG("added JPEG header with %zu byte", mjpeg_header_size);
 				break;
 			}
@@ -3728,35 +3755,32 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	/* Get the encoded data out of the bitstream buffer into the output buffer */
 	if (enc_output_info.bitstreamBuffer != 0)
 	{
-		ptrdiff_t available_space = write_ptr_end - write_ptr;
 		uint8_t const *output_data_ptr = GET_BITSTREAM_VIRT_ADDR(enc_output_info.bitstreamBuffer);
 
-		if (available_space < (ptrdiff_t)(enc_output_info.bitstreamSize))
+		if (encoding_params->write_output_data == NULL)
 		{
-			IMX_VPU_ERROR(
-				"insufficient space in output buffer for encoded data: need %u byte, got %td",
-				enc_output_info.bitstreamSize,
-				available_space
-			);
-			ret = IMX_VPU_ENC_RETURN_CODE_ERROR;
+			ptrdiff_t available_space = write_ptr_end - write_ptr;
 
-			goto finish;
+			if (available_space < (ptrdiff_t)(enc_output_info.bitstreamSize))
+			{
+				IMX_VPU_ERROR(
+					"insufficient space in output buffer for encoded data: need %u byte, got %td",
+					enc_output_info.bitstreamSize,
+					available_space
+				);
+				ret = IMX_VPU_ENC_RETURN_CODE_ERROR;
+
+				goto finish;
+			}
+			memcpy(write_ptr, output_data_ptr, enc_output_info.bitstreamSize);
+			write_ptr += enc_output_info.bitstreamSize;
 		}
+		else
+			encoding_params->write_output_data(encoding_params->output_buffer_context, output_data_ptr, enc_output_info.bitstreamSize, encoded_frame);
 
-		memcpy(write_ptr, output_data_ptr, enc_output_info.bitstreamSize);
 		IMX_VPU_LOG("added main encoded frame data with %u byte", enc_output_info.bitstreamSize);
-		write_ptr += enc_output_info.bitstreamSize;
-
 		*output_code |= IMX_VPU_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE;
 	}
-
-	/* Since the encoder does not perform any kind of delay
-	 * or reordering, this is appropriate, because in that
-	 * case, one input frame always immediately leads to
-	 * one output frame */
-	encoded_frame->context = raw_frame->context;
-	encoded_frame->pts = raw_frame->pts;
-	encoded_frame->dts = raw_frame->dts;
 
 	encoder->first_frame = FALSE;
 
