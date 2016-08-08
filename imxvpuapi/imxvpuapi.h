@@ -1100,7 +1100,9 @@ typedef enum
 	/* A function was called at an inappropriate time. */
 	IMX_VPU_ENC_RETURN_CODE_WRONG_CALL_SEQUENCE,
 	/* The operation timed out. */
-	IMX_VPU_ENC_RETURN_CODE_TIMEOUT
+	IMX_VPU_ENC_RETURN_CODE_TIMEOUT,
+	/* write_output_data() in ImxVpuEncParams returned 0. */
+	IMX_VPU_ENC_RETURN_CODE_WRITE_CALLBACK_FAILED
 }
 ImxVpuEncReturnCodes;
 
@@ -1441,8 +1443,9 @@ typedef void (*ImxVpuEncFinishOutputBuffer)(void *context, void *acquired_handle
  * data write function is called whenever the library wants to write output.
  * encoded_frame contains valid pts, dts, and context data which was copied
  * over from the corresponding raw frame.
+ * Returns 1 if writing succeeded, 0 otherwise.
  * */
-typedef int32_t (*ImxVpuWriteOutputData)(void *context, uint8_t const *data, uint32_t size, ImxVpuEncodedFrame *encoded_frame);
+typedef int (*ImxVpuWriteOutputData)(void *context, uint8_t const *data, uint32_t size, ImxVpuEncodedFrame *encoded_frame);
 
 
 typedef struct

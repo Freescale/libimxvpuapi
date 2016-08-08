@@ -2771,21 +2771,28 @@ static void imx_vpu_enc_free_header_data(ImxVpuEncoder *encoder)
 }
 
 
-static void imx_vpu_enc_write_h264_aud(ImxVpuEncodedFrame *encoded_frame, ImxVpuEncParams *encoding_params, ImxVpuEncWriteContext *write_context)
+static ImxVpuEncReturnCodes imx_vpu_enc_write_h264_aud(ImxVpuEncodedFrame *encoded_frame, ImxVpuEncParams *encoding_params, ImxVpuEncWriteContext *write_context)
 {
 	if (encoding_params->write_output_data == NULL)
 	{
 		memcpy(write_context->write_ptr, h264_aud, sizeof(h264_aud));
 		write_context->write_ptr += sizeof(h264_aud);
+		return IMX_VPU_ENC_RETURN_CODE_OK;
 	}
 	else
 	{
-		encoding_params->write_output_data(encoding_params->output_buffer_context, h264_aud, sizeof(h264_aud), encoded_frame);
+		if (encoding_params->write_output_data(encoding_params->output_buffer_context, h264_aud, sizeof(h264_aud), encoded_frame) == 0)
+		{
+			IMX_VPU_ERROR("could not write h.264 AUD data: write callback reported failure");
+			return IMX_VPU_ENC_RETURN_CODE_WRITE_CALLBACK_FAILED;
+		}
+		else
+			return IMX_VPU_ENC_RETURN_CODE_OK;
 	}
 }
 
 
-static void imx_vpu_enc_write_header_data(ImxVpuEncoder *encoder, ImxVpuEncodedFrame *encoded_frame, ImxVpuEncParams *encoding_params, ImxVpuEncWriteContext *write_context, unsigned int *output_code)
+static ImxVpuEncReturnCodes imx_vpu_enc_write_header_data(ImxVpuEncoder *encoder, ImxVpuEncodedFrame *encoded_frame, ImxVpuEncParams *encoding_params, ImxVpuEncWriteContext *write_context, unsigned int *output_code)
 {
 #define ADD_HEADER_DATA(HEADER_FIELD, DESCRIPTION) \
 	do \
@@ -2797,7 +2804,14 @@ static void imx_vpu_enc_write_header_data(ImxVpuEncoder *encoder, ImxVpuEncodedF
 			write_context->write_ptr += size; \
 		} \
 		else \
-			encoding_params->write_output_data(encoding_params->output_buffer_context, encoder->headers.HEADER_FIELD, size, encoded_frame); \
+		{ \
+			if (encoding_params->write_output_data(encoding_params->output_buffer_context, encoder->headers.HEADER_FIELD, size, encoded_frame) == 0) \
+			{ \
+				IMX_VPU_ERROR("could not add %s with %zu byte: write callback reported failure", (DESCRIPTION), size); \
+				return IMX_VPU_ENC_RETURN_CODE_WRITE_CALLBACK_FAILED; \
+			} \
+		} \
+\
 		IMX_VPU_LOG("added %s with %zu byte", (DESCRIPTION), size); \
 	} \
 	while (0)
@@ -2827,8 +2841,16 @@ static void imx_vpu_enc_write_header_data(ImxVpuEncoder *encoder, ImxVpuEncodedF
 				write_context->write_ptr += write_context->mjpeg_header_size;
 			}
 			else
-				encoding_params->write_output_data(encoding_params->output_buffer_context, encoder->headers.mjpeg_header_data, write_context->mjpeg_header_size, encoded_frame);
-			IMX_VPU_LOG("added JPEG header with %zu byte", write_context->mjpeg_header_size);
+			{
+				if (encoding_params->write_output_data(encoding_params->output_buffer_context, encoder->headers.mjpeg_header_data, write_context->mjpeg_header_size, encoded_frame) == 0)
+				{
+					IMX_VPU_ERROR("could not add JPEG header with %zu byte: write callback reported failure", write_context->mjpeg_header_size);
+					return IMX_VPU_ENC_RETURN_CODE_WRITE_CALLBACK_FAILED;
+				}
+				else
+					IMX_VPU_LOG("added JPEG header with %zu byte", write_context->mjpeg_header_size);
+			}
+
 			break;
 		}
 
@@ -2838,6 +2860,8 @@ static void imx_vpu_enc_write_header_data(ImxVpuEncoder *encoder, ImxVpuEncodedF
 
 	*output_code |= IMX_VPU_ENC_OUTPUT_CODE_CONTAINS_HEADER;
 #undef ADD_HEADER_DATA
+
+	return IMX_VPU_ENC_RETURN_CODE_OK;
 }
 
 
@@ -2854,6 +2878,7 @@ char const * imx_vpu_enc_error_string(ImxVpuEncReturnCodes code)
 		case IMX_VPU_ENC_RETURN_CODE_INVALID_STRIDE:            return "invalid stride";
 		case IMX_VPU_ENC_RETURN_CODE_WRONG_CALL_SEQUENCE:       return "wrong call sequence";
 		case IMX_VPU_ENC_RETURN_CODE_TIMEOUT:                   return "timeout";
+		case IMX_VPU_ENC_RETURN_CODE_WRITE_CALLBACK_FAILED:     return "write callback failed";
 		default: return "<unknown>";
 	}
 }
@@ -3764,14 +3789,21 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	 * code in imx_vpu_enc_open() for details */
 	if (encoder->aud_enable)
 	{
-		imx_vpu_enc_write_h264_aud(encoded_frame, encoding_params, &write_context);
+		ret = imx_vpu_enc_write_h264_aud(encoded_frame, encoding_params, &write_context);
+		if (ret != IMX_VPU_ENC_RETURN_CODE_OK)
+			goto finish;
+
 		IMX_VPU_LOG("added h.264 AUD");
 	}
 
 	/* Add header data if necessary (after the AUD,
 	 * before the actual encoded frame data) */
 	if (add_header)
-		imx_vpu_enc_write_header_data(encoder, encoded_frame, encoding_params, &write_context, output_code);
+	{
+		ret = imx_vpu_enc_write_header_data(encoder, encoded_frame, encoding_params, &write_context, output_code);
+		if (ret != IMX_VPU_ENC_RETURN_CODE_OK)
+			goto finish;
+	}
 
 	/* Add this flag since the raw frame has been successfully consumed */
 	*output_code |= IMX_VPU_ENC_OUTPUT_CODE_INPUT_USED;
@@ -3800,7 +3832,14 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 			write_context.write_ptr += enc_output_info.bitstreamSize;
 		}
 		else
-			encoding_params->write_output_data(encoding_params->output_buffer_context, output_data_ptr, enc_output_info.bitstreamSize, encoded_frame);
+		{
+			if (encoding_params->write_output_data(encoding_params->output_buffer_context, output_data_ptr, enc_output_info.bitstreamSize, encoded_frame) == 0)
+			{
+				IMX_VPU_ERROR("could not output encoded data with %u byte: write callback reported failure", enc_output_info.bitstreamSize);
+				ret = IMX_VPU_ENC_RETURN_CODE_WRITE_CALLBACK_FAILED;
+				goto finish;
+			}
+		}
 
 		IMX_VPU_LOG("added main encoded frame data with %u byte", enc_output_info.bitstreamSize);
 		*output_code |= IMX_VPU_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE;
