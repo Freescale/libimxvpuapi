@@ -147,6 +147,7 @@ def build(bld):
 	examples = [ \
 		{ 'name': 'decode-example', 'source': ['example/decode-example.c'] }, \
 		{ 'name': 'encode-example', 'source': ['example/encode-example.c'] }, \
+		{ 'name': 'encode-example-writecb', 'source': ['example/encode-example-writecb.c'] }, \
 		{ 'name': 'jpeg-dec-example', 'source': ['example/jpeg-dec-example.c'] }, \
 		{ 'name': 'jpeg-enc-example', 'source': ['example/jpeg-enc-example.c'] }, \
 	]
