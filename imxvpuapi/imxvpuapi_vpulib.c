@@ -93,6 +93,10 @@
 #define MJPEG_ENC_HEADER_DATA_MAX_SIZE  2048
 
 
+/* h.264 access unit delimiter data */
+uint8_t const h264_aud[] = { 0x00, 0x00, 0x00, 0x01, 0x09, 0xF0 };
+
+
 /* Component tables, used by imx-vpu to fill in JPEG SOF headers as described
  * by the JPEG specification section B.2.2 and to pick the correct quantization
  * tables. There are 5 tables, one for each supported pixel format. Each table
@@ -2444,6 +2448,15 @@ struct _ImxVpuEncoder
 };
 
 
+typedef struct _ImxVpuEncWriteContext ImxVpuEncWriteContext;
+
+struct _ImxVpuEncWriteContext
+{
+	uint8_t *write_ptr, *write_ptr_start, *write_ptr_end;
+	size_t mjpeg_header_size;
+};
+
+
 #define IMX_VPU_ENC_HANDLE_ERROR(MSG_START, RET_CODE) \
 	imx_vpu_enc_handle_error_full(__FILE__, __LINE__, __func__, (MSG_START), (RET_CODE))
 
@@ -2755,6 +2768,76 @@ static void imx_vpu_enc_free_header_data(ImxVpuEncoder *encoder)
 	}
 
 #undef DEALLOC_HEADER
+}
+
+
+static void imx_vpu_enc_write_h264_aud(ImxVpuEncodedFrame *encoded_frame, ImxVpuEncParams *encoding_params, ImxVpuEncWriteContext *write_context)
+{
+	if (encoding_params->write_output_data == NULL)
+	{
+		memcpy(write_context->write_ptr, h264_aud, sizeof(h264_aud));
+		write_context->write_ptr += sizeof(h264_aud);
+	}
+	else
+	{
+		encoding_params->write_output_data(encoding_params->output_buffer_context, h264_aud, sizeof(h264_aud), encoded_frame);
+	}
+}
+
+
+static void imx_vpu_enc_write_header_data(ImxVpuEncoder *encoder, ImxVpuEncodedFrame *encoded_frame, ImxVpuEncParams *encoding_params, ImxVpuEncWriteContext *write_context, unsigned int *output_code)
+{
+#define ADD_HEADER_DATA(HEADER_FIELD, DESCRIPTION) \
+	do \
+	{ \
+		size_t size = encoder->headers.HEADER_FIELD ## _size; \
+		if (encoding_params->write_output_data == NULL) \
+		{ \
+			memcpy(write_context->write_ptr, encoder->headers.HEADER_FIELD, size); \
+			write_context->write_ptr += size; \
+		} \
+		else \
+			encoding_params->write_output_data(encoding_params->output_buffer_context, encoder->headers.HEADER_FIELD, size, encoded_frame); \
+		IMX_VPU_LOG("added %s with %zu byte", (DESCRIPTION), size); \
+	} \
+	while (0)
+
+	switch (encoder->codec_format)
+	{
+		case IMX_VPU_CODEC_FORMAT_H264:
+		{
+			ADD_HEADER_DATA(h264_headers.sps_rbsp, "h.264 SPS RBSP");
+			ADD_HEADER_DATA(h264_headers.pps_rbsp, "h.264 PPS RBSP");
+			break;
+		}
+
+		case IMX_VPU_CODEC_FORMAT_MPEG4:
+		{
+			ADD_HEADER_DATA(mpeg4_headers.vos_header, "MPEG-4 VOS header");
+			ADD_HEADER_DATA(mpeg4_headers.vis_header, "MPEG-4 VIS header");
+			ADD_HEADER_DATA(mpeg4_headers.vol_header, "MPEG-4 VOL header");
+			break;
+		}
+
+		case IMX_VPU_CODEC_FORMAT_MJPEG:
+		{
+			if (encoding_params->write_output_data == NULL)
+			{
+				memcpy(write_context->write_ptr, encoder->headers.mjpeg_header_data, write_context->mjpeg_header_size);
+				write_context->write_ptr += write_context->mjpeg_header_size;
+			}
+			else
+				encoding_params->write_output_data(encoding_params->output_buffer_context, encoder->headers.mjpeg_header_data, write_context->mjpeg_header_size, encoded_frame);
+			IMX_VPU_LOG("added JPEG header with %zu byte", write_context->mjpeg_header_size);
+			break;
+		}
+
+		default:
+			break;
+	}
+
+	*output_code |= IMX_VPU_ENC_OUTPUT_CODE_CONTAINS_HEADER;
+#undef ADD_HEADER_DATA
 }
 
 
@@ -3464,12 +3547,10 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	EncOutputInfo enc_output_info;
 	FrameBuffer source_framebuffer;
 	imx_vpu_phys_addr_t raw_frame_phys_addr;
-	uint8_t *write_ptr, *write_ptr_start, *write_ptr_end;
 	BOOL timeout;
 	BOOL add_header;
-	size_t mjpeg_header_size = 0;
 	size_t encoded_data_size;
-	uint8_t const h264_aud[] = { 0x00, 0x00, 0x00, 0x01, 0x09, 0xF0 };
+	ImxVpuEncWriteContext write_context;
 
 	ret = IMX_VPU_ENC_RETURN_CODE_OK;
 
@@ -3481,7 +3562,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	assert(encoding_params->write_output_data != NULL || encoding_params->finish_output_buffer != NULL);
 
 	*output_code = 0;
-	write_ptr_start = NULL;
+	memset(&write_context, 0, sizeof(write_context));
 
 	/* Set this here to ensure that the handle is NULL if an error occurs
 	 * before acquire_output_buffer() is called */
@@ -3503,7 +3584,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 		vpu_EncGiveCommand(encoder->handle, ENC_GET_JPEG_HEADER, &mjpeg_param);
 		IMX_VPU_LOG("added JPEG header with %d byte", mjpeg_param.size);
 
-		mjpeg_header_size = mjpeg_param.size;
+		write_context.mjpeg_header_size = mjpeg_param.size;
 
 		*output_code |= IMX_VPU_ENC_OUTPUT_CODE_CONTAINS_HEADER;
 	}
@@ -3639,7 +3720,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 		switch (encoder->codec_format)
 		{
 			case IMX_VPU_CODEC_FORMAT_MJPEG:
-				encoded_data_size += mjpeg_header_size;
+				encoded_data_size += write_context.mjpeg_header_size;
 				break;
 
 			case IMX_VPU_CODEC_FORMAT_H264:
@@ -3667,87 +3748,30 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 
 	if (encoding_params->write_output_data == NULL)
 	{
-		write_ptr_start = encoding_params->acquire_output_buffer(encoding_params->output_buffer_context, encoded_data_size, &(encoded_frame->acquired_handle));
-		if (write_ptr_start == NULL)
+		write_context.write_ptr_start = encoding_params->acquire_output_buffer(encoding_params->output_buffer_context, encoded_data_size, &(encoded_frame->acquired_handle));
+		if (write_context.write_ptr_start == NULL)
 		{
 			IMX_VPU_ERROR("could not acquire buffer with %zu byte for encoded frame data", encoded_data_size);
 			ret = IMX_VPU_ENC_RETURN_CODE_ERROR;
 			goto finish;
 		}
 
-		write_ptr = write_ptr_start;
-		write_ptr_end = write_ptr + encoded_data_size;
+		write_context.write_ptr = write_context.write_ptr_start;
+		write_context.write_ptr_end = write_context.write_ptr + encoded_data_size;
 	}
 
-	/* AUD should come before SPS/PPS - see the code in
-	 * imx_vpu_enc_open() for details */
+	/* AUD should come before SPS/PPS header data - see the
+	 * code in imx_vpu_enc_open() for details */
 	if (encoder->aud_enable)
 	{
-		if (encoding_params->write_output_data == NULL)
-		{
-			memcpy(write_ptr, h264_aud, sizeof(h264_aud));
-			write_ptr += sizeof(h264_aud);
-		}
-		else
-			encoding_params->write_output_data(encoding_params->output_buffer_context, h264_aud, sizeof(h264_aud), encoded_frame);
+		imx_vpu_enc_write_h264_aud(encoded_frame, encoding_params, &write_context);
 		IMX_VPU_LOG("added h.264 AUD");
 	}
 
+	/* Add header data if necessary (after the AUD,
+	 * before the actual encoded frame data) */
 	if (add_header)
-	{
-#define ADD_HEADER_DATA(HEADER_FIELD, DESCRIPTION) \
-		do \
-		{ \
-			size_t size = encoder->headers.HEADER_FIELD ## _size; \
-			if (encoding_params->write_output_data == NULL) \
-			{ \
-				memcpy(write_ptr, encoder->headers.HEADER_FIELD, size); \
-				write_ptr += size; \
-			} \
-			else \
-				encoding_params->write_output_data(encoding_params->output_buffer_context, encoder->headers.HEADER_FIELD, size, encoded_frame); \
-			IMX_VPU_LOG("added %s with %zu byte", (DESCRIPTION), size); \
-		} \
-		while (0)
-
-		switch (encoder->codec_format)
-		{
-			case IMX_VPU_CODEC_FORMAT_H264:
-			{
-				ADD_HEADER_DATA(h264_headers.sps_rbsp, "h.264 SPS RBSP");
-				ADD_HEADER_DATA(h264_headers.pps_rbsp, "h.264 PPS RBSP");
-				break;
-			}
-
-			case IMX_VPU_CODEC_FORMAT_MPEG4:
-			{
-				ADD_HEADER_DATA(mpeg4_headers.vos_header, "MPEG-4 VOS header");
-				ADD_HEADER_DATA(mpeg4_headers.vis_header, "MPEG-4 VIS header");
-				ADD_HEADER_DATA(mpeg4_headers.vol_header, "MPEG-4 VOL header");
-				break;
-			}
-
-			case IMX_VPU_CODEC_FORMAT_MJPEG:
-			{
-				if (encoding_params->write_output_data == NULL)
-				{
-					memcpy(write_ptr, encoder->headers.mjpeg_header_data, mjpeg_header_size);
-					write_ptr += mjpeg_header_size;
-				}
-				else
-					encoding_params->write_output_data(encoding_params->output_buffer_context, encoder->headers.mjpeg_header_data, mjpeg_header_size, encoded_frame);
-				IMX_VPU_LOG("added JPEG header with %zu byte", mjpeg_header_size);
-				break;
-			}
-
-			default:
-				break;
-		}
-
-		*output_code |= IMX_VPU_ENC_OUTPUT_CODE_CONTAINS_HEADER;
-#undef ADD_HEADER_DATA
-	}
-
+		imx_vpu_enc_write_header_data(encoder, encoded_frame, encoding_params, &write_context, output_code);
 
 	/* Add this flag since the raw frame has been successfully consumed */
 	*output_code |= IMX_VPU_ENC_OUTPUT_CODE_INPUT_USED;
@@ -3759,7 +3783,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 
 		if (encoding_params->write_output_data == NULL)
 		{
-			ptrdiff_t available_space = write_ptr_end - write_ptr;
+			ptrdiff_t available_space = write_context.write_ptr_end - write_context.write_ptr;
 
 			if (available_space < (ptrdiff_t)(enc_output_info.bitstreamSize))
 			{
@@ -3772,8 +3796,8 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 
 				goto finish;
 			}
-			memcpy(write_ptr, output_data_ptr, enc_output_info.bitstreamSize);
-			write_ptr += enc_output_info.bitstreamSize;
+			memcpy(write_context.write_ptr, output_data_ptr, enc_output_info.bitstreamSize);
+			write_context.write_ptr += enc_output_info.bitstreamSize;
 		}
 		else
 			encoding_params->write_output_data(encoding_params->output_buffer_context, output_data_ptr, enc_output_info.bitstreamSize, encoded_frame);
@@ -3785,7 +3809,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	encoder->first_frame = FALSE;
 
 finish:
-	if (write_ptr_start != NULL)
+	if (write_context.write_ptr_start != NULL)
 		encoding_params->finish_output_buffer(encoding_params->output_buffer_context, encoded_frame->acquired_handle);
 
 	return ret;
