@@ -1039,11 +1039,14 @@ ImxVpuDecReturnCodes imx_vpu_dec_mark_framebuffer_as_displayed(ImxVpuDecoder *de
  *     to set default values. It is essential to make sure the acquire_output_buffer() and
  *     finish_output_buffer() function pointers are set, as these are used for acquiring buffers
  *     to write encoded output data into.
+ *     Alternatively, set write_output_data() if write-callback style output is preferred. If this
+ *     function pointer is non-NULL, then acquire_output_buffer() and finish_output_buffer() are
+ *     ignored.
  * 13. If step 8 was performed, and therefore input data does *not* come in DMA memory, copy the
  *     pixels from the raw input frames into the DMA buffer allocated in step 8. Otherwise, if
  *     the raw input frames are already stored in DMA memory, this step can be omitted.
  * 14. Call imx_vpu_enc_encode(). Pass the raw frame, the encoded frame, and the encoding param
- *     strucutres from steps 9, 10, and 12 to it.
+ *     structures from steps 9, 10, and 12 to it.
  *     This function will encode data, and acquire an output buffer to write the encoded data into
  *     by using the acquire_output_buffer() function pointer set in step 12. Once it is done
  *     encoding, it will call the finish_output_buffer() function from step 12. Any handle created
@@ -1058,6 +1061,10 @@ ImxVpuDecReturnCodes imx_vpu_dec_mark_framebuffer_as_displayed(ImxVpuDecoder *de
  *     actual encoded frame data. imx_vpu_enc_encode() will pass over the combined size of the header
  *     and the encoded frame data to acquire_output_buffer() in this case, ensuring that the output
  *     buffers are big enough.
+ *     If write-callback style output is used instead (= if the write_output_data() function pointer
+ *     inside the encoding_params is set to a valid value), then this function haves as described
+ *     above, except that it does not call acquire_output_buffer() or finish_output_buffer(). It
+ *     still adds headers etc. but outputs these immediately by calling write_output_data().
  * 15. Repeat steps 11 to 14 until there are no more frames to encode or an error occurs.
  * 16. After encoding is finished, close the encoder with imx_vpu_enc_close().
  * 17. Deallocate framebuffer memory blocks, the input DMA buffer block, the output memory block,
