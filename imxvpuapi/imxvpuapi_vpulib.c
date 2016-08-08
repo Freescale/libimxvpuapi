@@ -2447,6 +2447,8 @@ struct _ImxVpuEncoder
 #define IMX_VPU_ENC_HANDLE_ERROR(MSG_START, RET_CODE) \
 	imx_vpu_enc_handle_error_full(__FILE__, __LINE__, __func__, (MSG_START), (RET_CODE))
 
+#define IMX_VPU_ENC_GET_BITSTREAM_VIRT_ADDR(IMXVPUENC, BITSTREAM_PHYS_ADDR) ((IMXVPUENC)->bitstream_buffer_virtual_address + ((PhysicalAddress)(BITSTREAM_PHYS_ADDR) - (PhysicalAddress)((IMXVPUENC)->bitstream_buffer_physical_address)))
+
 
 static ImxVpuEncReturnCodes imx_vpu_enc_handle_error_full(char const *fn, int linenr, char const *funcn, char const *msg_start, RetCode ret_code)
 {
@@ -3456,8 +3458,6 @@ void imx_vpu_enc_configure_intra_qp(ImxVpuEncoder *encoder, int intra_qp)
 
 ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame const *raw_frame, ImxVpuEncodedFrame *encoded_frame, ImxVpuEncParams *encoding_params, unsigned int *output_code)
 {
-#define GET_BITSTREAM_VIRT_ADDR(BITSTREAM_PHYS_ADDR) (encoder->bitstream_buffer_virtual_address + ((BITSTREAM_PHYS_ADDR) - encoder->bitstream_buffer_physical_address))
-
 	ImxVpuEncReturnCodes ret;
 	RetCode enc_ret;
 	EncParam enc_param;
@@ -3755,7 +3755,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	/* Get the encoded data out of the bitstream buffer into the output buffer */
 	if (enc_output_info.bitstreamBuffer != 0)
 	{
-		uint8_t const *output_data_ptr = GET_BITSTREAM_VIRT_ADDR(enc_output_info.bitstreamBuffer);
+		uint8_t const *output_data_ptr = IMX_VPU_ENC_GET_BITSTREAM_VIRT_ADDR(encoder, enc_output_info.bitstreamBuffer);
 
 		if (encoding_params->write_output_data == NULL)
 		{
@@ -3789,6 +3789,4 @@ finish:
 		encoding_params->finish_output_buffer(encoding_params->output_buffer_context, encoded_frame->acquired_handle);
 
 	return ret;
-
-#undef GET_BITSTREAM_VIRT_ADDR
 }
