@@ -2382,6 +2382,8 @@ ImxVpuDecReturnCodes imx_vpu_dec_mark_framebuffer_as_displayed(ImxVpuDecoder *de
 			return ret;
 	}
 
+	IMX_VPU_LOG("marked framebuffer with index #%d as displayed", idx);
+
 
 	/* set the already_marked flag to inform the rest of the imxvpuapi
 	 * decoder instance that the framebuffer isn't occupied anymore,
@@ -2409,7 +2411,10 @@ struct _ImxVpuEncoder
 	uint8_t *bitstream_buffer_virtual_address;
 	imx_vpu_phys_addr_t bitstream_buffer_physical_address;
 
+	ImxVpuDMABufferAllocator *additional_dmabuffers_allocator;
+
 	ImxVpuCodecFormat codec_format;
+	ImxVpuColorFormat color_format;
 	unsigned int frame_width, frame_height;
 	unsigned int frame_rate_numerator, frame_rate_denominator;
 	unsigned int aud_enable;
@@ -2417,6 +2422,11 @@ struct _ImxVpuEncoder
 	unsigned int num_framebuffers;
 	FrameBuffer *internal_framebuffers;
 	ImxVpuFramebuffer *framebuffers;
+
+	/* Used for grayscale support with non-MJPEG encoders */
+	ImxVpuDMABuffer **dummy_fb_uvplane_dmabuffers;
+	ImxVpuDMABuffer *dummy_input_uvplane_dmabuffer;
+	size_t dummy_cbcr_stride, dummy_cbcr_size, dummy_mvcol_size;
 
 	BOOL first_frame;
 
@@ -2937,6 +2947,7 @@ void imx_vpu_enc_set_default_open_params(ImxVpuCodecFormat codec_format, ImxVpuE
 	open_params->use_me_zero_pmv = 0;
 	open_params->additional_intra_cost_weight = 0;
 	open_params->chroma_interleave = 0;
+	open_params->additional_dmabuffers_allocator = NULL;
 
 	switch (codec_format)
 	{
@@ -3191,7 +3202,9 @@ ImxVpuEncReturnCodes imx_vpu_enc_open(ImxVpuEncoder **encoder, ImxVpuEncOpenPara
 
 
 	/* Store some parameters internally for later use */
+	(*encoder)->additional_dmabuffers_allocator = (open_params->additional_dmabuffers_allocator != NULL) ? open_params->additional_dmabuffers_allocator : imx_vpu_enc_get_default_allocator();
 	(*encoder)->codec_format = open_params->codec_format;
+	(*encoder)->color_format = open_params->color_format;
 	(*encoder)->frame_width = open_params->frame_width;
 	(*encoder)->frame_height = open_params->frame_height;
 	(*encoder)->frame_rate_numerator = open_params->frame_rate_numerator;
@@ -3247,6 +3260,21 @@ ImxVpuEncReturnCodes imx_vpu_enc_close(ImxVpuEncoder *encoder)
 	if (encoder->internal_framebuffers != NULL)
 		IMX_VPU_FREE(encoder->internal_framebuffers, sizeof(FrameBuffer) * encoder->num_framebuffers);
 
+	if (encoder->dummy_fb_uvplane_dmabuffers != NULL)
+	{
+		unsigned int i;
+		for (i = 0; i < encoder->num_framebuffers; ++i)
+		{
+			if (encoder->dummy_fb_uvplane_dmabuffers[i] != NULL)
+				imx_vpu_dma_buffer_deallocate(encoder->dummy_fb_uvplane_dmabuffers[i]);
+		}
+
+		IMX_VPU_FREE(encoder->dummy_fb_uvplane_dmabuffers, sizeof(ImxVpuDMABuffer*) * encoder->num_framebuffers);
+	}
+
+	if (encoder->dummy_input_uvplane_dmabuffer != NULL)
+		imx_vpu_dma_buffer_deallocate(encoder->dummy_input_uvplane_dmabuffer);
+
 	IMX_VPU_FREE(encoder, sizeof(ImxVpuEncoder));
 
 	if (ret == IMX_VPU_ENC_RETURN_CODE_OK)
@@ -3279,6 +3307,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_register_framebuffers(ImxVpuEncoder *encoder, I
 	ImxVpuEncReturnCodes ret;
 	RetCode enc_ret;
 	ExtBufCfg scratch_cfg;
+	BOOL fake_grayscale_mode;
 
 	assert(encoder != NULL);
 	assert(framebuffers != NULL);
@@ -3297,6 +3326,97 @@ ImxVpuEncReturnCodes imx_vpu_enc_register_framebuffers(ImxVpuEncoder *encoder, I
 	{
 		IMX_VPU_ERROR("allocating memory for framebuffers failed");
 		return IMX_VPU_ENC_RETURN_CODE_ERROR;
+	}
+
+	/* For grayscale input and non-MJPEG codec formats, use the "fake grayscale mode".
+	 * Allocate DMA buffers for dummy UV planes, one per framebuffer, and one DMA
+	 * buffer for providing dummy UV planes when encoding. Then, fill these buffers
+	 * with the 0x80 byte to make sure the produced image is desaturated. */
+
+	fake_grayscale_mode = (encoder->codec_format != IMX_VPU_CODEC_FORMAT_MJPEG) && (encoder->color_format == IMX_VPU_COLOR_FORMAT_YUV400);
+	if (fake_grayscale_mode)
+	{
+		size_t uvplanes_size;
+		unsigned int aligned_frame_width, aligned_frame_height;
+		uint8_t *mapped_data;
+
+		/* Calculate stride and size for the dummy UV planes, using the same
+		 * formula as in imx_vpu_calc_framebuffer_sizes(). Use 2*FRAME_ALIGN
+		 * for the height alignment in case incoming data is interlaced.
+		 * (Interlacing may be used with some frames and not with others, so
+		 * it is not possible to know here if interlacing is going to be used
+		 * or not, therefore use 2*FRAME_ALIGN to be on the safe side.) */
+
+		aligned_frame_width = IMX_VPU_ALIGN_VAL_TO(encoder->frame_width, FRAME_ALIGN);
+		aligned_frame_height = IMX_VPU_ALIGN_VAL_TO(encoder->frame_height, (2 * FRAME_ALIGN));
+
+		encoder->dummy_cbcr_stride = aligned_frame_width / 2;
+		encoder->dummy_cbcr_size = encoder->dummy_mvcol_size = aligned_frame_width * aligned_frame_height / 4;
+
+
+		/* Allocate array for dummy UV planes used with the framebuffers */
+
+		encoder->dummy_fb_uvplane_dmabuffers = IMX_VPU_ALLOC(sizeof(ImxVpuDMABuffer*) * num_framebuffers);
+		if (encoder->dummy_fb_uvplane_dmabuffers == NULL)
+		{
+			IMX_VPU_ERROR("allocating memory for dummy UV planes failed");
+			ret = IMX_VPU_ENC_RETURN_CODE_ERROR;
+			goto cleanup;
+		}
+
+		memset(encoder->dummy_fb_uvplane_dmabuffers, 0, sizeof(ImxVpuDMABuffer*) * num_framebuffers);
+
+		/* Allocate DMA buffers for the dummy UV planes used with the framebuffers */
+
+		for (i = 0; i < num_framebuffers; ++i)
+		{
+
+			/* Make sure there is room for the U and V planes and for the MvCol data.
+			 * All three need the same room (dummy_cbcr_size). */
+			uvplanes_size = encoder->dummy_cbcr_size * 3;
+			encoder->dummy_fb_uvplane_dmabuffers[i] = imx_vpu_dma_buffer_allocate(encoder->additional_dmabuffers_allocator, uvplanes_size, FRAME_ALIGN, 0);
+			if (encoder->dummy_fb_uvplane_dmabuffers[i] == NULL)
+			{
+				IMX_VPU_ERROR("allocating DMA memory for dummy UV planes for framebuffer #%u failed", i);
+				ret = IMX_VPU_ENC_RETURN_CODE_ERROR;
+				goto cleanup;
+			}
+
+			/* Map & fill with 0x80 bytes */
+			mapped_data = imx_vpu_dma_buffer_map(encoder->dummy_fb_uvplane_dmabuffers[i], IMX_VPU_MAPPING_FLAG_WRITE);
+			if (mapped_data == NULL)
+			{
+				IMX_VPU_ERROR("mapping DMA memory for dummy UV planes for framebuffer #%u failed", i);
+				ret = IMX_VPU_ENC_RETURN_CODE_ERROR;
+				goto cleanup;
+			}
+			memset(mapped_data, 0x80, uvplanes_size);
+			imx_vpu_dma_buffer_unmap(encoder->dummy_fb_uvplane_dmabuffers[i]);
+		}
+
+
+		/* Allocate DMA buffer for the dummy UV planes used with the input frames */
+
+		/* Make sure there is room for the U and V planes (MvCol is not needed for input frames) */
+		uvplanes_size = encoder->dummy_cbcr_size * 2;
+		encoder->dummy_input_uvplane_dmabuffer = imx_vpu_dma_buffer_allocate(encoder->additional_dmabuffers_allocator, uvplanes_size, FRAME_ALIGN, 0);
+		if (encoder->dummy_input_uvplane_dmabuffer == NULL)
+		{
+			IMX_VPU_ERROR("allocating DMA memory for dummy UV planes for input frames failed", i);
+			ret = IMX_VPU_ENC_RETURN_CODE_ERROR;
+			goto cleanup;
+		}
+
+		/* Map & fill with 0x80 bytes */
+		mapped_data = imx_vpu_dma_buffer_map(encoder->dummy_input_uvplane_dmabuffer, IMX_VPU_MAPPING_FLAG_WRITE);
+		if (mapped_data == NULL)
+		{
+			IMX_VPU_ERROR("mapping DMA memory for dummy UV planes for input frames failed", i);
+			ret = IMX_VPU_ENC_RETURN_CODE_ERROR;
+			goto cleanup;
+		}
+		memset(mapped_data, 0x80, uvplanes_size);
+		imx_vpu_dma_buffer_unmap(encoder->dummy_input_uvplane_dmabuffer);
 	}
 
 
@@ -3324,6 +3444,22 @@ ImxVpuEncReturnCodes imx_vpu_enc_register_framebuffers(ImxVpuEncoder *encoder, I
 		internal_fb->bufCb = (PhysicalAddress)(phys_addr + fb->cb_offset);
 		internal_fb->bufCr = (PhysicalAddress)(phys_addr + fb->cr_offset);
 		internal_fb->bufMvCol = (PhysicalAddress)(phys_addr + fb->mvcol_offset);
+
+		/* In fake grayscale mode, fill the cbcr stride and cb/cr physical addresses
+		 * with the right values to let the encoder use the dummy UV planes. */
+		if (fake_grayscale_mode)
+		{
+			ImxVpuDMABuffer *dma_buffer = encoder->dummy_fb_uvplane_dmabuffers[i];
+			phys_addr = imx_vpu_dma_buffer_get_physical_address(dma_buffer);
+
+			IMX_VPU_LOG("setting CbCr stride and physical addresses to point to dummy UV planes (base phys addr %" IMX_VPU_PHYS_ADDR_FORMAT ") for fake grayscale mode", phys_addr);
+
+			internal_fb->strideC = encoder->dummy_cbcr_stride;
+			/* The DMA buffer houses data for Cb, Cr, MvCol (in this order) */
+			internal_fb->bufCb = phys_addr;
+			internal_fb->bufCr = phys_addr + encoder->dummy_cbcr_size;
+			internal_fb->bufMvCol = phys_addr + encoder->dummy_cbcr_size + encoder->dummy_cbcr_size;
+		}
 	}
 
 	/* Set up the scratch buffer information. The MPEG-4 scratch buffer
@@ -3404,8 +3540,29 @@ ImxVpuEncReturnCodes imx_vpu_enc_register_framebuffers(ImxVpuEncoder *encoder, I
 	return IMX_VPU_DEC_RETURN_CODE_OK;
 
 cleanup:
-	IMX_VPU_FREE(encoder->internal_framebuffers, sizeof(FrameBuffer) * num_framebuffers);
-	encoder->internal_framebuffers = NULL;
+	if (encoder->dummy_fb_uvplane_dmabuffers)
+	{
+		for (i = 0; i < num_framebuffers; ++i)
+		{
+			if (encoder->dummy_fb_uvplane_dmabuffers[i] != NULL)
+				imx_vpu_dma_buffer_deallocate(encoder->dummy_fb_uvplane_dmabuffers[i]);
+		}
+
+		IMX_VPU_FREE(encoder->dummy_fb_uvplane_dmabuffers, sizeof(ImxVpuDMABuffer*) * num_framebuffers);
+		encoder->dummy_fb_uvplane_dmabuffers = NULL;
+	}
+
+	if (encoder->dummy_input_uvplane_dmabuffer != NULL)
+	{
+		imx_vpu_dma_buffer_deallocate(encoder->dummy_input_uvplane_dmabuffer);
+		encoder->dummy_input_uvplane_dmabuffer = NULL;
+	}
+
+	if (encoder->internal_framebuffers)
+	{
+		IMX_VPU_FREE(encoder->internal_framebuffers, sizeof(FrameBuffer) * num_framebuffers);
+		encoder->internal_framebuffers = NULL;
+	}
 
 	return ret;
 }
@@ -3572,6 +3729,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	EncOutputInfo enc_output_info;
 	FrameBuffer source_framebuffer;
 	imx_vpu_phys_addr_t raw_frame_phys_addr;
+	BOOL fake_grayscale_mode;
 	BOOL timeout;
 	BOOL add_header;
 	size_t encoded_data_size;
@@ -3588,6 +3746,10 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 
 	*output_code = 0;
 	memset(&write_context, 0, sizeof(write_context));
+
+	/* See comments inside imx_vpu_enc_register_framebuffers() for a description of
+	 * the "fake grayscale mode". */
+	fake_grayscale_mode = (encoder->codec_format != IMX_VPU_CODEC_FORMAT_MJPEG) && (encoder->color_format == IMX_VPU_COLOR_FORMAT_YUV400);
 
 	/* Set this here to ensure that the handle is NULL if an error occurs
 	 * before acquire_output_buffer() is called */
@@ -3636,6 +3798,19 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 
 	IMX_VPU_LOG("source framebuffer:  Y stride: %u  CbCr stride: %u", raw_frame->framebuffer->y_stride, raw_frame->framebuffer->cbcr_stride);
 
+	/* In fake grayscale mode, fill the cbcr stride and cb/cr physical addresses
+	 * with the right values to let the encoder use the dummy UV planes. */
+	if (fake_grayscale_mode)
+	{
+		imx_vpu_phys_addr_t dummy_uvplanes_phys_addr = imx_vpu_dma_buffer_get_physical_address(encoder->dummy_input_uvplane_dmabuffer);
+
+		IMX_VPU_LOG("setting CbCr stride and physical addresses to point to dummy UV planes (base phys addr %" IMX_VPU_PHYS_ADDR_FORMAT ") for fake grayscale mode", dummy_uvplanes_phys_addr);
+
+		source_framebuffer.strideC = encoder->dummy_cbcr_stride;
+		source_framebuffer.bufCb = dummy_uvplanes_phys_addr;
+		source_framebuffer.bufCr = dummy_uvplanes_phys_addr + encoder->dummy_cbcr_size;
+		source_framebuffer.bufMvCol = dummy_uvplanes_phys_addr + encoder->dummy_cbcr_size + encoder->dummy_cbcr_size;
+	}
 
 	/* Fill encoding parameters structure */
 

@@ -1073,6 +1073,15 @@ ImxVpuDecReturnCodes imx_vpu_dec_mark_framebuffer_as_displayed(ImxVpuDecoder *de
  * Note that the encoder does not use any kind of frame reordering. h.264 data uses the
  * baseline profile. An input frame immediately results in an output frame (unless an error occured).
  * There is no delay.
+ *
+ * The VPU's encoders only support the IMX_VPU_COLOR_FORMAT_YUV420 format, with the exception of
+ * the MJPEG encoder, which supports all formats from ImxVpuColorFormat. However, it is possible
+ * to provide YUV400 grayscale encoding support to the other encoders by internally using YUV420
+ * and using two dummy U and V planes that are filled with 0x80 bytes. For this purpose, the
+ * additional_dmabuffers_allocator from ImxVpuEncOpenParams is used. Framebuffers however do not
+ * have to allocate any space for dummy UV planes - the Y plane suffices.
+ * Note though that this trick, this "fake grayscale mode", will technically produce YUV420 data,
+ * and will be decoded by players as such, and NOT as YUV400 video.
  */
 
 
@@ -1318,7 +1327,9 @@ typedef struct
 	 * Default value is 16. */
 	unsigned int gop_size;
 	/* Color format to use for incoming frames. Only MJPEG actually uses
-	 * this value; other codec formats always use IMX_VPU_COLOR_FORMAT_YUV420.
+	 * all possible values; other codec formats only allow for the two formats
+	 * IMX_VPU_COLOR_FORMAT_YUV420 and IMX_VPU_COLOR_FORMAT_YUV400 (the second
+	 * one is supported by using YUV420 and dummy U and V planes internally).
 	 * See the ImxVpuColorFormat documentation for an explanation how
 	 * the chroma_interleave value can affec the pixel format that is used. */
 	ImxVpuColorFormat color_format;
@@ -1400,6 +1411,11 @@ typedef struct
 	 * plane, otherwise they are separated in their own planes.
 	 * See the ImxVpuColorFormat documentation for the consequences of this. */
 	int chroma_interleave;
+
+	/* Allocator for additional internal DMA buffers, such as the dummy U and V
+	 * planes for the fake YUV400 encoding (when MJPEG is not the codec format).
+	 * If this is NULL, imx_vpu_enc_get_default_allocator() is used. */
+	ImxVpuDMABufferAllocator *additional_dmabuffers_allocator;
 }
 ImxVpuEncOpenParams;
 
