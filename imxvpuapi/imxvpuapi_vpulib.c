@@ -187,6 +187,21 @@ static uint8_t const mjpeg_enc_quantization_chroma[64] =
 	99,  99,  99,  99,  99,  99,  99,  99
 };
 
+/* Natural order -> zig zag order
+ * The quantization tables above are in natural order
+ * but should be applied in zig zag order.
+ */
+static uint8_t const zigzag[64] =
+{
+        0,   1,  8, 16,  9,  2,  3, 10,
+        17, 24, 32, 25, 18, 11,  4,  5,
+        12, 19, 26, 33, 40, 48, 41, 34,
+        27, 20, 13,  6,  7, 14, 21, 28,
+        35, 42, 49, 56, 57, 50, 43, 36,
+        29, 22, 15, 23, 30, 37, 44, 51,
+        58, 59, 52, 45, 38, 31, 39, 46,
+        53, 60, 61, 54, 47, 55, 62, 63
+};
 
 /* These Huffman tables correspond to the default tables inside the VPU library */
 
@@ -2574,7 +2589,7 @@ static void imx_vpu_enc_copy_quantization_table(uint8_t *dest_table, uint8_t con
 	for (size_t i = 0; i < num_coefficients; ++i)
 	{
 		/* The +50 ensures rounding instead of truncation */
-		long val = (((long)src_table[i]) * scale_factor + 50) / 100;
+		long val = (((long)src_table[zigzag[i]]) * scale_factor + 50) / 100;
 
 		/* The VPU's JPEG encoder supports baseline data only,
 		 * so no quantization matrix values above 255 are allowed */
@@ -2629,10 +2644,10 @@ static void imx_vpu_enc_set_mjpeg_tables(unsigned int quality_factor, EncMjpgPar
 	else
 		scale_factor = 200 - quality_factor * 2;
 
-	imx_vpu_enc_copy_quantization_table(mjpeg_params->qMatTab[DC_TABLE_INDEX0], mjpeg_enc_quantization_luma,   sizeof(mjpeg_enc_quantization_luma),   scale_factor);
-	imx_vpu_enc_copy_quantization_table(mjpeg_params->qMatTab[AC_TABLE_INDEX0], mjpeg_enc_quantization_chroma, sizeof(mjpeg_enc_quantization_chroma), scale_factor);
-	imx_vpu_enc_copy_quantization_table(mjpeg_params->qMatTab[DC_TABLE_INDEX1], mjpeg_enc_quantization_luma,   sizeof(mjpeg_enc_quantization_luma),   scale_factor);
-	imx_vpu_enc_copy_quantization_table(mjpeg_params->qMatTab[AC_TABLE_INDEX1], mjpeg_enc_quantization_chroma, sizeof(mjpeg_enc_quantization_chroma), scale_factor);
+	/* We use the same quant table for Cb and Cr */
+	imx_vpu_enc_copy_quantization_table(mjpeg_params->qMatTab[0], mjpeg_enc_quantization_luma,   sizeof(mjpeg_enc_quantization_luma),   scale_factor); /* Y */
+	imx_vpu_enc_copy_quantization_table(mjpeg_params->qMatTab[1], mjpeg_enc_quantization_chroma, sizeof(mjpeg_enc_quantization_chroma), scale_factor); /* Cb */
+	imx_vpu_enc_copy_quantization_table(mjpeg_params->qMatTab[2], mjpeg_enc_quantization_chroma, sizeof(mjpeg_enc_quantization_chroma), scale_factor); /* Cr */
 
 
 	/* Copy the component info table (depends on the format) */
