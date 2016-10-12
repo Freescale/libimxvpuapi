@@ -1,3 +1,14 @@
+==== version 0.10.3 (2016-10-12) ====
+
+* properly pass on color format in simplified JPEG encoder interface
+* add alternative write-callback-style encoding mode
+  also add encode example variant which uses write-callback style output
+* add support for "fake grayscale mode" in encoders
+  this is done by using I420 internally and filling the U and V planes
+  with 0x80 bytes
+* make sure JPEG quantization table is copied in standardized zig zag order
+  the VPU does not, so this has to be done explicitely
+
 ==== version 0.10.2 (2016-05-01) ====
 
 * fix AUD NAL positioning in h.264 encoder output
