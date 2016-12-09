@@ -1,6 +1,6 @@
 Source: libimxvpuapi
 Priority: extra
-Maintainer: Carlos Rafael Giani <unknown>
+Maintainer: Carlos Rafael Giani <dv@pseudoterminal.org>
 Build-Depends:
  debhelper (>= 8.0.0),
  python,
