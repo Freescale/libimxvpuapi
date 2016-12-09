@@ -13,7 +13,7 @@ Vcs-Browser: https://github.com/Freescale/libimxvpuapi
 Package: libimxvpuapi-dev
 Section: libdevel
 Architecture: any
-Depends: libimxvpuapi0 (= ${binary:Version})
+Depends: libimxvpuapi0 (= ${binary:Version}), ${misc:Depends}
 Description: development files for libimxvpuapi
  This package provides the development files required to build software against libimxvpuapi.
 
