@@ -3716,6 +3716,15 @@ void imx_vpu_enc_configure_bitrate(ImxVpuEncoder *encoder, unsigned int bitrate)
 }
 
 
+void imx_vpu_enc_configure_gop_size(ImxVpuEncoder *encoder, unsigned int gop_size)
+{
+	int param;
+	assert(encoder != NULL);
+	param = gop_size;
+	vpu_EncGiveCommand(encoder->handle, ENC_SET_GOP_NUMBER, &param);
+}
+
+
 void imx_vpu_enc_configure_min_intra_refresh(ImxVpuEncoder *encoder, unsigned int min_intra_refresh_num)
 {
 	int param;
