@@ -1610,6 +1610,8 @@ void imx_vpu_enc_configure_min_intra_refresh(ImxVpuEncoder *encoder, unsigned in
  * automatic selection by the VPU. Calling this function is optional; by default, the intra QP value from
  * the open_params in imx_vpu_enc_open() is used. */
 void imx_vpu_enc_configure_intra_qp(ImxVpuEncoder *encoder, int intra_qp);
+/* Sets/updates the GOP size */
+void imx_vpu_enc_configure_gop_size(ImxVpuEncoder *encoder, unsigned int gop_size);
 
 /* Encodes a given raw input frame with the given encoding parameters. encoded_frame is filled with information
  * about the resulting encoded output frame. The encoded frame data itself is stored in a buffer that is
