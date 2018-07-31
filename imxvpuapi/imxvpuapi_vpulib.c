@@ -89,7 +89,7 @@
 
 #define VPU_RB_WAIT_TIMEOUT         10 /* milliseconds to wait for frame completion */
 #define VPU_RB_MAX_TIMEOUT_COUNTS   64 /* how many timeouts are allowed in series */
-#define VPU_WAIT_TIMEOUT            (VPU_RB_WAIT_TIMEOUT*50)
+#define VPU_WAIT_TIMEOUT            (VPU_RB_WAIT_TIMEOUT*10)
 #define VPU_MAX_TIMEOUT_COUNTS      4
 
 #define MJPEG_ENC_HEADER_DATA_MAX_SIZE  2048
@@ -3165,8 +3165,8 @@ ImxVpuEncReturnCodes imx_vpu_enc_open(ImxVpuEncoder **encoder, ImxVpuEncOpenPara
 
 			/* Check if the frame fits within the 16-pixel boundaries.
 			 * If not, crop the remainders. */
-			width_remainder = open_params->frame_width & 15;
-			height_remainder = open_params->frame_height & 15;
+			width_remainder = ((open_params->frame_width + 15) & ~15) - open_params->frame_width;
+			height_remainder = ((open_params->frame_height + 15) & ~15) - open_params->frame_height;
 			enc_open_param.EncStdParam.avcParam.avc_frameCroppingFlag = (width_remainder != 0) || (height_remainder != 0);
 			enc_open_param.EncStdParam.avcParam.avc_frameCropRight = width_remainder;
 			enc_open_param.EncStdParam.avcParam.avc_frameCropBottom = height_remainder;
@@ -3708,7 +3708,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 	memset(&enc_param, 0, sizeof(enc_param));
 
 	enc_param.sourceFrame = &source_framebuffer;
-	enc_param.forceIPicture = encoding_params->force_I_frame;
+	enc_param.forceIPicture = (encoding_params->force_I_frame || encoder->gop_monitor == 0) ? 1 : 0;
 	enc_param.skipPicture = encoding_params->skip_frame;
 	enc_param.quantParam = encoding_params->quant_param;
 	enc_param.enableAutoSkip = encoding_params->enable_autoskip;
@@ -3735,7 +3735,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 
 			case IMX_VPU_CODEC_FORMAT_H264:
 			case IMX_VPU_CODEC_FORMAT_MPEG4:
-				add_header = encoder->first_frame || encoding_params->force_I_frame || encoder->gop_monitor == 0;
+				add_header = encoder->first_frame || (0 != enc_param.forceIPicture);
 				break;
 
 			default:
@@ -3761,7 +3761,8 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 
 		IMX_VPU_LOG("waiting for encoding completion");
 
-		if(encoder->ring_buffer_mode)
+#if 0
+		if(0)//encoder->ring_buffer_mode)
 		{
 			/* Wait a few times, since sometimes, it takes more than
 			 * one vpu_WaitForInt() call to cover the encoding interval */
@@ -3783,6 +3784,7 @@ ImxVpuEncReturnCodes imx_vpu_enc_encode(ImxVpuEncoder *encoder, ImxVpuRawFrame c
 			}
 		}
 		else
+#endif
 		{
 			timeout = TRUE;
 			/* Wait a few times, since sometimes, it takes more than
