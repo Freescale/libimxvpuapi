@@ -1,4 +1,4 @@
-/* main code used by all examples
+/* YUV4MPEG2 (y4m) IO code used by all examples
  * Copyright (C) 2019 Carlos Rafael Giani
  *
  * This library is free software; you can redistribute it and/or
@@ -17,27 +17,37 @@
  * USA
  */
 
-#ifndef MAIN_H_____________
-#define MAIN_H_____________
+#ifndef Y4M_IO_H_____________
+#define Y4M_IO_H_____________
 
+#include <stddef.h>
 #include <stdio.h>
 #include "imxvpuapi2/imxvpuapi2.h"
 
 
-typedef enum
+typedef struct
 {
-	RETVAL_OK = 0,
-	RETVAL_ERROR = 1,
-	RETVAL_EOS = 2
+	size_t width, height;
+	size_t y_stride, uv_stride;
+	unsigned int fps_num, fps_denom;
+	unsigned par_num, par_denom;
+
+	ImxVpuApiInterlacingMode interlacing;
+
+	ImxVpuApiColorFormat color_format;
+	int use_semi_planar_uv;
+
+
+	FILE *file;
+	int frame_token_seen;
+	size_t y_size[2], uv_size[2];
 }
-Retval;
+Y4MContext;
 
 
-typedef struct _Context Context;
-
-Context* init(FILE *input_file, FILE *output_file);
-Retval run(Context *ctx);
-void shutdown(Context *ctx);
+int y4m_init(FILE *file, Y4MContext *context, int read_y4m);
+int y4m_read_frame(Y4MContext *context, void *y_dest, void *u_dest, void *v_dest);
+int y4m_write_frame(Y4MContext const *context, void const *y_src, void const *u_src, void const *v_src);
 
 
 #endif

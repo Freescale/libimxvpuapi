@@ -2,6 +2,7 @@
 
 
 from waflib.Build import BuildContext, CleanContext, InstallContext, UninstallContext, Logs
+import os
 
 top = '.'
 out = 'build'
@@ -18,163 +19,262 @@ int main()
 	return c - 4;
 }
 """
-def check_compiler_flag(conf, flag, lang):
-	return conf.check(fragment = c_cflag_check_code, mandatory = 0, execute = 0, define_ret = 0, msg = 'Checking for compiler switch %s' % flag, cxxflags = conf.env[lang + 'FLAGS'] + [flag], okmsg = 'yes', errmsg = 'no')  
-def check_compiler_flags_2(conf, cflags, ldflags, msg):
-	Logs.pprint('NORMAL', msg)
-	return conf.check(fragment = c_cflag_check_code, mandatory = 0, execute = 0, define_ret = 0, msg = 'Checking if building with these flags works', cxxflags = cflags, ldflags = ldflags, okmsg = 'yes', errmsg = 'no')
+def check_compiler_flag(conf, flag, mandatory = 0):
+	return conf.check(fragment = c_cflag_check_code, mandatory = mandatory, execute = 0, define_ret = 0, msg = 'Checking for compiler switch %s' % flag, cflags = [flag], okmsg = 'yes', errmsg = 'no')
 
-
-def add_compiler_flags(conf, env, flags, lang, compiler, uselib = ''):
-	for flag in reversed(flags):
-		if type(flag) == type(()):
-			flag_candidate = flag[0]
-			flag_alternative = flag[1]
-		else:
-			flag_candidate = flag
-			flag_alternative = None
-
-		if uselib:
-			flags_pattern = lang + 'FLAGS_' + uselib
-		else:
-			flags_pattern = lang + 'FLAGS'
-
-		if check_compiler_flag(conf, flag_candidate, compiler):
-			env.prepend_value(flags_pattern, [flag_candidate])
-		elif flag_alternative:
-			if check_compiler_flag(conf, flag_alternative, compiler):
-				env.prepend_value(flags_pattern, [flag_alternative])
-
-
-def options(opt):
-	opt.add_option('--enable-debug', action = 'store_true', default = False, help = 'enable debug build [default: %default]')
-	opt.add_option('--enable-static', action = 'store_true', default = False, help = 'build static library [default: build shared library]')
-	opt.add_option('--use-fslwrapper-backend', action = 'store_true', default = False, help = 'use the Freescale VPU wrapper (= libfslvpuwrap) backend instead of the vpulib (= imx-vpu) one [default: %default]')
-	opt.load('compiler_c')
-	opt.load('gnu_dirs')
-
-
-def configure(conf):
-	import os
-
-	conf.load('compiler_c')
-	conf.load('gnu_dirs')
-
-	# check and add compiler flags
-
-	if conf.env['CFLAGS'] and conf.env['LINKFLAGS']:
-		check_compiler_flags_2(conf, conf.env['CFLAGS'], conf.env['LINKFLAGS'], "Testing compiler flags %s and linker flags %s" % (' '.join(conf.env['CFLAGS']), ' '.join(conf.env['LINKFLAGS'])))
-	elif conf.env['CFLAGS']:
-		check_compiler_flags_2(conf, conf.env['CFLAGS'], '', "Testing compiler flags %s" % ' '.join(conf.env['CFLAGS']))
-	elif conf.env['LINKFLAGS']:
-		check_compiler_flags_2(conf, '', conf.env['LINKFLAGS'], "Testing linker flags %s" % ' '.join(conf.env['LINKFLAGS']))
-
-	compiler_flags = ['-Wextra', '-Wall', '-std=c99', '-pedantic', '-fPIC', '-DPIC']
-	if conf.options.enable_debug:
-		compiler_flags += ['-O0', '-g3', '-ggdb']
+def check_combined_build_flags(conf, cflags, ldflags, mandatory = 0):
+	if ldflags:
+		Logs.pprint('NORMAL', 'Now checking the combination of CFLAGS %s and LDFLAGS %s' % (' '.join(cflags), ' '.join(ldflags)))
 	else:
-		compiler_flags += ['-O2']
-
-	add_compiler_flags(conf, conf.env, compiler_flags, 'C', 'C')
-
-	conf.env['BUILD_STATIC'] = conf.options.enable_static
+		Logs.pprint('NORMAL', 'Now checking the combination of CFLAGS %s' % ' '.join(cflags))
+	return conf.check(fragment = c_cflag_check_code, mandatory = mandatory, execute = 0, define_ret = 0, msg = 'Checking if this combination works', cflags = cflags, ldflags = ldflags, okmsg = 'yes', errmsg = 'no')	
 
 
-	# test for Freescale libraries
+class PlatformIMX6:
+	description = 'i.MX6 with Chips&Media CODA960 codec as VPU'
 
-	if not conf.options.use_fslwrapper_backend:
-		Logs.pprint('GREEN', 'using the vpulib backend')
-		conf.check_cc(lib = 'vpu', uselib_store = 'VPULIB', mandatory = 1)
-		conf.env['VPUAPI_USELIBS'] = ['VPULIB']
-		conf.env['VPUAPI_BACKEND_SOURCE'] = ['imxvpuapi/imxvpuapi_vpulib.c']
-
+	def configure(self, conf):
+		conf.check_cc(lib = 'vpu', uselib_store = 'CODA960', define_name = '', mandatory = 1)
 		with_sof_stuff = conf.check_cc(fragment = '''
 			#include <vpu_lib.h>
 			int main() {
 				return ENC_ENABLE_SOF_STUFF * 0;
 			}
 			''',
-			uselib = 'VPULIB',
+			uselib = 'CODA960',
 			mandatory = False,
 			execute = False,
+			define_name = '',
 			msg = 'checking if ENC_ENABLE_SOF_STUFF exists'
 		)
 		if with_sof_stuff:
-			conf.define('HAVE_ENC_ENABLE_SOF_STUFF', 1)
+			conf.define('HAVE_IMXVPUENC_ENABLE_SOF_STUFF', 1)
 
+		if not conf.check_cc(fragment = '''
+			#include <time.h>
+			#include <sys/types.h>
+			#include <linux/ipu.h>
+
+			int main() { return 0; }
+			''',
+			uselib_store = 'CODA960',
+			uselib = ['IMXHEADERS', 'GNU99'],
+			mandatory = False,
+			execute = False,
+			define_name = '',
+			msg = 'checking for the IPU header linux/ipu.h'
+		):
+			conf.fatal('Cannot build CODA960 backend: IPU header linux/ipu.h not found (needed for combined frame copying / de-tiling)')
+
+	def build(self, bld):
+		bld(
+			features = ['c'],
+			includes = ['.'],
+			cflags = ['-Wno-pedantic'],
+			uselib = ['IMXDMABUFFER', 'GNU99', 'IMXHEADERS'],
+			source = ['imxvpuapi2/imxvpuapi2_imx6_coda_ipu.c'],
+			name = 'imx6_coda_ipu'
+		)
+		bld(
+			features = ['c'],
+			includes = ['.'],
+			uselib = ['IMXDMABUFFER', 'C99', 'CODA960'],
+			source = ['imxvpuapi2/imxvpuapi2_imx6_coda.c'],
+			name = 'imx6_coda'
+		)
+
+		return {
+			'uselib': ['CODA960'],
+			'use': ['imx6_coda_ipu', 'imx6_coda']
+		}
+
+
+class PlatformIMX8M:
+	description = 'i.MX8 M with Hantro G1/G2 decoder (optionally also a Hantro H1 encoder)'
+
+	def __init__(self, has_encoder):
+		self.has_encoder = has_encoder
+
+	def configure(self, conf):
+		sysroot_path = conf.env['SYSROOT']
+		conf.env['CFLAGS_HANTRO'] += ['-pthread']
+		conf.env['LINKFLAGS_HANTRO'] += ['-pthread']
+		conf.check_cc(uselib_store = 'HANTRO', uselib = 'HANTRO', define_name = '', mandatory = 1, lib = 'hantro')
+		conf.check_cc(uselib_store = 'HANTRO', uselib = 'HANTRO', define_name = '', mandatory = 1, lib = 'codec')
+		conf.env['DEFINES_HANTRO'] += ['SET_OUTPUT_CROP_RECT', 'USE_EXTERNAL_BUFFER', 'VSI_API', 'ENABLE_CODEC_VP8']
+
+		conf.check_cc(uselib_store = 'HANTRO_DEC', uselib = 'HANTRO', define_name = '', mandatory = 1, includes = [os.path.join(sysroot_path, 'usr/include/hantro_dec')], header_name = 'dwl.h')
+		conf.check_cc(uselib_store = 'HANTRO_DEC', uselib = 'HANTRO', define_name = '', mandatory = 1, includes = [os.path.join(sysroot_path, 'usr/include/hantro_dec')], header_name = 'codec.h')
+
+		if self.has_encoder:
+			conf.define('IMXVPUAPI2_VPU_HAS_ENCODER', 1)
+			conf.check_cc(uselib_store = 'HANTRO', uselib = 'HANTRO', define_name = '', mandatory = 1, lib = 'hantro_h1')
+			conf.check_cc(uselib_store = 'HANTRO', uselib = 'HANTRO', define_name = '', mandatory = 1, lib = 'codec_enc')
+			conf.env['DEFINES_HANTRO_ENC'] += ['ENCH1', 'OMX_ENCODER_VIDEO_DOMAIN', 'ENABLE_HANTRO_ENC']
+			conf.check_cc(uselib_store = 'HANTRO_ENC', uselib = 'HANTRO', define_name = '', mandatory = 1, includes = [os.path.join(sysroot_path, 'usr/include/hantro_enc'), os.path.join(sysroot_path, 'usr/include/hantro_enc/headers')], header_name = 'encoder/codec.h')
+
+	def build(self, bld):
+		bld(
+			features = ['c'],
+			includes = ['.'],
+			uselib = ['IMXDMABUFFER', 'C99', 'HANTRO', 'HANTRO_DEC'],
+			source = ['imxvpuapi2/imxvpuapi2_imx8m_hantro_decoder.c'],
+			name = 'imx8_decoder'
+		)
+		bld(
+			features = ['c'],
+			includes = ['.'],
+			uselib = ['IMXDMABUFFER', 'C99', 'HANTRO', 'HANTRO_ENC'],
+			source = ['imxvpuapi2/imxvpuapi2_imx8m_hantro_encoder.c'],
+			name = 'imx8_encoder'
+		)
+
+		return {
+			'uselib': ['HANTRO', 'HANTRO_DEC', 'HANTRO_ENC'],
+			'use': ['imx8_decoder', 'imx8_encoder']
+		}
+
+
+imx_platforms = {
+	'imx6': PlatformIMX6(),
+	'imx8m': PlatformIMX8M(has_encoder = False),
+	'imx8mm': PlatformIMX8M(has_encoder = True)
+}
+
+
+def options(opt):
+	opt.add_option('--enable-debug', action = 'store_true', default = False, help = 'enable debug build [default: disabled]')
+	opt.add_option('--enable-static', action = 'store_true', default = False, help = 'build static library [default: build shared library]')
+	opt.add_option('--imx-platform', action='store', default='', help='i.MX platform to build for (valid platforms: ' + ' '.join(imx_platforms.keys()) + ')')
+	opt.add_option('--sysroot-path', action='store', default='', help='path to the sysroot (where usr/include/imx/mxcfb.h etc. can be found)')
+	opt.load('compiler_c')
+	opt.load('gnu_dirs')
+
+
+def configure(conf):
+	conf.load('compiler_c')
+	conf.load('gnu_dirs')
+
+	# check and add compiler flags
+
+	basic_cflags = conf.env['CFLAGS'] or []
+	basic_ldflags = conf.env['LINKFLAGS'] or []
+
+	basic_cflags += ['-Wextra', '-Wall', '-pedantic', '-fPIC', '-DPIC']
+	if conf.options.enable_debug:
+		basic_cflags += ['-O0', '-g3', '-ggdb']
 	else:
-		Logs.pprint('GREEN', 'using the fslwrapper backend')
-		conf.check_cfg(package = 'libfslvpuwrap >= 1.0.45', uselib_store = 'FSLVPUWRAPPER', args = '--cflags --libs', mandatory = 1)
-		conf.env['VPUAPI_USELIBS'] = ['FSLVPUWRAPPER']
-		conf.env['VPUAPI_BACKEND_SOURCE'] = ['imxvpuapi/imxvpuapi_fslwrapper.c']
+		basic_cflags += ['-O2']
+
+	for cflag in basic_cflags:
+		check_compiler_flag(conf, cflag, 1)
+	for std in ['gnu99', 'c99']:
+		check_compiler_flag(conf, '-std=' + std)
+		check_combined_build_flags(conf, basic_cflags + ['-std=' + std], basic_ldflags, 1)
+		conf.env['CFLAGS_' + std.upper()] = ['-std=' + std]
 
 
-	# Process the library version number
+	conf.env['CFLAGS'] = basic_cflags
+	conf.env['LINKFLAGS'] = basic_ldflags
+	conf.env['BUILD_STATIC'] = conf.options.enable_static
 
+
+	# check libimxdmabuffer dependency
+	conf.check_cfg(package = 'libimxdmabuffer >= 0.9.0', uselib_store = 'IMXDMABUFFER', define_name = '', args = '--cflags --libs', mandatory = 1)
+
+
+	# check sysroot path
+	if not conf.options.sysroot_path:
+		conf.fatal('Sysroot path not set; add --sysroot-path switch to configure command line')
+	sysroot_path = os.path.abspath(os.path.expanduser(conf.options.sysroot_path))
+	if os.path.isdir(sysroot_path):
+		Logs.pprint('NORMAL', 'Using "%s" as sysroot path', sysroot_path)
+	else:
+		conf.fatal('Path "%s" does not exist or is not a valid directory; cannot use as sysroot path' % sysroot_path)
+	conf.env['SYSROOT'] = sysroot_path
+
+
+	# check i.MX platform
+	if not conf.options.imx_platform:
+		conf.fatal('i.MX platform not defined; add --imx-platform switch to configure command line')
+	imx_platform_id = conf.options.imx_platform
+	try:
+		imx_platform = imx_platforms[imx_platform_id]
+	except KeyError:
+		conf.fatal('Invalid i.MX platform "%s" specified; valid platforms: %s' % (imx_platform_id, ' '.join(imx_platforms.keys())))
+	conf.env['IMX_PLATFORM'] = imx_platform_id
+
+
+	# i.MX linux header checks and flags
+	imx_linux_headers_path = os.path.join(conf.options.sysroot_path, 'usr/include/imx')
+	if not conf.check_cc(uselib_store = 'IMXHEADERS', define_name = '', mandatory = False, includes = [imx_linux_headers_path], header_name = 'linux/mxcfb.h'):
+		conf.fatal('Could not find linux/mxcfb.h in /usr/include/imx in sysroot path "%s" specified by --sysroot-path' % conf.options.sysroot_path)
+	Logs.pprint('NORMAL', 'i.MX linux headers path: %s' % imx_linux_headers_path)
+
+
+	# configure platform
+	imx_platform.configure(conf)
+
+
+	# process the library version number
 	version_node = conf.srcnode.find_node('VERSION')
 	with open(version_node.abspath()) as x:
 		version = x.readline().splitlines()[0]
-
-	conf.env['IMXVPUAPI_VERSION'] = version
-	conf.define('IMXVPUAPI_VERSION', version)
-
-
-	# Workaround to ensure previously generated .pc files aren't stale
-
-	pcnode = conf.path.get_bld().find_node('libimxvpuapi.pc')
-	if pcnode:
-		pcnode.delete()
+	conf.env['IMXVPUAPI2_VERSION'] = version
+	conf.define('IMXVPUAPI2_VERSION', version)
 
 
-	# Write the config header
-
+	# write the config header
 	conf.write_config_header('config.h')
 
 
 def build(bld):
+	imx_platform_id = bld.env['IMX_PLATFORM']
+	imx_platform = imx_platforms[imx_platform_id]
+
+	use_lists = imx_platform.build(bld)
+
 	bld(
 		features = ['c', 'cstlib' if bld.env['BUILD_STATIC'] else 'cshlib'],
 		includes = ['.'],
-		uselib = bld.env['VPUAPI_USELIBS'],
-		source = ['imxvpuapi/imxvpuapi.c', 'imxvpuapi/imxvpuapi_jpeg.c', 'imxvpuapi/imxvpuapi_parse_jpeg.c'] + bld.env['VPUAPI_BACKEND_SOURCE'],
-		name = 'imxvpuapi',
-		target = 'imxvpuapi',
-		vnum = bld.env['IMXVPUAPI_VERSION']
+		uselib = ['IMXDMABUFFER', 'C99'] + use_lists['uselib'],
+		use = use_lists['use'],
+		source = ['imxvpuapi2/imxvpuapi2.c', 'imxvpuapi2/imxvpuapi2_priv.c'],
+		name = 'imxvpuapi2',
+		target = 'imxvpuapi2',
+		install_path="${LIBDIR}",
+		vnum = bld.env['IMXVPUAPI2_VERSION']
 	)
 
-	bld.install_files('${PREFIX}/include/imxvpuapi/', ['imxvpuapi/imxvpuapi.h', 'imxvpuapi/imxvpuapi_jpeg.h'])
+	bld.install_files('${PREFIX}/include/imxvpuapi2/', ['imxvpuapi2/imxvpuapi2.h'])
+
+	bld(
+		features = ['subst'],
+		source = "libimxvpuapi2.pc.in",
+		target="libimxvpuapi2.pc",
+		install_path="${LIBDIR}/pkgconfig"
+	)
 
 	examples = [ \
-		{ 'name': 'decode-example', 'source': ['example/decode-example.c'] }, \
-		{ 'name': 'encode-example', 'source': ['example/encode-example.c'] }, \
-		{ 'name': 'encode-example-writecb', 'source': ['example/encode-example-writecb.c'] }, \
-		{ 'name': 'jpeg-dec-example', 'source': ['example/jpeg-dec-example.c'] }, \
-		{ 'name': 'jpeg-enc-example', 'source': ['example/jpeg-enc-example.c'] }, \
+		{ 'name': 'decode-example',         'source': ['example/decode-example.c']         }, \
+		{ 'name': 'encode-example',         'source': ['example/encode-example.c']         }, \
 	]
 
 	bld(
 		features = ['c'],
 		includes = ['.', 'example'],
-		cflags = ['-std=gnu99'],
-		use = 'imxvpuapi',
-		source = ['example/main.c', 'example/h264_utils.c'],
+		uselib = ['IMXDMABUFFER', 'C99'],
+		use = 'imxvpuapi2',
+		source = ['example/main.c', 'example/y4m_io.c', 'example/h264_utils.c'],
 		name = 'examples-common'
-	)
-
-	bld(
-		features = ['subst'],
-		source = "libimxvpuapi.pc.in",
-		target="libimxvpuapi.pc",
-		install_path="${LIBDIR}/pkgconfig"
 	)
 
 	for example in examples:
 		bld(
 			features = ['c', 'cprogram'],
 			includes = ['.', 'example'],
-			cflags = ['-std=gnu99'],
-			uselib = bld.env['VPUAPI_USELIBS'],
-			use = 'imxvpuapi examples-common',
+			uselib = ['IMXDMABUFFER', 'C99'],
+			use = 'imxvpuapi2 examples-common',
 			source = example['source'],
 			target = 'example/' + example['name'],
 			install_path = None # makes sure the example is not installed

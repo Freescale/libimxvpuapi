@@ -1,5 +1,5 @@
 /* main code used by all examples
- * Copyright (C) 2014 Carlos Rafael Giani
+ * Copyright (C) 2019 Carlos Rafael Giani
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -24,22 +24,23 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <getopt.h>
 #include "main.h"
 
 
-static void logging_fn(ImxVpuLogLevel level, char const *file, int const line, char const *fn, const char *format, ...)
+static void logging_fn(ImxVpuApiLogLevel level, char const *file, int const line, char const *fn, const char *format, ...)
 {
 	va_list args;
 
 	char const *lvlstr = "";
 	switch (level)
 	{
-		case IMX_VPU_LOG_LEVEL_ERROR: lvlstr = "ERROR"; break;
-		case IMX_VPU_LOG_LEVEL_WARNING: lvlstr = "WARNING"; break;
-		case IMX_VPU_LOG_LEVEL_INFO: lvlstr = "info"; break;
-		case IMX_VPU_LOG_LEVEL_DEBUG: lvlstr = "debug"; break;
-		case IMX_VPU_LOG_LEVEL_TRACE: lvlstr = "trace"; break;
-		case IMX_VPU_LOG_LEVEL_LOG: lvlstr = "log"; break;
+		case IMX_VPU_API_LOG_LEVEL_ERROR: lvlstr = "ERROR"; break;
+		case IMX_VPU_API_LOG_LEVEL_WARNING: lvlstr = "WARNING"; break;
+		case IMX_VPU_API_LOG_LEVEL_INFO: lvlstr = "info"; break;
+		case IMX_VPU_API_LOG_LEVEL_DEBUG: lvlstr = "debug"; break;
+		case IMX_VPU_API_LOG_LEVEL_TRACE: lvlstr = "trace"; break;
+		case IMX_VPU_API_LOG_LEVEL_LOG: lvlstr = "log"; break;
 		default: break;
 	}
 
@@ -109,31 +110,37 @@ static int parse_args(int argc, char **argv, char **input_filename, char **outpu
 
 int main(int argc, char *argv[])
 {
-	FILE *input_file, *output_file;
-	char *input_filename, *output_filename;
+	FILE *input_file = NULL;
+	FILE *output_file = NULL;
+	char *input_filename = NULL;
+	char *output_filename = NULL;
 	Context *ctx = NULL;
 	int ret = 0;
 
 	if (parse_args(argc, argv, &input_filename, &output_filename) != RETVAL_OK)
-		return 1;
+	{
+		ret = 1;
+		goto cleanup;
+	}
 
 	input_file = fopen(input_filename, "rb");
 	if (input_file == NULL)
 	{
 		fprintf(stderr, "Opening %s for reading failed: %s\n", input_filename, strerror(errno));
-		return 1;
+		ret = 1;
+		goto cleanup;
 	}
 
 	output_file = fopen(output_filename, "wb");
 	if (output_file == NULL)
 	{
 		fprintf(stderr, "Opening %s for writing failed: %s\n", output_filename, strerror(errno));
-		fclose(input_file);
-		return 1;
+		ret = 1;
+		goto cleanup;
 	}
 
-	imx_vpu_set_logging_threshold(IMX_VPU_LOG_LEVEL_TRACE);
-	imx_vpu_set_logging_function(logging_fn);
+	imx_vpu_api_set_logging_threshold(IMX_VPU_API_LOG_LEVEL_TRACE);
+	imx_vpu_api_set_logging_function(logging_fn);
 
 	if ((ctx = init(input_file, output_file)) == NULL)
 	{

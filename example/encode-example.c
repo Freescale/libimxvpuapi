@@ -1,5 +1,5 @@
 /* example for how to use the imxvpuapi encoder interface
- * Copyright (C) 2014 Carlos Rafael Giani
+ * Copyright (C) 2019 Carlos Rafael Giani
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,232 +18,460 @@
  */
 
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stddef.h>
+#include <inttypes.h>
 #include "main.h"
-
+#include "y4m_io.h"
 
 
 /* This is a simple example of how to encode with the imxvpuapi library.
- * It encodes procedurally generated frames to h.264 and dumps the encoded
- * frames to a file. Also look into imxvpuapi.h for documentation.
- *
- * This expects as input a file with uncompressed 320x240 i420 frames and
- * 25 fps. The encoder outputs a byte-stream formatted h.264 stream, which
- * can be played with VLC or mplayer for example. */
+ * It reads raw frames from Y4M data, encodes it to h.264, and dumps the
+ * encoded frames to a file. */
 
 
-
-#define FRAME_WIDTH 320
-#define FRAME_HEIGHT 240
-#define FRAME_SIZE ((FRAME_WIDTH) * (FRAME_HEIGHT) * 12 / 8)
-#define COLOR_FORMAT IMX_VPU_COLOR_FORMAT_YUV420
-#define FPS_N 25
-#define FPS_D 1
+#define FRAME_CONTEXT_START          0x1000
 
 
 struct _Context
 {
-	FILE *fin, *fout;
+	/* Input/output file handles. */
+	FILE *y4m_input_file;
+	FILE *h264_output_file;
 
-	ImxVpuEncoder *vpuenc;
+	/* Y4M I/O for raw input frames. */
+	Y4MContext y4m_context;
 
-	ImxVpuDMABuffer *bitstream_buffer;
-	size_t bitstream_buffer_size;
-	unsigned int bitstream_buffer_alignment;
+	/* DMA buffer allocator for the encoder's framebuffer pool and
+	 * for output frames. */
+	ImxDmaBufferAllocator *allocator;
 
-	ImxVpuEncInitialInfo initial_info;
+	/* The actual VPU encoder. */
+	ImxVpuApiEncoder *encoder;
 
-	ImxVpuFramebuffer input_framebuffer;
-	ImxVpuDMABuffer *input_fb_dmabuffer;
+	/* Stream buffer, used during encoding. */
+	ImxDmaBuffer *stream_buffer;
 
-	ImxVpuFramebuffer *framebuffers;
-	ImxVpuDMABuffer **fb_dmabuffers;
-	unsigned int num_framebuffers;
-	ImxVpuFramebufferSizes calculated_sizes;
+	/* Pointer to the encoder's global information.
+	 * Since this information is constant, it is not strictly
+	 * necessary to keep a pointer to it here. This is just done
+	 * for sake of convenience and clarity. */
+	ImxVpuApiEncGlobalInfo const *enc_global_info;
+
+	/* Copy of information about the stream that is to be encoded. This
+	 * stream info becomes available right after opening the encoder
+	 * instance with imx_vpu_api_enc_open(). The stream info is then
+	 * available by calling imx_vpu_api_enc_get_stream_info(). */
+	ImxVpuApiEncStreamInfo stream_info;
+
+	/* Framebuffer DMA buffers that are part of the encoder's
+	 * framebuffer pool. These are used only internally by the encoder,
+	 * and not for delivering encoded output frames. Also, not all
+	 * encoders use a framebuffer pool. */
+	ImxDmaBuffer **fb_pool_dmabuffers;
+	size_t num_fb_pool_framebuffers;
+
+	/* DMA buffer for raw input frames to encode. */
+	ImxDmaBuffer *input_dmabuffer;
+
+	/* Buffer for containing encoded frames. Unlike other buffers,
+	 * this is not a DMA buffer, it is regular system memory. */
+	void *encoded_frame_buffer;
+	size_t encoded_frame_buffer_size;
+
+	/* A counter used here to simulate a frame context. Corresponding
+	 * input and output frames have the same context. */
+	unsigned int frame_context_counter;
 };
+
+
+/* Allocates the DMA buffers for the encoders's framebuffer pool. This is
+ * called once the stream info is known, and is always called. We only
+ * _add_ framebuffers here, since framebuffers cannot be removed from an
+ * encoder's pool once added (until the encoder is closed). */
+static int allocate_and_add_fb_pool_framebuffers(Context *ctx, size_t num_fb_pool_framebuffers_to_add)
+{
+	int ret = 1;
+	size_t old_num_fb_pool_framebuffers;
+	size_t new_num_fb_pool_framebuffers;
+	ImxDmaBuffer **new_fb_pool_dmabuffers_array;
+	ImxVpuApiEncReturnCodes enc_ret;
+	int err;
+	size_t i;
+
+	/* Nothing to add? Skip to the end. */
+	if (num_fb_pool_framebuffers_to_add == 0)
+		goto finish;
+
+	/* Calculate new number of framebuffer and keep track of the old one for
+	 * reallocation and for knowing where to add the new ones in the array. */
+	old_num_fb_pool_framebuffers = ctx->num_fb_pool_framebuffers;
+	new_num_fb_pool_framebuffers = old_num_fb_pool_framebuffers + num_fb_pool_framebuffers_to_add;
+
+	/* Reallocate to make space for more framebuffer DMA buffer pointers. */
+	new_fb_pool_dmabuffers_array = realloc(ctx->fb_pool_dmabuffers, new_num_fb_pool_framebuffers * sizeof(ImxDmaBuffer *));
+	assert(new_fb_pool_dmabuffers_array != NULL);
+	/* Set the new array elements to an initial value of 0. */
+	memset(new_fb_pool_dmabuffers_array + old_num_fb_pool_framebuffers, 0, num_fb_pool_framebuffers_to_add * sizeof(ImxDmaBuffer *));
+
+	/* Store the new array. */
+	ctx->fb_pool_dmabuffers = new_fb_pool_dmabuffers_array;
+	ctx->num_fb_pool_framebuffers = new_num_fb_pool_framebuffers;
+
+	/* Allocate new framebuffers and fill the FB context array. */
+	for (i = old_num_fb_pool_framebuffers; i < ctx->num_fb_pool_framebuffers; ++i)
+	{
+		ctx->fb_pool_dmabuffers[i] = imx_dma_buffer_allocate(
+			ctx->allocator,
+			ctx->stream_info.min_framebuffer_size,
+			ctx->stream_info.framebuffer_alignment,
+			&err
+		);
+		if (ctx->fb_pool_dmabuffers[i] == NULL)
+		{
+			fprintf(stderr, "could not allocate DMA buffer for FB pool framebuffer: %s (%d)\n", strerror(err), err);
+			ret = 0;
+			goto finish;
+		}
+	}
+
+	/* Add the newly allocated framebuffers to the encoder's pool. */
+	enc_ret = imx_vpu_api_enc_add_framebuffers_to_pool(ctx->encoder, ctx->fb_pool_dmabuffers + old_num_fb_pool_framebuffers, num_fb_pool_framebuffers_to_add);
+	if (enc_ret != IMX_VPU_API_ENC_RETURN_CODE_OK)
+	{
+		fprintf(stderr, "could not add framebuffers to VPU pool: %s\n", imx_vpu_api_enc_return_code_string(enc_ret));
+		ret = 0;
+		goto finish;
+	}
+
+
+finish:
+	return ret;
+}
+
+
+/* Deallocate all previously allocated framebuffers. Before calling this,
+ * the encoder must have been closed, since otherwise, deallocating its
+ * FB pool framebuffer DMA buffers could cause undefined behavior. */
+static void deallocate_framebuffers(Context *ctx)
+{
+	size_t i;
+
+	for (i = 0; i < ctx->num_fb_pool_framebuffers; ++i)
+	{
+		ImxDmaBuffer *dmabuffer = ctx->fb_pool_dmabuffers[i];
+		if (dmabuffer != NULL)
+			imx_dma_buffer_deallocate(dmabuffer);
+	}
+	free(ctx->fb_pool_dmabuffers);
+
+	ctx->num_fb_pool_framebuffers = 0;
+	ctx->fb_pool_dmabuffers = NULL;
+}
+
+
+/* Resize the system memory buffer that will hold the encoded data.
+ * This is called after imx_vpu_api_enc_encode() returns the output
+ * code IMX_VPU_API_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE, but
+ * before imx_vpu_api_enc_get_encoded_frame() is called, to make sure
+ * there is enough space for the encoded data. */
+static void resize_encoded_frame_buffer(Context *ctx, size_t new_size)
+{
+	void *new_buffer;
+
+	if (ctx->encoded_frame_buffer_size >= new_size)
+		return;
+
+	new_buffer = realloc(ctx->encoded_frame_buffer, new_size);
+	assert(new_buffer != NULL);
+
+	ctx->encoded_frame_buffer = new_buffer;
+	ctx->encoded_frame_buffer_size = new_size;
+}
+
+
+/* Push a raw input frame into the encoder. In this example, we have to
+ * copy frame pixels into a DMA buffer (input_dmabuffer). CPU-based
+ * copies like this one are not strictly necessary; if raw frames are
+ * already stored in DMA buffers, they can be used directly, facilitating
+ * a "zero-copy"-esque approach that avoids unnecessary CPU usage (the
+ * encoder can pull the frame pixels through DMA channels). */
+static Retval push_raw_input_frame(Context *ctx)
+{
+	ImxVpuApiRawFrame raw_input_frame;
+	uint8_t *mapped_virtual_address;
+	int y4m_ret;
+	ImxVpuApiFramebufferMetrics const *fb_metrics;
+	ImxVpuApiEncReturnCodes enc_ret;
+
+	fb_metrics = &(ctx->stream_info.frame_encoding_framebuffer_metrics);
+
+	/* Set up the input frame. The only field that needs to be
+	 * set is the input framebuffer. The encoder will read from it.
+	 * The rest can remain zero/NULL. */
+	memset(&raw_input_frame, 0, sizeof(raw_input_frame));
+	raw_input_frame.fb_dma_buffer = ctx->input_dmabuffer;
+	raw_input_frame.context = (void*)((uintptr_t)(ctx->frame_context_counter));
+
+	ctx->frame_context_counter++;
+
+	fprintf(stderr, "pushing raw frame with context %p into encoder\n", raw_input_frame.context);
+
+	/* Read uncompressed pixels into the input DMA buffer */
+	mapped_virtual_address = imx_dma_buffer_map(ctx->input_dmabuffer, IMX_DMA_BUFFER_MAPPING_FLAG_WRITE, NULL);
+	y4m_ret = y4m_read_frame(
+		&(ctx->y4m_context),
+		mapped_virtual_address + fb_metrics->y_offset,
+		mapped_virtual_address + fb_metrics->u_offset,
+		mapped_virtual_address + fb_metrics->v_offset
+	);
+	imx_dma_buffer_unmap(ctx->input_dmabuffer);
+	if (!y4m_ret)
+		return RETVAL_EOS;
+
+	if ((enc_ret = imx_vpu_api_enc_push_raw_frame(ctx->encoder, &raw_input_frame)) != IMX_VPU_API_ENC_RETURN_CODE_OK)
+	{
+		fprintf(stderr, "could not push raw frame into encoder: %s\n", imx_vpu_api_enc_return_code_string(enc_ret));
+		return RETVAL_ERROR;
+	}
+
+	return RETVAL_OK;
+}
+
+
+/* Encode the previously inserted raw frame. The core of this function
+ * is the imx_vpu_api_enc_encode() call, which is repeatedly called until
+ * another raw input frame needs to be pushed into the encoder, EOS is
+ * reported, an error occurs, or the encoder is flushed by the
+ * imx_vpu_api_enc_flush() call (which we do not use in this example). */
+static Retval encode_raw_frame(Context *ctx)
+{
+	ImxVpuApiEncOutputCodes output_code;
+	size_t encoded_frame_size;
+	ImxVpuApiEncReturnCodes enc_ret;
+	Retval retval = RETVAL_OK;
+	int do_loop = 1;
+
+	do
+	{
+		/* Perform an encoding step. */
+		if ((enc_ret = imx_vpu_api_enc_encode(ctx->encoder, &encoded_frame_size, &output_code)) != IMX_VPU_API_ENC_RETURN_CODE_OK)
+		{
+			fprintf(stderr, "imx_vpu_api_enc_encode failed(): %s\n", imx_vpu_api_enc_return_code_string(enc_ret));
+			return RETVAL_ERROR;
+		}
+
+		switch (output_code)
+		{
+			case IMX_VPU_API_ENC_OUTPUT_CODE_NO_OUTPUT_YET_AVAILABLE:
+				/* Encoder did not produce an encoded frame yet, and has nothing
+				 * else to report. Continue calling imx_vpu_api_enc_encode(). */
+				break;
+
+			case IMX_VPU_API_ENC_OUTPUT_CODE_NEED_ADDITIONAL_FRAMEBUFFER:
+				/* Encoder needs one more framebuffer added to its pool.
+				 * Add one, otherwise encoding cannot continue. Then continue
+				 * calling imx_vpu_api_enc_encode(). */
+
+				if (!allocate_and_add_fb_pool_framebuffers(ctx, 1))
+				{
+					retval = RETVAL_ERROR;
+					do_loop = 0;
+				}
+
+				break;
+
+			case IMX_VPU_API_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE:
+			{
+				/* Encoder produced an encoded frame. First, make sure that
+				 * we have a buffer big enough for that data. Then, retrieve
+				 * the encoded frame data, and output it. We have to retrieve
+				 * the encoded data, otherwise encoding cannot continue. */
+
+				ImxVpuApiEncodedFrame output_frame;
+
+				resize_encoded_frame_buffer(ctx, encoded_frame_size);
+
+				memset(&output_frame, 0, sizeof(output_frame));
+				output_frame.data = ctx->encoded_frame_buffer;
+				output_frame.data_size = encoded_frame_size;
+
+				if ((enc_ret = imx_vpu_api_enc_get_encoded_frame(ctx->encoder, &output_frame)) != IMX_VPU_API_ENC_RETURN_CODE_OK)
+				{
+					fprintf(stderr, "could not retrieve encoded frame: %s\n", imx_vpu_api_enc_return_code_string(enc_ret));
+					return RETVAL_ERROR;
+				}
+
+				fprintf(stderr, "got encoded frame with %zu byte and context %p from encoder\n", output_frame.data_size, output_frame.context);
+
+				fwrite(output_frame.data, 1, output_frame.data_size, ctx->h264_output_file);
+
+				break;
+			}
+
+			case IMX_VPU_API_ENC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED:
+				/* Encoding cannot continue, since the encoded ran out of
+				 * raw frames to encode. Exit the loop so that in the
+				 * run() function, push_raw_input_frame() can be called
+				 * again to push a new raw frame into the encoder. Then
+				 * encoding can continue. */
+				do_loop = 0;
+				break;
+
+			case IMX_VPU_API_ENC_OUTPUT_CODE_EOS:
+				/* Encoder reached the end-of-stream. No more frames can be encoded.
+				 * At this point, all that can be done is to close the decoder,
+				 * so exit the loop. */
+				fprintf(stderr, "VPU reports EOS; no more encoded frames available\n");
+				retval = RETVAL_EOS;
+				do_loop = 0;
+				break;
+
+			default:
+				fprintf(stderr, "UNKNOWN OUTPUT CODE %s (%d)\n", imx_vpu_api_enc_output_code_string(output_code), (int)output_code);
+				assert(0);
+		}
+
+	}
+	while (do_loop);
+
+	return retval;
+}
 
 
 Context* init(FILE *input_file, FILE *output_file)
 {
+	size_t i;
+	int err;
 	Context *ctx;
-	ImxVpuEncOpenParams open_params;
-	unsigned int i;
+	ImxVpuApiEncOpenParams open_params;
+	ImxVpuApiEncReturnCodes enc_ret;
+	ImxVpuApiEncStreamInfo const *enc_stream_info;
+	uint32_t enc_flags;
 
 	ctx = calloc(1, sizeof(Context));
-	ctx->fin = input_file;
-	ctx->fout = output_file;
+	ctx->y4m_input_file = input_file;
+	ctx->h264_output_file = output_file;
+	ctx->frame_context_counter = FRAME_CONTEXT_START;
 
+	/* Retrieve global, static, invariant information about the encoder. */
+	ctx->enc_global_info = imx_vpu_api_enc_get_global_info();
+	assert(ctx->enc_global_info != NULL);
 
-	/* Set the open params. Use the default values (note that memset must still
-	 * be called to ensure all values are set to 0 initially; the
-	 * imx_vpu_enc_set_default_open_params() function does not do this!).
-	 * Then, set a bitrate of 0 kbps, which tells the VPU to use constant quality
-	 * mode instead (controlled by the quant_param field in ImxVpuEncParams).
-	 * Frame width & height are also necessary, as are the frame rate numerator
-	 * and denominator. Also, access unit delimiters are enabled to demonstrate
-	 * their use. */
-	memset(&open_params, 0, sizeof(open_params));
-	imx_vpu_enc_set_default_open_params(IMX_VPU_CODEC_FORMAT_H264, &open_params);
-	open_params.bitrate = 0;
-	open_params.frame_width = FRAME_WIDTH;
-	open_params.frame_height = FRAME_HEIGHT;
-	open_params.frame_rate_numerator = FPS_N;
-	open_params.frame_rate_denominator = FPS_D;
-	open_params.codec_params.h264_params.enable_access_unit_delimiters = 1;
+	enc_flags = ctx->enc_global_info->flags;
 
-
-	/* Load the VPU firmware */
-	imx_vpu_enc_load();
-
-	/* Retrieve information about the required bitstream buffer and allocate one based on this */
-	imx_vpu_enc_get_bitstream_buffer_info(&(ctx->bitstream_buffer_size), &(ctx->bitstream_buffer_alignment));
-	ctx->bitstream_buffer = imx_vpu_dma_buffer_allocate(
-		imx_vpu_enc_get_default_allocator(),
-		ctx->bitstream_buffer_size,
-		ctx->bitstream_buffer_alignment,
-		0
-	);
-
-	/* Open an encoder instance, using the previously allocated bitstream buffer */
-	imx_vpu_enc_open(&(ctx->vpuenc), &open_params, ctx->bitstream_buffer);
-
-
-	/* Retrieve the initial information to allocate framebuffers for the
-	 * encoding process (unlike with decoding, these framebuffers are used
-	 * only internally by the encoder as temporary storage; encoded data
-	 * doesn't go in there, nor do raw input frames) */
-	imx_vpu_enc_get_initial_info(ctx->vpuenc, &(ctx->initial_info));
-
-	ctx->num_framebuffers = ctx->initial_info.min_num_required_framebuffers;
-	fprintf(stderr, "num framebuffers: %u\n", ctx->num_framebuffers);
-
-	/* Using the initial information, calculate appropriate framebuffer sizes */
-	imx_vpu_calc_framebuffer_sizes(COLOR_FORMAT, FRAME_WIDTH, FRAME_HEIGHT, ctx->initial_info.framebuffer_alignment, 0, 0, &(ctx->calculated_sizes));
-	fprintf(
-		stderr,
-		"calculated sizes:  frame width&height: %dx%d  Y stride: %u  CbCr stride: %u  Y size: %u  CbCr size: %u  MvCol size: %u  total size: %u\n",
-		ctx->calculated_sizes.aligned_frame_width, ctx->calculated_sizes.aligned_frame_height,
-		ctx->calculated_sizes.y_stride, ctx->calculated_sizes.cbcr_stride,
-		ctx->calculated_sizes.y_size, ctx->calculated_sizes.cbcr_size, ctx->calculated_sizes.mvcol_size,
-		ctx->calculated_sizes.total_size
-	);
-
-
-	/* Allocate memory blocks for the framebuffer and DMA buffer structures,
-	 * and allocate the DMA buffers themselves */
-
-	ctx->framebuffers = malloc(sizeof(ImxVpuFramebuffer) * ctx->num_framebuffers);
-	ctx->fb_dmabuffers = malloc(sizeof(ImxVpuDMABuffer*) * ctx->num_framebuffers);
-
-	for (i = 0; i < ctx->num_framebuffers; ++i)
+	/* Check that the codec actually supports encoding. */
+	if (!(enc_flags & IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_HAS_ENCODER))
 	{
-		/* Allocate a DMA buffer for each framebuffer. It is possible to specify alternate allocators;
-		 * all that is required is that the allocator provides physically contiguous memory
-		 * (necessary for DMA transfers) and respecs the alignment value. */
-		ctx->fb_dmabuffers[i] = imx_vpu_dma_buffer_allocate(imx_vpu_dec_get_default_allocator(), ctx->calculated_sizes.total_size, ctx->initial_info.framebuffer_alignment, 0);
-
-		imx_vpu_fill_framebuffer_params(&(ctx->framebuffers[i]), &(ctx->calculated_sizes), ctx->fb_dmabuffers[i], 0);
+		fprintf(stderr, "HW codec does not support encoding!\n");
+		goto error;
 	}
 
-	/* allocate DMA buffers for the raw input frames. Since the encoder can only read
-	 * raw input pixels from a DMA memory region, it is necessary to allocate one,
-	 * and later copy the pixels into it. In production, it is generally a better
-	 * idea to make sure that the raw input frames are already placed in DMA memory
-	 * (either allocated by imx_vpu_dma_buffer_allocate() or by some other means of
-	 * getting DMA / physically contiguous memory with known physical addresses). */
-	ctx->input_fb_dmabuffer = imx_vpu_dma_buffer_allocate(imx_vpu_dec_get_default_allocator(), ctx->calculated_sizes.total_size, ctx->initial_info.framebuffer_alignment, 0);
-	imx_vpu_fill_framebuffer_params(&(ctx->input_framebuffer), &(ctx->calculated_sizes), ctx->input_fb_dmabuffer, 0);
+	/* Print global encoder information. */
+	fprintf(stderr, "global encoder information:\n");
+	fprintf(stderr, "semi planar frames supported: %d\n", !!(enc_flags & IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_SEMI_PLANAR_FRAMES_SUPPORTED));
+	fprintf(stderr, "fully planar frames supported: %d\n", !!(enc_flags & IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_FULLY_PLANAR_FRAMES_SUPPORTED));
+	fprintf(stderr, "min required stream buffer size: %zu\n", ctx->enc_global_info->min_required_stream_buffer_size);
+	fprintf(stderr, "required stream buffer physaddr alignment: %zu\n", ctx->enc_global_info->required_stream_buffer_physaddr_alignment);
+	fprintf(stderr, "required stream buffer size alignment: %zu\n", ctx->enc_global_info->required_stream_buffer_size_alignment);
+	fprintf(stderr, "num supported compression formats: %zu\n", ctx->enc_global_info->num_supported_compression_formats);
+	for (i = 0; i < ctx->enc_global_info->num_supported_compression_formats; ++i)
+		fprintf(stderr, "  %s\n", imx_vpu_api_compression_format_string(ctx->enc_global_info->supported_compression_formats[i]));
 
-	/* Actual registration is done here. From this moment on, the VPU knows which buffers to use for
-	 * storing temporary frames into. This call must not be done again until encoding is shut down. */
-	imx_vpu_enc_register_framebuffers(ctx->vpuenc, ctx->framebuffers, ctx->num_framebuffers);
+	/* If the encoder can handle semi-planar frames, produce such frames.
+	 * This is done by setting use_semi_planar_uv to a nonzero value.
+	 * In that case, y4m_init() will produce a semi-planar color
+	 * format, and y4m_read_frame() will read the frames into input_dmabuffer
+	 * in a semi-planar fashion (that is, it will interleave U and V pixels
+	 * in a combined UV plane). */
+	ctx->y4m_context.use_semi_planar_uv = (ctx->enc_global_info->flags & IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_SEMI_PLANAR_FRAMES_SUPPORTED);
+	if (!y4m_init(ctx->y4m_input_file, &(ctx->y4m_context), 1))
+	{
+		fprintf(stderr, "could not open Y4M input file\n");
+		goto error;
+	}
 
+	/* Set up the DMA buffer allocator. We use this to allocate framebuffers
+	 * and the stream buffer for the encoder. */
+	ctx->allocator = imx_dma_buffer_allocator_new(&err);
+	if (ctx->allocator == NULL)
+	{
+		fprintf(stderr, "could not create DMA buffer allocator: %s (%d)\n", strerror(err), err);
+		goto error;
+	}
+
+	memset(&(open_params), 0, sizeof(open_params));
+	imx_vpu_api_enc_set_default_open_params(IMX_VPU_API_COMPRESSION_FORMAT_H264, ctx->y4m_context.color_format, ctx->y4m_context.width, ctx->y4m_context.height, &open_params);
+
+	/* Allocate the stream buffer that is used throughout the encoding process. */
+	ctx->stream_buffer = imx_dma_buffer_allocate(
+		ctx->allocator,
+		ctx->enc_global_info->min_required_stream_buffer_size,
+		ctx->enc_global_info->required_stream_buffer_physaddr_alignment,
+		0
+	);
+	assert(ctx->stream_buffer != NULL);
+
+	/* Open an encoder instance, using the previously allocated stream buffer. */
+	enc_ret = imx_vpu_api_enc_open(&(ctx->encoder), &open_params, ctx->stream_buffer);
+	if (enc_ret != IMX_VPU_API_ENC_RETURN_CODE_OK)
+		goto error;
+
+	/* Get the stream info from the encoder. */
+	enc_stream_info = imx_vpu_api_enc_get_stream_info(ctx->encoder);
+	ctx->stream_info = *enc_stream_info;
+
+	/* Set the strides to make sure we can read frames from the Y4M output file. */
+	ctx->y4m_context.y_stride = ctx->stream_info.frame_encoding_framebuffer_metrics.y_stride;
+	ctx->y4m_context.uv_stride = ctx->stream_info.frame_encoding_framebuffer_metrics.uv_stride;
+
+	if (!allocate_and_add_fb_pool_framebuffers(ctx, enc_stream_info->min_num_required_framebuffers))
+	{
+		fprintf(stderr, "Could not allocate %zu framebuffer(s)\n", enc_stream_info->min_num_required_framebuffers);
+		goto error;
+	}
+
+	ctx->input_dmabuffer = imx_dma_buffer_allocate(ctx->allocator, enc_stream_info->min_framebuffer_size, enc_stream_info->framebuffer_alignment, &err);
+	if (ctx->input_dmabuffer == NULL)
+	{
+		fprintf(stderr, "could not allocate DMA buffer for input framebuffer: %s (%d)\n", strerror(err), err);
+		goto error;
+	}
+
+
+finish:
 	return ctx;
-}
 
-
-void* acquire_output_buffer(void *context, size_t size, void **acquired_handle)
-{
-	void *mem;
-
-	((void)(context));
-
-	/* In this example, "acquire" a buffer by simply allocating it with malloc() */
-	mem = malloc(size);
-	*acquired_handle = mem;
-	fprintf(stderr, "acquired output buffer, handle %p\n", *acquired_handle);
-	return mem;
-}
-
-
-void finish_output_buffer(void *context, void *acquired_handle)
-{
-	((void)(context));
-
-	/* Nothing needs to be done here in this example. Just log this call. */
-	fprintf(stderr, "finished output buffer, handle %p\n", acquired_handle);
+error:
+	shutdown(ctx);
+	ctx = NULL;
+	goto finish;
 }
 
 
 Retval run(Context *ctx)
 {
-	ImxVpuRawFrame input_frame;
-	ImxVpuEncodedFrame output_frame;
-	ImxVpuEncParams enc_params;
-	unsigned int output_code;
-
-	/* Set up the input frame. The only field that needs to be
-	 * set is the input framebuffer. The encoder will read from it.
-	 * The rest can remain zero/NULL. */
-	memset(&input_frame, 0, sizeof(input_frame));
-	input_frame.framebuffer = &(ctx->input_framebuffer);
-
-	/* Set the encoding parameters for this frame. quant_param 0 is
-	 * the highest quality in h.264 constant quality encoding mode.
-	 * (The range in h.264 is 0-51, where 0 is best quality and worst
-	 * compression, and 51 vice versa.) */
-	memset(&enc_params, 0, sizeof(enc_params));
-	enc_params.quant_param = 0;
-	enc_params.acquire_output_buffer = acquire_output_buffer;
-	enc_params.finish_output_buffer = finish_output_buffer;
-	enc_params.output_buffer_context = NULL;
-
-	/* Set up the output frame. Simply setting all fields to zero/NULL
-	 * is enough. The encoder will fill in data. */
-	memset(&output_frame, 0, sizeof(output_frame));
-
-	/* Read input i420 frames and encode them until the end of the input file is reached */
+	/* Feed frames to encoder & encode & output, until we run out of input data. */
 	for (;;)
 	{
-		uint8_t *mapped_virtual_address;
-		void *output_block;
+		Retval ret;
 
-		/* Read uncompressed pixels into the input DMA buffer */
-		mapped_virtual_address = imx_vpu_dma_buffer_map(ctx->input_fb_dmabuffer, IMX_VPU_MAPPING_FLAG_WRITE);
-		fread(mapped_virtual_address, 1, FRAME_SIZE, ctx->fin);
-		imx_vpu_dma_buffer_unmap(ctx->input_fb_dmabuffer);
-
-		/* Stop encoding if EOF was reached */
-		if (feof(ctx->fin))
+		/* Push raw input frame into the encoder. */
+		ret = push_raw_input_frame(ctx);
+		if (ret == RETVAL_EOS)
 			break;
+		else if (ret != RETVAL_OK)
+			return RETVAL_ERROR;
 
-		/* The actual encoding */
-		imx_vpu_enc_encode(ctx->vpuenc, &input_frame, &output_frame, &enc_params, &output_code);
-
-		/* Write out the encoded frame to the output file. The encoder
-		 * will have called acquire_output_buffer(), which acquires a
-		 * buffer by malloc'ing it. The "handle" in this example is
-		 * just the pointer to the allocated memory. This means that
-		 * here, acquired_handle is the pointer to the encoded frame
-		 * data. Write it to file, and then free the previously
-		 * allocated block. In production, the acquire function could
-		 * retrieve an output memory block from a buffer pool for
-		 * example. */
-		output_block = output_frame.acquired_handle;
-		fwrite(output_block, 1, output_frame.data_size, ctx->fout);
-		free(output_block);
+		/* Encode the previously pushed input data. */
+		ret = encode_raw_frame(ctx);
+		if (ret == RETVAL_EOS)
+			break;
+		else if (ret == RETVAL_ERROR)
+			return RETVAL_ERROR;
 	}
 
 	return RETVAL_OK;
@@ -252,21 +480,23 @@ Retval run(Context *ctx)
 
 void shutdown(Context *ctx)
 {
-	unsigned int i;
+	if (ctx == NULL)
+		return;
 
-	/* Close the previously opened encoder instance */
-	imx_vpu_enc_close(ctx->vpuenc);
+	/* Close the previously opened encoder instance. */
+	if (ctx->encoder != NULL)
+		imx_vpu_api_enc_close(ctx->encoder);
 
-	/* Free all allocated memory (both regular and DMA memory) */
-	imx_vpu_dma_buffer_deallocate(ctx->input_fb_dmabuffer);
-	free(ctx->framebuffers);
-	for (i = 0; i < ctx->num_framebuffers; ++i)
-		imx_vpu_dma_buffer_deallocate(ctx->fb_dmabuffers[i]);
-	free(ctx->fb_dmabuffers);
-	imx_vpu_dma_buffer_deallocate(ctx->bitstream_buffer);
+	/* Free all allocated memory. */
+	deallocate_framebuffers(ctx);
+	if (ctx->input_dmabuffer)
+		imx_dma_buffer_deallocate(ctx->input_dmabuffer);
+	if (ctx->stream_buffer != NULL)
+		imx_dma_buffer_deallocate(ctx->stream_buffer);
 
-	/* Unload the VPU firmware */
-	imx_vpu_enc_unload();
+	/* Discard the DMA buffer allocator. */
+	if (ctx->allocator != NULL)
+		imx_dma_buffer_allocator_destroy(ctx->allocator);
 
 	free(ctx);
 }

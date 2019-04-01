@@ -1,18 +1,24 @@
-libimxvpuapi - frontend for the i.MX6 VPU hardware video engine
-===============================================================
+libimxvpuapi - frontend for i.MX hardware video codecs
+======================================================
 
-This library provides an API for using the iMX6 VPU video engine. It is an alternative to Freescale's VPU wrapper.
-Both the wrapper and this library are layered on top of imx-vpu , the low-level iMX6 VPU interface.
+This library provides an API for using hardware video codecs on i.MX platforms.
+The API abstracts away platform specific details and allows for using the same
+code with different hardware video codecs on different i.MX platforms.
 
-The aim is to provide a cleaned up API with additional features, most prominently:
-* User-defined context information associated with input frames, which is passed on to corresponding output frames
-  (to be able to identify which input frame produced which output frame)
-* Groundwork for future DMA-BUF/BMM/ION/CMA allocator integration, using file descriptors instead of physical addresses
-* Indicators for when it is safe to try to decode frames, which is critical in multi-threaded playback cases
-* Switchable implementation backend: the main backend is the "vpulib" backend, which uses the low-level imx-vpu
-  library directly; an alternative backend is the "fslwrapper" backend, based on the Freescale VPU wrapper
-* Simplified, higher-level JPEG en/decoding API, based on the VPU MJPEG codec; useful for picture viewing without
-  the extra boilerplate for VPU-based en/decoding
+The hardware video codec is referred to as the _VPU_.
+
+Currently, the following platforms are supported (listed with their VPUs):
+
+* i.MX6 (Chips&Media CODA960 codec)
+* i.MX8m (Hantro G1/G2 decoder, no encoder)
+* i.MX8mm (Hantro G1/G2 decoder, Hantro H1 encoder)
+
+Not yet supported:
+
+* i.MX8 / i.MX8X (Amphion Malone codec)
+
+This is the second version of this library. Differences to the older version
+are described below.
 
 
 License
@@ -24,62 +30,25 @@ This library is licensed under the LGPL v2.1.
 Dependencies
 ------------
 
-This depends on the backend in use. The default (the vpulib backend) needs imx-vpu 3.10.17 or newer. The fslwrapper
-backend needs libfslvpuwrap 1.0.45 or newer.
+libimxvpuapi depends on [libimxdmabuffer](https://github.com/dv1/libimxdmabuffer).
 
+Additional dependencies are specific to the target platform:
 
-Supported formats
------------------
-
-These formats correspond to the capabilities of the VPU hardware.
-Only a subset of these are also supported by the encoder.
-Unless otherwise noted, the maximum supported resolution is 1920x1088. 
-
-* MPEG-1 part 2 and MPEG-2 part 2:
-  Decoding: Fully compatible with the ISO/IEC 13182-2 specification and the main and high
-            profiles. Both progressive and interlaced content is supported.
-
-* MPEG-4 part 2:
-  Decoding: Supports simple and advanced simple profile (except for GMC).
-            NOTE: DivX 3/5/6 are not supported and require special licensing by Freescale.
-  Encoding: Supports the simple profile and max. level 5/6.
-
-* h.263:
-  Decoding: Supports baseline profile and Annex I, J, K (except for RS/ASO), T, and max. level 70.
-  Encoding: Supports baseline profile and Annex I, J, K (RS and ASO are 0), T, and max. level 70.
-
-* h.264:
-  Decoding: Supports baseline, main, high profiles, max. level 4.1. (10-bit decoding is not supported.)
-            Only Annex.B byte-stream formatted input is supported.
-  Encoding: Supports baseline and constrained baseline profile, max. level 4.0.
-            Only Annex.B byte-stream formatted output is supported.
-
-* WMV3 (also known as Windows Media Video 9):
-  Compatible to VC-1 simple and main profiles.
-  Decoding: Fully supported WMV3 decoding, excluding the deprecated WMV3 interlace support
-            (which has been obsoleted by the interlacing in the VC-1 advanced profile).
-
-* VC-1 (also known as Windows Media Video 9 Advanced Profile):
-  Decoding: SMPTE VC-1 compressed video standard fully supported. Max. level is 3.
-
-* Motion JPEG:
-  Decoding: Only baseline JPEG frames are supported. Maximum resolution is 8192x8192.
-  Encoding: Only baseline JPEG frames are supported. Maximum resolution is 8192x8192.
-            NOTE: Encoder always operates in constant quality mode, even if the open
-            params have a nonzero bitrate set.
-
-* VP8:
-  Decoding: fully compatible with the VP8 decoding specification.
-            Both simple and normal in-loop deblocking are supported.
-            NOTE: VPU specs state that the maximum supported resolution is 1280x720, but
-            tests show that up to 1920x1088 pixels do work.
+* i.MX6: imx-vpu package version 3.10.17 or newer.
+* i.MX8m & i.MX8mm: imx-vpu-hantro 1.8.0 or newer.
+  Please note that the build scripts assume that this is a version of the
+  imx-vpu-hantro package with fixed header installation destination. Earlier
+  versions installed all Hantro headers in the main include directory. Newer
+  ones create `hantro_enc` and `hantro_dec`subdirectories. libimxvpuapi
+  expects these directories to exist.
 
 
 Building and installing
 -----------------------
 
-This project uses the [waf meta build system](https://code.google.com/p/waf/). To configure , first set
-the following environment variables to whatever is necessary for cross compilation for your platform:
+This project uses the [waf meta build system](https://code.google.com/p/waf/).
+To configure , first set the following environment variables to whatever is
+necessary for cross compilation for your platform:
 
 * `CC`
 * `CFLAGS`
@@ -89,10 +58,21 @@ the following environment variables to whatever is necessary for cross compilati
 
 Then, run:
 
-    ./waf configure --prefix=PREFIX
+    ./waf configure --prefix=PREFIX --imx-platform=IMX_PLATFORM --sysroot-path=SYSROOT
 
-(The aforementioned environment variables are only necessary for this configure call.)
-PREFIX defines the installation prefix, that is, where the built binaries will be installed.
+(The aforementioned environment variables are only necessary for this
+configure call.)
+
+The arguments are as follows:
+* `PREFIX` defines the installation prefix, that is, where the built binaries
+  will be installed.
+* `IMX_PLATFORM` specifies what i.MX platform to build for. Valid values
+  currently are `imx6`, `imx8m`, `imx8mm`.
+* `SYSROOT` is the absolute path to the sysroot for the platform. This is the
+  path where `usr/include/imx/mxcfb.h` can be found. In cross compilation
+  environments like Yocto or buildroot, this is where the sysroot files for the
+  target i.MX platforms are.
+
 
 Once configuration is complete, run:
 
@@ -103,31 +83,15 @@ Finally, to install, run:
 
     ./waf install
 
-This will install the headers in `$PREFIX/include/imxvpuapi/` , the libraries in `$PREFIX/lib/` ,
-and generate a pkg-config .pc file, which is placed in `$PREFIX/lib/pkgconfig/` .
-
-
-Selecting backends
-------------------
-
-By default, the vpulib backend is used. To use the fslwrapper backend, an additional switch has to be
-passed to the configuration step:
-
-    ./waf configure --prefix=PREFIX --use-fslwrapper-backend
-
-Please note that the fslwrapper backend should not be used unless there are serious problems with the
-vpulib backend; due to limitations in the VPU wrapper's API, the fslwrapper backend does not achieve
-the vpulib's functionality fully. The fslwrapper backend is mainly used for debugging to enable
-comparisons in behavior between libimxvpuapi and libfslwrapper.
+This will install the headers in `$PREFIX/include/imxvpuapi2/`, the libraries
+in `$PREFIX/lib/`, and generate a pkg-config .pc file, which is placed in
+`$PREFIX/lib/pkgconfig/` .
 
 
 API documentation
 -----------------
 
-The API is documented in these headers:
-
-* `imxvpuapi/imxvpuapi.h` : main en/decoding API
-* `imxvpuapi/imxvpuapi_jpeg.h` : simplified JPEG en/decoding API
+The API is documented in the `imxvpuapi/imxvpuapi.h` header.
 
 
 Examples
@@ -135,26 +99,79 @@ Examples
 
 libimxvpuapi comes with these examples in the `example/` directory:
 
-* `decode-example.c` : demonstrates how to use the decoder API for decoding an h.264 video
-* `encode-example.c` : demonstrates how to use the encoder API for encoding an h.264 video
-* `jpeg-dec-example.c` : demonstrates how to use the simplified JPEG API for decoding JPEG files
-* `jpeg-enc-example.c` : demonstrates how to use the simplified JPEG API for encoding JPEG files
+* `decode-example.c` : demonstrates how to use the decoder API
+* `encode-example.c` : demonstrates how to use the encoder API
 
-(Other source files in the `example/` directory are common utility code used by all examples above.)
+(Other source files in the `example/` directory are common utility code used
+by all examples above.)
+
+Raw frames are read/written as [YUV4MPEG2 (y4m) data](https://wiki.multimedia.cx/index.php/YUV4MPEG2),
+and encoded to / decoded from h.264.
 
 
-VPU timeout issues
-------------------
+Known issues
+------------
 
-If errors like `imx_vpu_dec_decode() failed: timeout` or `VPU blocking: timeout` are observed, check if the
-following workarounds for known problems help:
+**i.MX6 VPU timeout**
 
-* Overclocked VPU: The VPU is clocked at 266 MHz by default (according to the VPU documentation). Some
-  configurations clock the VPU at 352 MHz, and can exhibit VPU timeout problems, particularly during
-  h.264 encoding. Try running the VPU at 266 MHz.
+If errors like `imx_vpu_api_dec_decode() failed: timeout` or `VPU blocking: timeout`
+are observed, check if the following workarounds for known problems help:
+
+* Overclocked VPU: The VPU is clocked at 266 MHz by default (according to the
+  VPU documentation). Some configurations clock the VPU at 352 MHz, and can
+  exhibit VPU timeout problems, particularly during h.264 encoding. Try running
+  the VPU at 266 MHz.
 
 * Known issue with IPU configuration: As shown by [this Github entry](https://github.com/Freescale/libimxvpuapi/issues/11),
-  the `CONFIG_IMX_IPUV3_CORE` kernel config flag can cause problems with the VPU. Disable it, then try again.
+  the `CONFIG_IMX_IPUV3_CORE` kernel config flag can cause problems with the
+  VPU. Disable it, then try again.
 
-* Low-level VPU library bug: imx-vpu versions prior to 5.4.31 also have been observed to cause VPU timeouts.
-  These seem to be related to the 5.4.31 fix described as: "Fix VPU blocked in BWB module".
+* Low-level VPU library bug: imx-vpu versions prior to 5.4.31 also have been
+  observed to cause VPU timeouts. These seem to be related to the 5.4.31 fix
+  described as: "Fix VPU blocked in BWB module".
+
+**VP6 frames decoded upside down by Hantro G1 decoder**
+
+This seems to be a bug in imx-vpu-hantro. A workaround is currently not known.
+
+
+Differences to the older libimxvpuapi version
+---------------------------------------------
+
+This is version 2 of libimxvpuapi. Major changes are:
+
+* The API has been rewritten, and is incompatible with the older one.
+* The `imx_vpu_` prefix has been changed to `imx_vpu_api_`.
+* Files have been renamed from `imxvpuapi*` to `imxvpuapi2` to reflect the
+  new and incompatible API and to allow for coexistence with the old version
+  of the library.
+* DMA allocation functions have been factored out as [libimxdmabuffer](https://github.com/dv1/libimxdmabuffer).
+* The old API required checks with `imx_vpu_dec_check_if_can_decode()` to see
+  if decoding is possible now to avoid a deadlock. This is no longer needed.
+  Decoders either perform internal DMA-based copies of frames (i.MX6, in the
+  same step as detiling from the VPU layout), or accept additional framebuffers
+  in their framebuffer pools on the fly. This simplifies the use of the
+  decoding API considerably.
+* API for getting global en/decoder information and list of supported formats,
+  profiles, levels has been added.
+* Color formats have been merged with the semi/fully planar attribute.
+* h.265 colorimetry information has been added.
+* Encoder API now returns encoded data in a two-step approach: First, the size
+  of the encoded data is returned. Then the user allocates a buffer with at
+  least that size. Finally, that buffer is passed to the encoder to retrieve
+  the encoded data.
+* the `imx_vpu_load()` and `imx_vpu_unload()` functions are gone. (Un)loading
+  the i.MX6 VPU firmware is now done internally.
+* 10-bit support and tiled output support have been added (the latter's tiling
+  layout is platform specific).
+* `codec_format` was renamed to `compression_format` to avoid confusion with
+  the notion of hardware video codecs.
+
+
+To do
+-----
+
+* Reintroduce the simplified JPEG interface on top of the new API
+* Add more encoder options (and evaluate which ones to add)
+* More wiki entries describing format support per i.MX platform / codec
+* RealVideo decoding support
