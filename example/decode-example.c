@@ -240,7 +240,7 @@ static int decode_frame(Context *ctx)
 		encoded_frame.pts = 0;
 		encoded_frame.dts = 0;
 
-		fprintf(stderr, "encoded input frame:  frame id: 0x%x  size: %u byte\n", ctx->frame_id_counter, encoded_frame.data_size);
+		fprintf(stderr, "encoded input frame:  frame id: 0x%x  size: %zu byte\n", ctx->frame_id_counter, encoded_frame.data_size);
 	}
 
 	/* Perform the actual decoding */
@@ -297,7 +297,7 @@ static int decode_frame(Context *ctx)
 		 * than once after IMX_VPU_DEC_OUTPUT_CODE_DECODED_FRAME_AVAILABLE was set. */
 		imx_vpu_dec_get_decoded_frame(ctx->vpudec, &decoded_frame);
 		frame_id = (unsigned int)((uintptr_t)(decoded_frame.context));
-		fprintf(stderr, "decoded output frame:  frame id: 0x%x  writing %u byte\n", frame_id, num_out_byte);
+		fprintf(stderr, "decoded output frame:  frame id: 0x%x  writing %zu byte\n", frame_id, num_out_byte);
 
 		/* Map buffer to the local address space, dump the decoded frame to file,
 		 * and unmap again. The decoded frame uses the I420 color format for all
