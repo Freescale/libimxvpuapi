@@ -1445,7 +1445,7 @@ ImxVpuApiCompressionFormatSupportDetails const * imx_vpu_api_dec_get_compression
 ImxVpuApiDecReturnCodes imx_vpu_api_dec_open(ImxVpuApiDecoder **decoder, ImxVpuApiDecOpenParams *open_params, ImxDmaBuffer *stream_buffer)
 {
 	int err;
-	ImxVpuApiDecReturnCodes ret;
+	ImxVpuApiDecReturnCodes ret = IMX_VPU_API_DEC_RETURN_CODE_OK;
 	DecOpenParam dec_open_param;
 	RetCode dec_ret;
 
