@@ -469,6 +469,7 @@ Context* init(FILE *input_file, FILE *output_file)
 	int err;
 	Context *ctx;
 	ImxVpuApiDecOpenParams open_params;
+	ImxVpuApiDecReturnCodes dec_ret;
 	uint32_t dec_flags;
 
 	ctx = calloc(1, sizeof(Context));
@@ -535,7 +536,11 @@ Context* init(FILE *input_file, FILE *output_file)
 	assert(ctx->stream_buffer != NULL);
 
 	/* Open a decoder instance, using the previously allocated bitstream buffer */
-	imx_vpu_api_dec_open(&(ctx->decoder), &open_params, ctx->stream_buffer);
+	if ((dec_ret = imx_vpu_api_dec_open(&(ctx->decoder), &open_params, ctx->stream_buffer)) != IMX_VPU_API_DEC_RETURN_CODE_OK)
+	{
+		fprintf(stderr, "could not open decoder instance: %s\n", imx_vpu_api_dec_return_code_string(dec_ret));
+		goto error;
+	}
 
 
 finish:
