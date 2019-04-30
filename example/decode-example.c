@@ -328,7 +328,6 @@ static Retval decode_encoded_frames(Context *ctx)
 				{
 					fprintf(stderr, "Could not allocate %zu framebuffer(s)\n", stream_info->min_num_required_framebuffers);
 					retval = RETVAL_ERROR;
-					shutdown(ctx);
 					do_loop = 0;
 					break;
 				}
@@ -342,7 +341,6 @@ static Retval decode_encoded_frames(Context *ctx)
 					{
 						fprintf(stderr, "Could not allocate output framebuffer\n");
 						retval = RETVAL_ERROR;
-						shutdown(ctx);
 						do_loop = 0;
 						break;
 					}
@@ -364,7 +362,6 @@ static Retval decode_encoded_frames(Context *ctx)
 				if (!y4m_init(ctx->y4m_output_file, &(ctx->y4m_context), 0))
 				{
 					retval = RETVAL_ERROR;
-					shutdown(ctx);
 					do_loop = 0;
 					break;
 				}
@@ -602,18 +599,30 @@ void shutdown(Context *ctx)
 
 	/* Close the previously opened decoder instance. */
 	if (ctx->decoder != NULL)
+	{
 		imx_vpu_api_dec_close(ctx->decoder);
+		ctx->decoder = NULL;
+	}
 
 	/* Free all allocated memory. */
 	deallocate_framebuffers(ctx);
 	if (ctx->output_dmabuffer)
+	{
 		imx_dma_buffer_deallocate(ctx->output_dmabuffer);
+		ctx->output_dmabuffer = NULL;
+	}
 	if (ctx->stream_buffer != NULL)
+	{
 		imx_dma_buffer_deallocate(ctx->stream_buffer);
+		ctx->stream_buffer = NULL;
+	}
 
 	/* Discard the DMA buffer allocator. */
 	if (ctx->allocator != NULL)
+	{
 		imx_dma_buffer_allocator_destroy(ctx->allocator);
+		ctx->allocator = NULL;
+	}
 
 	/* Discard the h264context helper that was used to parse h.264 cata. */
 	h264_ctx_cleanup(&(ctx->h264_ctx));
