@@ -821,15 +821,14 @@ static BOOL imx_vpu_api_dec_preprocess_input_data(ImxVpuApiDecoder *decoder, uin
 				return FALSE;
 			}
 
-			IMX_VPU_API_LOG("JPEG frame information:  width: %u  height: %u  format: %s", jpeg_width, jpeg_height, imx_vpu_api_color_format_string(jpeg_color_format));
-
 			if (decoder->initial_info_available && ((decoder->jpeg_width != jpeg_width) || (decoder->jpeg_height != jpeg_height) || (decoder->jpeg_color_format != jpeg_color_format)))
-			{
 				decoder->jpeg_format_changed = TRUE;
-				decoder->jpeg_width = jpeg_width;
-				decoder->jpeg_height = jpeg_height;
-				decoder->jpeg_color_format = jpeg_color_format;
-			}
+
+			decoder->jpeg_width = jpeg_width;
+			decoder->jpeg_height = jpeg_height;
+			decoder->jpeg_color_format = jpeg_color_format;
+
+			IMX_VPU_API_LOG("JPEG frame information:  width: %u  height: %u  format: %s  format changed: %d  initial info available: %d", jpeg_width, jpeg_height, imx_vpu_api_color_format_string(jpeg_color_format), decoder->jpeg_format_changed, decoder->initial_info_available);
 
 			break;
 		}
@@ -1100,6 +1099,7 @@ static BOOL imx_vpu_api_dec_fill_stream_info_from_initial_info(ImxVpuApiDecoder 
 	size_t frame_width = initial_info->picWidth;
 	size_t frame_height = initial_info->picHeight;
 	BOOL semi_planar = decoder_uses_semi_planar_color_format(&(decoder->open_params));
+	size_t min_num_required_framebuffers;
 
 	if (decoder->open_params.compression_format == IMX_VPU_API_COMPRESSION_FORMAT_JPEG)
 	{
@@ -1125,12 +1125,18 @@ static BOOL imx_vpu_api_dec_fill_stream_info_from_initial_info(ImxVpuApiDecoder 
 		color_format = semi_planar ? IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV420_8BIT : IMX_VPU_API_COLOR_FORMAT_FULLY_PLANAR_YUV420_8BIT;
 	}
 
+	/* Add the extra framebuffers to avoid decoding errors. See the documentation
+	 * for the NUM_EXTRA_FRAMEBUFFERS_REQUIRED constant for more.
+	 * For JPEG, we definitely do not need these extra framebuffers, so don't add
+	 * them if we are decoding JPEG data. */
+	min_num_required_framebuffers = initial_info->minFrameBufferCount + ((decoder->open_params.compression_format == IMX_VPU_API_COMPRESSION_FORMAT_JPEG) ? 0 : NUM_EXTRA_FRAMEBUFFERS_REQUIRED);
+
 	ret = imx_vpu_api_dec_fill_stream_info(
 		decoder,
 		initial_info->picWidth, initial_info->picHeight,
 		color_format,
 		initial_info->frameRateRes, initial_info->frameRateDiv,
-		initial_info->minFrameBufferCount + NUM_EXTRA_FRAMEBUFFERS_REQUIRED,
+		min_num_required_framebuffers,
 		!!(initial_info->interlace)
 	);
 	if (!ret)
@@ -1306,16 +1312,9 @@ static BOOL imx_vpu_api_dec_fill_stream_info(ImxVpuApiDecoder *decoder, size_t a
 			assert(FALSE);
 	}
 
-	/* Make sure that at least one framebuffer is allocated and registered.
-	 * (Unless we are decoding JPEG, since then, the VPU doesn't use  any
-	 * framebuffers, nor does it require framebuffer registration). */
-	if (decoder->open_params.compression_format != IMX_VPU_API_COMPRESSION_FORMAT_JPEG)
-	{
-		if (stream_info->min_num_required_framebuffers < 1)
-			stream_info->min_num_required_framebuffers = 1;
-	}
-	else
-		stream_info->min_num_required_framebuffers = 0;
+	/* Make sure that at least one framebuffer is allocated and registered. */
+	if (stream_info->min_num_required_framebuffers < 1)
+		stream_info->min_num_required_framebuffers = 1;
 
 	return TRUE;
 }
@@ -1640,21 +1639,6 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_open(ImxVpuApiDecoder **decoder, ImxVpuA
 	}
 
 
-	/* JPEG decoding does not actually use a framebuffer pool.
-	 * Nevertheless, to be able to reuse existing code paths,
-	 * allocate a frame_entries array with exactly one entry,
-	 * to store details about the JPEG to decode.
-	 * Also see the explanation at the beginning of this
-	 * source about the decoding process and how JPEG decoding
-	 * differs from the rest. */
-	if (open_params->compression_format == IMX_VPU_API_COMPRESSION_FORMAT_JPEG)
-	{
-		(*decoder)->num_framebuffers = 1;
-		(*decoder)->frame_entries = malloc(sizeof(DecFrameEntry) * 1);
-		assert((*decoder)->frame_entries != NULL);
-	}
-
-
 	/* Finish & cleanup (the latter in case of an error). */
 finish:
 	if (ret == IMX_VPU_API_DEC_RETURN_CODE_OK)
@@ -1750,13 +1734,6 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_add_framebuffers_to_pool(ImxVpuApiDecode
 	assert(decoder != NULL);
 	assert(fb_dma_buffers != NULL);
 	assert(num_framebuffers >= 1);
-
-	/* JPEG decoding does not use a framebuffer pool. There is no
-	 * reason for calling this function, since the stream info's
-	 * min_num_required_framebuffers field will be set to 0, so
-	 * this cannot be a valid call. */
-	if (decoder->open_params.compression_format == IMX_VPU_API_COMPRESSION_FORMAT_JPEG)
-		return IMX_VPU_API_DEC_RETURN_CODE_INVALID_CALL;
 
 	fb_metrics = &(decoder->stream_info.decoded_frame_framebuffer_metrics);
 
@@ -2087,12 +2064,19 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 				decoder->jpeg_height,
 				decoder->jpeg_color_format,
 				0, 1,
-				0,
+				decoder->stream_info.min_num_required_framebuffers,
 				FALSE)
 			)
 			{
 				return IMX_VPU_API_DEC_RETURN_CODE_ERROR;
 			}
+
+			/* Reset the internal frame arrays and the number of framebuffers
+			 * to be added, since we need a new framebuffer pool after the
+			 * JPEG format changed. */
+			imx_vpu_api_dec_free_internal_arrays(decoder);
+
+			decoder->num_framebuffers_to_be_added = decoder->stream_info.min_num_required_framebuffers;
 
 			decoder->jpeg_format_changed = FALSE;
 			*output_code = IMX_VPU_API_DEC_OUTPUT_CODE_NEW_STREAM_INFO_AVAILABLE;
