@@ -246,7 +246,7 @@ def build(bld):
 		vnum = bld.env['IMXVPUAPI2_VERSION']
 	)
 
-	bld.install_files('${PREFIX}/include/imxvpuapi2/', ['imxvpuapi2/imxvpuapi2.h'])
+	bld.install_files('${PREFIX}/include/imxvpuapi2/', ['imxvpuapi2/imxvpuapi2.h', 'imxvpuapi2/imxvpuapi2_jpeg.h'])
 
 	bld(
 		features = ['subst'],
