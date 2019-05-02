@@ -2334,8 +2334,8 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 		{
 			/* This indicates an internal error. Usually this means
 			 * the value of NUM_EXTRA_FRAMEBUFFERS_REQUIRED is not
-			 * high enough. */
-			IMX_VPU_API_ERROR("not enough output framebuffers were available even though enough were added prior to decoding");
+			 * high enough. This is an internal error. */
+			IMX_VPU_API_ERROR("internal error; not enough output framebuffers were available even though enough were added prior to decoding");
 			return IMX_VPU_API_DEC_RETURN_CODE_ERROR;
 		}
 
