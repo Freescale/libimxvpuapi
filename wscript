@@ -239,7 +239,7 @@ def build(bld):
 		includes = ['.'],
 		uselib = ['IMXDMABUFFER', 'C99'] + use_lists['uselib'],
 		use = use_lists['use'],
-		source = ['imxvpuapi2/imxvpuapi2.c', 'imxvpuapi2/imxvpuapi2_priv.c'],
+		source = ['imxvpuapi2/imxvpuapi2.c', 'imxvpuapi2/imxvpuapi2_priv.c', 'imxvpuapi2/imxvpuapi2_jpeg.c'],
 		name = 'imxvpuapi2',
 		target = 'imxvpuapi2',
 		install_path="${LIBDIR}",
@@ -258,6 +258,8 @@ def build(bld):
 	examples = [ \
 		{ 'name': 'decode-example',         'source': ['example/decode-example.c']         }, \
 		{ 'name': 'encode-example',         'source': ['example/encode-example.c']         }, \
+		{ 'name': 'jpeg-dec-example',       'source': ['example/jpeg-dec-example.c']       }, \
+		{ 'name': 'jpeg-enc-example',       'source': ['example/jpeg-enc-example.c']       }, \
 	]
 
 	bld(
