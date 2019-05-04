@@ -2609,8 +2609,6 @@ struct _ImxVpuApiEncoder
 	unsigned int num_framebuffers;
 	FrameBuffer *internal_framebuffers;
 
-	unsigned int quantization;
-
 	EncOutputInfo enc_output_info;
 	size_t jpeg_header_size;
 
@@ -3699,7 +3697,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
 	enc_param.sourceFrame = &source_framebuffer;
 	enc_param.forceIPicture = !!((encoder->staged_raw_frame.frame_types[0] & IMX_VPU_API_FRAME_TYPE_I) || (encoder->staged_raw_frame.frame_types[0] & IMX_VPU_API_FRAME_TYPE_IDR));
 	enc_param.skipPicture = 0;
-	enc_param.quantParam = encoder->quantization;
+	enc_param.quantParam = encoder->open_params.quantization;
 	enc_param.enableAutoSkip = 0;
 
 
