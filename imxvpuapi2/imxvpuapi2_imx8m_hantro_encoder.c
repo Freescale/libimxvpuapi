@@ -1366,24 +1366,6 @@ void imx_vpu_api_enc_flush(ImxVpuApiEncoder *encoder)
 }
 
 
-void imx_vpu_api_enc_get_header_data(ImxVpuApiEncoder *encoder, ImxVpuApiEncHeaderTypes header_type, uint8_t const **header_data, size_t *header_data_size)
-{
-	IMX_VPU_API_UNUSED_PARAM(encoder);
-	IMX_VPU_API_UNUSED_PARAM(header_type);
-	IMX_VPU_API_UNUSED_PARAM(header_data);
-	IMX_VPU_API_UNUSED_PARAM(header_data_size);
-}
-
-
-void imx_vpu_api_enc_set_custom_header_data(ImxVpuApiEncoder *encoder, ImxVpuApiEncHeaderTypes header_type, uint8_t const *header_data, size_t header_data_size)
-{
-	IMX_VPU_API_UNUSED_PARAM(encoder);
-	IMX_VPU_API_UNUSED_PARAM(header_type);
-	IMX_VPU_API_UNUSED_PARAM(header_data);
-	IMX_VPU_API_UNUSED_PARAM(header_data_size);
-}
-
-
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_set_bitrate(ImxVpuApiEncoder *encoder, unsigned int bitrate)
 {
 	IMX_VPU_API_UNUSED_PARAM(encoder);
