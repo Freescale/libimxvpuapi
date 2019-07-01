@@ -596,9 +596,11 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 	/* The Hantro H1 encoder does not use a framebuffer pool, so set this to 0. */
 	(*encoder)->stream_info.min_num_required_framebuffers = 0;
 	(*encoder)->stream_info.min_framebuffer_size = (semi_planar ? fb_metrics->u_offset : fb_metrics->v_offset) + fb_metrics->uv_size;
-	(*encoder)->stream_info.framebuffer_alignment = 1; // TODO
 	(*encoder)->stream_info.frame_rate_numerator = open_params->frame_rate_numerator;
 	(*encoder)->stream_info.frame_rate_denominator = open_params->frame_rate_denominator;
+	/* Alignment determined by looking at the Hantro
+	 * H264EncApi.c and vp8encapi.c sources. */
+	(*encoder)->stream_info.framebuffer_alignment = 8;
 
 
 	/* Next, configure the encoder. This is split between setting up the

@@ -784,7 +784,9 @@ static BOOL imx_vpu_api_dec_get_new_stream_info(ImxVpuApiDecoder *decoder)
 	 * the hantro_stream_info.framesize field and cannot be computed
 	 * otherwise, so just use that field's value. */
 	stream_info->min_fb_pool_framebuffer_size = stream_info->min_output_framebuffer_size = hantro_stream_info.framesize;
-	stream_info->fb_pool_framebuffer_alignment = stream_info->output_framebuffer_alignment = 1;
+	/* Alignment determined by looking at the X170_CHECK_BUS_ADDRESS_AGLINED
+	 * macro in the Hantro deccfg.h header. */
+	stream_info->fb_pool_framebuffer_alignment = stream_info->output_framebuffer_alignment = 16;
 
 	/* Frame rate is not available from the Hantro decoder. */
 	stream_info->frame_rate_numerator = 0;
