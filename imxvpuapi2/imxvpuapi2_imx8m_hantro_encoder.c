@@ -1067,7 +1067,6 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
 	STREAM_BUFFER *encoding_stream = &(encoder->encoding_stream);
 	FRAME frame;
 	CODEC_STATE codec_state;
-	imx_physical_address_t raw_frame_phys_addr;
 	BOOL forced_I_frame;
 
 	assert(encoder != NULL);
@@ -1103,9 +1102,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
 	*output_code = IMX_VPU_API_ENC_OUTPUT_CODE_NO_OUTPUT_YET_AVAILABLE;
 
 
-	/* Get the physical address for the raw_frame that shall be encoded. */
-	raw_frame_phys_addr = imx_dma_buffer_get_physical_address(encoder->staged_raw_frame.fb_dma_buffer);
-	IMX_VPU_API_LOG("encoding raw_frame with physical address %" IMX_PHYSICAL_ADDRESS_FORMAT, raw_frame_phys_addr);
+	IMX_VPU_API_LOG("encoding raw_frame with physical address %" IMX_PHYSICAL_ADDRESS_FORMAT, encoder->staged_raw_frame_physical_address);
 
 
 	/* In here, we set up the necessary encoding parameters and count the
