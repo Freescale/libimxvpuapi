@@ -2906,25 +2906,25 @@ void imx_vpu_api_enc_set_default_open_params(ImxVpuApiCompressionFormat compress
 	switch (compression_format)
 	{
 		case IMX_VPU_API_COMPRESSION_FORMAT_MPEG4:
-			open_params->format_specific_params.mpeg4_params.enable_data_partitioning = 0;
-			open_params->format_specific_params.mpeg4_params.enable_reversible_vlc = 0;
-			open_params->format_specific_params.mpeg4_params.intra_dc_vlc_thr = 0;
-			open_params->format_specific_params.mpeg4_params.enable_hec = 0;
-			open_params->format_specific_params.mpeg4_params.version_id = 2;
+			open_params->format_specific_open_params.mpeg4_open_params.enable_data_partitioning = 0;
+			open_params->format_specific_open_params.mpeg4_open_params.enable_reversible_vlc = 0;
+			open_params->format_specific_open_params.mpeg4_open_params.intra_dc_vlc_thr = 0;
+			open_params->format_specific_open_params.mpeg4_open_params.enable_hec = 0;
+			open_params->format_specific_open_params.mpeg4_open_params.version_id = 2;
 			break;
 
 		case IMX_VPU_API_COMPRESSION_FORMAT_H263:
-			open_params->format_specific_params.h263_params.enable_annex_i = 0;
-			open_params->format_specific_params.h263_params.enable_annex_j = 1;
-			open_params->format_specific_params.h263_params.enable_annex_k = 0;
-			open_params->format_specific_params.h263_params.enable_annex_t = 0;
+			open_params->format_specific_open_params.h263_open_params.enable_annex_i = 0;
+			open_params->format_specific_open_params.h263_open_params.enable_annex_j = 1;
+			open_params->format_specific_open_params.h263_open_params.enable_annex_k = 0;
+			open_params->format_specific_open_params.h263_open_params.enable_annex_t = 0;
 			break;
 
 		case IMX_VPU_API_COMPRESSION_FORMAT_H264:
-			open_params->format_specific_params.h264_params.profile = IMX_VPU_API_H264_PROFILE_CONSTRAINED_BASELINE;
+			open_params->format_specific_open_params.h264_open_params.profile = IMX_VPU_API_H264_PROFILE_CONSTRAINED_BASELINE;
 			/* TODO: level is currently not being used */
-			open_params->format_specific_params.h264_params.level = IMX_VPU_API_H264_LEVEL_4;
-			open_params->format_specific_params.h264_params.enable_access_unit_delimiters = 1;
+			open_params->format_specific_open_params.h264_open_params.level = IMX_VPU_API_H264_LEVEL_4;
+			open_params->format_specific_open_params.h264_open_params.enable_access_unit_delimiters = 1;
 			break;
 		default:
 			break;
@@ -3050,7 +3050,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 
 
 	/* Fill in values into the VPU's encoder open param structure.
-	 * Also, fill the stream_info's format_specific_params field. */
+	 * Also, fill the stream_info's format_specific_open_params field. */
 
 	memset(&enc_open_param, 0, sizeof(enc_open_param));
 
@@ -3110,19 +3110,19 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 	{
 		case IMX_VPU_API_COMPRESSION_FORMAT_MPEG4:
 			enc_open_param.bitstreamFormat = STD_MPEG4;
-			enc_open_param.EncStdParam.mp4Param.mp4_dataPartitionEnable = open_params->format_specific_params.mpeg4_params.enable_data_partitioning;
-			enc_open_param.EncStdParam.mp4Param.mp4_reversibleVlcEnable = open_params->format_specific_params.mpeg4_params.enable_reversible_vlc;
-			enc_open_param.EncStdParam.mp4Param.mp4_intraDcVlcThr = open_params->format_specific_params.mpeg4_params.intra_dc_vlc_thr;
-			enc_open_param.EncStdParam.mp4Param.mp4_hecEnable = open_params->format_specific_params.mpeg4_params.enable_hec;
-			enc_open_param.EncStdParam.mp4Param.mp4_verid = open_params->format_specific_params.mpeg4_params.version_id;
+			enc_open_param.EncStdParam.mp4Param.mp4_dataPartitionEnable = open_params->format_specific_open_params.mpeg4_open_params.enable_data_partitioning;
+			enc_open_param.EncStdParam.mp4Param.mp4_reversibleVlcEnable = open_params->format_specific_open_params.mpeg4_open_params.enable_reversible_vlc;
+			enc_open_param.EncStdParam.mp4Param.mp4_intraDcVlcThr = open_params->format_specific_open_params.mpeg4_open_params.intra_dc_vlc_thr;
+			enc_open_param.EncStdParam.mp4Param.mp4_hecEnable = open_params->format_specific_open_params.mpeg4_open_params.enable_hec;
+			enc_open_param.EncStdParam.mp4Param.mp4_verid = open_params->format_specific_open_params.mpeg4_open_params.version_id;
 			break;
 
 		case IMX_VPU_API_COMPRESSION_FORMAT_H263:
 			enc_open_param.bitstreamFormat = STD_H263;
-			enc_open_param.EncStdParam.h263Param.h263_annexIEnable = open_params->format_specific_params.h263_params.enable_annex_i;
-			enc_open_param.EncStdParam.h263Param.h263_annexJEnable = open_params->format_specific_params.h263_params.enable_annex_j;
-			enc_open_param.EncStdParam.h263Param.h263_annexKEnable = open_params->format_specific_params.h263_params.enable_annex_k;
-			enc_open_param.EncStdParam.h263Param.h263_annexTEnable = open_params->format_specific_params.h263_params.enable_annex_t;
+			enc_open_param.EncStdParam.h263Param.h263_annexIEnable = open_params->format_specific_open_params.h263_open_params.enable_annex_i;
+			enc_open_param.EncStdParam.h263Param.h263_annexJEnable = open_params->format_specific_open_params.h263_open_params.enable_annex_j;
+			enc_open_param.EncStdParam.h263Param.h263_annexKEnable = open_params->format_specific_open_params.h263_open_params.enable_annex_k;
+			enc_open_param.EncStdParam.h263Param.h263_annexTEnable = open_params->format_specific_open_params.h263_open_params.enable_annex_t;
 
 			/* The VPU does not permit any other search range for h.263 */
 			enc_open_param.MESearchRange = 3;
@@ -3133,7 +3133,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 		{
 			unsigned int width_remainder, height_remainder;
 
-			(*encoder)->stream_info.format_specific_params.h264_params = open_params->format_specific_params.h264_params;
+			(*encoder)->stream_info.format_specific_open_params.h264_open_params = open_params->format_specific_open_params.h264_open_params;
 
 			enc_open_param.bitstreamFormat = STD_AVC;
 			enc_open_param.EncStdParam.avcParam.avc_constrainedIntraPredFlag = 0;
@@ -3154,7 +3154,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 			 *
 			 * for this reason, the automatic AUD placement is not used and the
 			 * AUDs are inserted manually instead. */
-			(*encoder)->h264_aud_enabled = open_params->format_specific_params.h264_params.enable_access_unit_delimiters;
+			(*encoder)->h264_aud_enabled = open_params->format_specific_open_params.h264_open_params.enable_access_unit_delimiters;
 			enc_open_param.EncStdParam.avcParam.avc_audEnable = 0;
 
 			/* XXX: h.264 MVC support is currently not implemented */

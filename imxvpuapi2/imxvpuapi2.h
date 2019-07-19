@@ -1723,7 +1723,7 @@ typedef struct
 	/* The MPEG-4 part 2 standard version ID. Valid values are 1 and 2. */
 	unsigned int version_id;
 }
-ImxVpuApiEncMPEG4Params;
+ImxVpuApiEncMPEG4OpenParams;
 
 /* h.263 specific encoder parameters. */
 typedef struct
@@ -1737,7 +1737,7 @@ typedef struct
 	/* 1 = Annex.T support is enabled. 0 = disabled. */
 	int enable_annex_t;
 }
-ImxVpuApiEncH263Params;
+ImxVpuApiEncH263OpenParams;
 
 /* h.264 specific encoder parameters. */
 typedef struct
@@ -1754,7 +1754,7 @@ typedef struct
 	 * is not set in the ImxVpuApiH264SupportDetails structure. */
 	int enable_access_unit_delimiters;
 }
-ImxVpuApiEncH264Params;
+ImxVpuApiEncH264OpenParams;
 
 /* VP8 specific encoder parameters. */
 typedef struct
@@ -1762,7 +1762,7 @@ typedef struct
 	/* VP8 profile that the input frames shall be encoded to. */
 	ImxVpuApiVP8Profile profile;
 }
-ImxVpuApiEncVP8Params;
+ImxVpuApiEncVP8OpenParams;
 
 /* Parameters for opening a enccoder. */
 typedef struct
@@ -1801,12 +1801,12 @@ typedef struct
 	/* Format specific parameters. Consult the individual documentation for more. */
 	union
 	{
-		ImxVpuApiEncMPEG4Params mpeg4_params;
-		ImxVpuApiEncH263Params h263_params;
-		ImxVpuApiEncH264Params h264_params;
-		ImxVpuApiEncVP8Params vp8_params;
+		ImxVpuApiEncMPEG4OpenParams mpeg4_open_params;
+		ImxVpuApiEncH263OpenParams h263_open_params;
+		ImxVpuApiEncH264OpenParams h264_open_params;
+		ImxVpuApiEncVP8OpenParams vp8_open_params;
 	}
-	format_specific_params;
+	format_specific_open_params;
 
 	/* Reserved bytes for ABI compatibility. */
 	uint8_t reserved[IMX_VPU_API_RESERVED_SIZE];
@@ -1845,12 +1845,12 @@ typedef struct
 	 * h.264 level might be adjusted by the encoder in case it is too high. */
 	union
 	{
-		ImxVpuApiEncMPEG4Params mpeg4_params;
-		ImxVpuApiEncH263Params h263_params;
-		ImxVpuApiEncH264Params h264_params;
-		ImxVpuApiEncVP8Params vp8_params;
+		ImxVpuApiEncMPEG4OpenParams mpeg4_open_params;
+		ImxVpuApiEncH263OpenParams h263_open_params;
+		ImxVpuApiEncH264OpenParams h264_open_params;
+		ImxVpuApiEncVP8OpenParams vp8_open_params;
 	}
-	format_specific_params;
+	format_specific_open_params;
 
 	/* Reserved bytes for ABI compatibility. */
 	uint8_t reserved[IMX_VPU_API_RESERVED_SIZE];

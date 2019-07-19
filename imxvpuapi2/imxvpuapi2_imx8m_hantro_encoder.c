@@ -332,9 +332,9 @@ void imx_vpu_api_enc_set_default_open_params(ImxVpuApiCompressionFormat compress
 	switch (compression_format)
 	{
 		case IMX_VPU_API_COMPRESSION_FORMAT_H264:
-			open_params->format_specific_params.h264_params.profile = IMX_VPU_API_H264_PROFILE_CONSTRAINED_BASELINE;
-			open_params->format_specific_params.h264_params.level = IMX_VPU_API_H264_LEVEL_5_1;
-			open_params->format_specific_params.h264_params.enable_access_unit_delimiters = 0;
+			open_params->format_specific_open_params.h264_open_params.profile = IMX_VPU_API_H264_PROFILE_CONSTRAINED_BASELINE;
+			open_params->format_specific_open_params.h264_open_params.level = IMX_VPU_API_H264_LEVEL_5_1;
+			open_params->format_specific_open_params.h264_open_params.enable_access_unit_delimiters = 0;
 			break;
 		default:
 			break;
@@ -606,7 +606,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 	/* Next, configure the encoder. This is split between setting up the
 	 * encoder_config (which is accessed and updated during encoding)
 	 * and the codec specifig configuration.
-	 * Also, fill the stream_info's format_specific_params field here. */
+	 * Also, fill the stream_info's format_specific_open_params field here. */
 
 	encoder_config = &((*encoder)->encoder_config);
 
@@ -624,7 +624,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 			OMX_PARAM_DEBLOCKINGTYPE *deblocking = &(encoder_config->deblocking);
 
 
-			(*encoder)->stream_info.format_specific_params.h264_params = open_params->format_specific_params.h264_params;
+			(*encoder)->stream_info.format_specific_open_params.h264_open_params = open_params->format_specific_open_params.h264_open_params;
 
 
 			/* Make sure SPS and PPS NALUs are prepended to IDR frames to
@@ -663,7 +663,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 
 			/* Configure the h.264 profile. */
 
-			switch (open_params->format_specific_params.h264_params.profile)
+			switch (open_params->format_specific_open_params.h264_open_params.profile)
 			{
 				case IMX_VPU_API_H264_PROFILE_CONSTRAINED_BASELINE:
 					avc->eProfile = OMX_VIDEO_AVCProfileBaseline;
@@ -694,7 +694,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 
 			/* Configure the h.264 level. */
 
-			level = open_params->format_specific_params.h264_params.level;
+			level = open_params->format_specific_open_params.h264_open_params.level;
 
 			/* Make sure the level that was specified is actually able to
 			 * handle the number of macroblocks in the input frames. */
@@ -725,18 +725,18 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 				}
 			}
 
-			if (open_params->format_specific_params.h264_params.level != level)
+			if (open_params->format_specific_open_params.h264_open_params.level != level)
 			{
 				IMX_VPU_API_DEBUG(
 					"adjusted h.264 level from %s to %s due to the frame macroblock count %zu not being supported by the originally specified level",
-					imx_vpu_api_h264_level_string(open_params->format_specific_params.h264_params.level),
+					imx_vpu_api_h264_level_string(open_params->format_specific_open_params.h264_open_params.level),
 					imx_vpu_api_h264_level_string(level),
 					macroblocks_per_frame
 				);
 
 				/* Store corrected level into the stream_info h264 params
 				 * to inform the user about the change. */
-				(*encoder)->stream_info.format_specific_params.h264_params.level = level;
+				(*encoder)->stream_info.format_specific_open_params.h264_open_params.level = level;
 			}
 
 			switch (level)
@@ -813,7 +813,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 			OMX_VIDEO_VP8REFERENCEFRAMETYPE* vp8_ref = &(encoder_config->vp8Ref);
 
 
-			(*encoder)->stream_info.format_specific_params.vp8_params = open_params->format_specific_params.vp8_params;
+			(*encoder)->stream_info.format_specific_open_params.vp8_open_params = open_params->format_specific_open_params.vp8_open_params;
 
 
 			/* Misc VP8 configuration. */
