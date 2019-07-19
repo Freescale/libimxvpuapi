@@ -218,10 +218,13 @@ def configure(conf):
 
 	# process the library version number
 	version_node = conf.srcnode.find_node('VERSION')
+	if not version_node:
+		conf.fatal('Could not open VERSION file')
 	with open(version_node.abspath()) as x:
 		version = x.readline().splitlines()[0]
 	conf.env['IMXVPUAPI2_VERSION'] = version
 	conf.define('IMXVPUAPI2_VERSION', version)
+	Logs.pprint('NORMAL', 'libimxvpuapi version %s' % version)
 
 
 	# write the config header
