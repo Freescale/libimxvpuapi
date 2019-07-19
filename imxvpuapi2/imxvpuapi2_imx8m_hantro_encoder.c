@@ -336,6 +336,12 @@ void imx_vpu_api_enc_set_default_open_params(ImxVpuApiCompressionFormat compress
 			open_params->format_specific_open_params.h264_open_params.level = IMX_VPU_API_H264_LEVEL_5_1;
 			open_params->format_specific_open_params.h264_open_params.enable_access_unit_delimiters = 0;
 			break;
+		case IMX_VPU_API_COMPRESSION_FORMAT_VP8:
+			open_params->format_specific_open_params.vp8_open_params.profile = IMX_VPU_API_VP8_PROFILE_0;
+			open_params->format_specific_open_params.vp8_open_params.partition_count = IMX_VPU_API_ENC_VP8_PARTITION_COUNT_1;
+			open_params->format_specific_open_params.vp8_open_params.error_resilient_mode = FALSE;
+			break;
+
 		default:
 			break;
 	}
@@ -823,18 +829,35 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 			 * VP8 extension specification. The other allowed values do
 			 * not make sense here, so just use the main profile. */
 			vp8->eProfile = OMX_VIDEO_VP8ProfileMain;
-			/* Use profile #0, which implies bicubic filtering and a "normal"
-			 * loop filter. See RFC 6386 section 9.1 for details.
+			vp8->bErrorResilientMode = open_params->format_specific_open_params.vp8_open_params.error_resilient_mode ? OMX_TRUE : OMX_FALSE;
+
+			/* See RFC 6386 section 9.1 for details about VP8 profiles.
 			 * Confusingly, the OpenMAX IL VP8 extension specification
 			 * does not refer to this as a profile, and instead uses this
 			 * term for something else (see above). */
-			vp8->eLevel = OMX_VIDEO_VP8Level_Version0;
-			/* TODO: DCT partitions are used for multithreaded decoding. We do
-			 * not yet support this feature. */
-			vp8->nDCTPartitions = 0;
-			/* TODO: Error resilient mode is mainly useful for video telephony.
-			 * Not used yet. */
-			vp8->bErrorResilientMode = OMX_FALSE;
+			switch (open_params->format_specific_open_params.vp8_open_params.profile)
+			{
+				case IMX_VPU_API_VP8_PROFILE_0: vp8->eLevel = OMX_VIDEO_VP8Level_Version0; break;
+				case IMX_VPU_API_VP8_PROFILE_1: vp8->eLevel = OMX_VIDEO_VP8Level_Version1; break;
+				case IMX_VPU_API_VP8_PROFILE_2: vp8->eLevel = OMX_VIDEO_VP8Level_Version2; break;
+				case IMX_VPU_API_VP8_PROFILE_3: vp8->eLevel = OMX_VIDEO_VP8Level_Version3; break;
+				default:
+					IMX_VPU_API_ERROR("invalid VP8 profile");
+					ret = IMX_VPU_API_ENC_RETURN_CODE_INVALID_PARAMS;
+					goto cleanup;
+			}
+
+			switch (open_params->format_specific_open_params.vp8_open_params.partition_count)
+			{
+				case IMX_VPU_API_ENC_VP8_PARTITION_COUNT_1: vp8->nDCTPartitions = 0; break;
+				case IMX_VPU_API_ENC_VP8_PARTITION_COUNT_2: vp8->nDCTPartitions = 1; break;
+				case IMX_VPU_API_ENC_VP8_PARTITION_COUNT_4: vp8->nDCTPartitions = 2; break;
+				case IMX_VPU_API_ENC_VP8_PARTITION_COUNT_8: vp8->nDCTPartitions = 3; break;
+				default:
+					IMX_VPU_API_ERROR("invalid VP8 partition count");
+					ret = IMX_VPU_API_ENC_RETURN_CODE_INVALID_PARAMS;
+					goto cleanup;
+			}
 
 			vp8_ref->bPreviousFrameRefresh = OMX_TRUE;
 			vp8_ref->bUsePreviousFrame = OMX_TRUE;

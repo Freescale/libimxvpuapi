@@ -1756,11 +1756,31 @@ typedef struct
 }
 ImxVpuApiEncH264OpenParams;
 
+typedef enum
+{
+	IMX_VPU_API_ENC_VP8_PARTITION_COUNT_1,
+	IMX_VPU_API_ENC_VP8_PARTITION_COUNT_2,
+	IMX_VPU_API_ENC_VP8_PARTITION_COUNT_4,
+	IMX_VPU_API_ENC_VP8_PARTITION_COUNT_8
+}
+ImxVpuApiEncVP8PartitionCount;
+
 /* VP8 specific encoder parameters. */
 typedef struct
 {
 	/* VP8 profile that the input frames shall be encoded to. */
 	ImxVpuApiVP8Profile profile;
+
+	/* How many partitions to create. Streams with more than one partition
+	 * allow for multi-threaded decoding (partitions are decoded in parallel). */
+	ImxVpuApiEncVP8PartitionCount partition_count;
+
+	/* If nonzero, error resilient mode is enabled. This mode is useful when
+	 * the video signal is transmitted over protocols like UDP which may lose
+	 * data. Recommended for low latency video signals over lossy channels,
+	 * like in video conferencing or other low latency live feeds. Not
+	 * recommended outside of such cases. */
+	int error_resilient_mode;
 }
 ImxVpuApiEncVP8OpenParams;
 
