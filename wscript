@@ -146,7 +146,8 @@ def options(opt):
 	opt.add_option('--enable-debug', action = 'store_true', default = False, help = 'enable debug build [default: disabled]')
 	opt.add_option('--enable-static', action = 'store_true', default = False, help = 'build static library [default: build shared library]')
 	opt.add_option('--imx-platform', action='store', default='', help='i.MX platform to build for (valid platforms: ' + ' '.join(imx_platforms.keys()) + ')')
-	opt.add_option('--sysroot-path', action='store', default='', help='path to the sysroot (where usr/include/imx/mxcfb.h etc. can be found)')
+	opt.add_option('--imx-headers', action='store', default='', help='path to where linux/mxcfb.h etc. can be found [default: <sysroot path>/usr/include/imx]')
+	opt.add_option('--sysroot-path', action='store', default='', help='path to the sysroot')
 	opt.load('compiler_c')
 	opt.load('gnu_dirs')
 
@@ -188,7 +189,7 @@ def configure(conf):
 		conf.fatal('Sysroot path not set; add --sysroot-path switch to configure command line')
 	sysroot_path = os.path.abspath(os.path.expanduser(conf.options.sysroot_path))
 	if os.path.isdir(sysroot_path):
-		Logs.pprint('NORMAL', 'Using "%s" as sysroot path', sysroot_path)
+		Logs.pprint('NORMAL', 'Using "%s" as sysroot path' % sysroot_path)
 	else:
 		conf.fatal('Path "%s" does not exist or is not a valid directory; cannot use as sysroot path' % sysroot_path)
 	conf.env['SYSROOT'] = sysroot_path
@@ -206,9 +207,11 @@ def configure(conf):
 
 
 	# i.MX linux header checks and flags
-	imx_linux_headers_path = os.path.join(conf.options.sysroot_path, 'usr/include/imx')
+	imx_linux_headers_path = conf.options.imx_headers
+	if not imx_linux_headers_path:
+		imx_linux_headers_path = os.path.join(conf.options.sysroot_path, 'usr/include/imx')
 	if not conf.check_cc(uselib_store = 'IMXHEADERS', define_name = '', mandatory = False, includes = [imx_linux_headers_path], header_name = 'linux/mxcfb.h'):
-		conf.fatal('Could not find linux/mxcfb.h in /usr/include/imx in sysroot path "%s" specified by --sysroot-path' % conf.options.sysroot_path)
+		conf.fatal('Could not find linux/mxcfb.h in path "%s"' % imx_linux_headers_path)
 	Logs.pprint('NORMAL', 'i.MX linux headers path: %s' % imx_linux_headers_path)
 
 

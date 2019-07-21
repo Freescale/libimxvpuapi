@@ -3,7 +3,7 @@ Upstream-Name: libimxvpuapi
 Source: https://github.com/Freescale/libimxvpuapi
 
 Files: *
-Copyright: 2014-2015 Carlos Rafael Giani
+Copyright: 2014-2019 Carlos Rafael Giani
 License: LGPL-2.1+
 
 Files: debian/*

@@ -1,3 +1,9 @@
+libimxvpuapi (2.0.0) stable; urgency=low
+
+  * complete rewrite to support i.MX6, i.MX8m, i.MX8mm VPUs
+
+ -- Carlos Rafael Giani <crg7475@mailbox.org>  Sun, 21 Jul 2017 13:40:00 +0200
+
 libimxvpuapi (0.10.3) stable; urgency=low
 
   * properly pass on color format in simplified JPEG encoder interface
@@ -9,7 +15,7 @@ libimxvpuapi (0.10.3) stable; urgency=low
   * make sure JPEG quantization table is copied in standardized zig zag order
     the VPU does not, so this has to be done explicitely
 
- -- Carlos Rafael Giani <dv@pseudoterminal.org>  Sun, 12 Oct 2016 09:31:00 +0200
+ -- Carlos Rafael Giani <crg7475@mailbox.org>  Sun, 12 Oct 2016 09:31:00 +0200
 
 libimxvpuapi (0.10.2) stable; urgency=low
 
@@ -21,7 +27,7 @@ libimxvpuapi (0.10.2) stable; urgency=low
     useful for modifying headers, like VUI data in the SPS RBSP
   * Documentation updates
 
- -- Carlos Rafael Giani <dv@pseudoterminal.org>  Sun, 01 May 2016 13:10:22 +0100
+ -- Carlos Rafael Giani <crg7475@mailbox.org>  Sun, 01 May 2016 13:10:22 +0100
 
 libimxvpuapi (0.10.1) stable; urgency=low
 
@@ -29,10 +35,10 @@ libimxvpuapi (0.10.1) stable; urgency=low
   * Add workaround in wscript to prevent stale pkg-config .pc files
   * Fix memory leak by adding missing IOFreeVirtMem() call in vpulib backend
 
- -- Carlos Rafael Giani <dv@pseudoterminal.org>  Thu, 30 Nov 2015 11:11:56 +0100
+ -- Carlos Rafael Giani <crg7475@mailbox.org>  Thu, 30 Nov 2015 11:11:56 +0100
 
 libimxvpuapi (0.10.0) stable; urgency=low
 
   * Initial Release.
 
- -- Carlos Rafael Giani <dv@pseudoterminal.org>  Thu, 05 Nov 2015 12:43:32 +0100
+ -- Carlos Rafael Giani <crg7475@mailbox.org>  Thu, 05 Nov 2015 12:43:32 +0100
