@@ -145,7 +145,8 @@ This is version 2 of libimxvpuapi. Major changes are:
 * Files have been renamed from `imxvpuapi*` to `imxvpuapi2` to reflect the
   new and incompatible API and to allow for coexistence with the old version
   of the library.
-* DMA allocation functions have been factored out as [libimxdmabuffer](https://github.com/dv1/libimxdmabuffer).
+* DMA allocation functions have been factored out as a separate library,
+  [libimxdmabuffer](https://github.com/Freescale/libimxdmabuffer).
 * The old API required checks with `imx_vpu_dec_check_if_can_decode()` to see
   if decoding is possible now to avoid a deadlock. This is no longer needed.
   Decoders either perform internal DMA-based copies of frames (i.MX6, in the
@@ -171,7 +172,7 @@ This is version 2 of libimxvpuapi. Major changes are:
 To do
 -----
 
-* Reintroduce the simplified JPEG interface on top of the new API
 * Add more encoder options (and evaluate which ones to add)
 * More wiki entries describing format support per i.MX platform / codec
 * RealVideo decoding support
+* VP8 golden frame and altref frame support during encoding
