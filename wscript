@@ -211,7 +211,7 @@ def configure(conf):
 	if not imx_linux_headers_path:
 		imx_linux_headers_path = os.path.join(conf.options.sysroot_path, 'usr/include/imx')
 	if not conf.check_cc(uselib_store = 'IMXHEADERS', define_name = '', mandatory = False, includes = [imx_linux_headers_path], header_name = 'linux/mxcfb.h'):
-		conf.fatal('Could not find linux/mxcfb.h in path "%s"' % imx_linux_headers_path)
+		conf.to_log('Could not find linux/mxcfb.h in path "%s"' % imx_linux_headers_path)
 	Logs.pprint('NORMAL', 'i.MX linux headers path: %s' % imx_linux_headers_path)
 
 
