@@ -50,6 +50,12 @@ class PlatformIMX6:
 		if with_sof_stuff:
 			conf.define('HAVE_IMXVPUENC_ENABLE_SOF_STUFF', 1)
 
+		imx_linux_headers_path = conf.options.imx_headers
+		if not imx_linux_headers_path:
+			imx_linux_headers_path = os.path.join(conf.options.sysroot_path, 'usr/include/imx')
+		Logs.pprint('NORMAL', 'i.MX linux headers path: %s' % imx_linux_headers_path)
+		conf.env['INCLUDES_IMXHEADERS'] = [imx_linux_headers_path]
+
 		if not conf.check_cc(fragment = '''
 			#include <time.h>
 			#include <sys/types.h>
@@ -204,15 +210,6 @@ def configure(conf):
 	except KeyError:
 		conf.fatal('Invalid i.MX platform "%s" specified; valid platforms: %s' % (imx_platform_id, ' '.join(imx_platforms.keys())))
 	conf.env['IMX_PLATFORM'] = imx_platform_id
-
-
-	# i.MX linux header checks and flags
-	imx_linux_headers_path = conf.options.imx_headers
-	if not imx_linux_headers_path:
-		imx_linux_headers_path = os.path.join(conf.options.sysroot_path, 'usr/include/imx')
-	if not conf.check_cc(uselib_store = 'IMXHEADERS', define_name = '', mandatory = False, includes = [imx_linux_headers_path], header_name = 'linux/mxcfb.h'):
-		conf.fatal('Could not find linux/mxcfb.h in path "%s"' % imx_linux_headers_path)
-	Logs.pprint('NORMAL', 'i.MX linux headers path: %s' % imx_linux_headers_path)
 
 
 	# configure platform
