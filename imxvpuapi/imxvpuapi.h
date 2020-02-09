@@ -636,6 +636,8 @@ char const *imx_vpu_frame_type_string(ImxVpuFrameType frame_type);
  *     Note that any internal context/PTS/DTS values from the encoded and raw frames will be thrown
  *     away after this call; if for example the context is an index, the system that hands
  *     out the indices should be informed that any previously handed out index is now unused.
+ *     Any framebuffers previously retrieved via imx_vpu_dec_get_decoded_frame() will still be marked
+ *     as in use until they are returned by imx_vpu_dec_mark_framebuffer_as_displayed().
  * 12. When there is no more incoming data, and pending decoded frames need to be retrieved
  *     from the decoder, enable drain mode with imx_vpu_dec_enable_drain_mode(). This is
  *     typically necessary when the data source reached its end, playback is finishing, and

@@ -1191,19 +1191,21 @@ ImxVpuDecReturnCodes imx_vpu_dec_flush(ImxVpuDecoder *decoder)
 	if (decoder->codec_format == IMX_VPU_CODEC_FORMAT_WMV3)
 		return IMX_VPU_DEC_RETURN_CODE_OK;
 
-
 	/* Clear any framebuffers that aren't ready for display yet but
 	 * are being used for decoding (since flushing will clear them) */
+	int num_display_framebuffers = 0;
 	for (i = 0; i < decoder->num_framebuffers; ++i)
 	{
-		if (decoder->frame_entries[i].mode == FrameMode_ReservedForDecoding)
+		if (decoder->frame_entries[i].mode == FrameMode_ReservedForDecoding || i == decoder->available_decoded_frame_idx)
 		{
 			dec_ret = vpu_DecClrDispFlag(decoder->handle, i);
 			IMX_VPU_DEC_HANDLE_ERROR("vpu_DecClrDispFlag failed while flushing", dec_ret);
 			decoder->frame_entries[i].mode = FrameMode_Free;
 		}
+		else if (decoder->frame_entries[i].mode == FrameMode_ContainsDisplayableFrame)
+			num_display_framebuffers++;
 	}
-
+	decoder->available_decoded_frame_idx = -1;
 
 	/* Perform the actual flush */
 	dec_ret = vpu_DecBitBufferFlush(decoder->handle);
@@ -1217,7 +1219,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_flush(ImxVpuDecoder *decoder)
 	for (i = 0; i < decoder->num_framebuffers; ++i)
 		decoder->frame_entries[i].context = NULL;
 
-	decoder->num_used_framebuffers = 0;
+	decoder->num_used_framebuffers = num_display_framebuffers;
 
 
 	IMX_VPU_DEBUG("successfully flushed decoder");
@@ -2404,6 +2406,7 @@ ImxVpuDecReturnCodes imx_vpu_dec_mark_framebuffer_as_displayed(ImxVpuDecoder *de
 	 * decoder instance that the framebuffer isn't occupied anymore,
 	 * and count down num_used_framebuffers to reflect that fact */
 	framebuffer->already_marked = TRUE;
+	assert(decoder->num_used_framebuffers > 0);
 	decoder->num_used_framebuffers--;
 
 
