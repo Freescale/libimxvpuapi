@@ -3296,7 +3296,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 #ifdef HAVE_ENC_ENABLE_SOF_STUFF
 		{
 			int append_nullbytes_to_sof_field = 0;
-			vpu_EncGiveCommand(encoder->handle, ENC_ENABLE_SOF_STUFF, (void*)(&append_nullbytes_to_sof_field));
+			vpu_EncGiveCommand((*encoder)->handle, ENC_ENABLE_SOF_STUFF, (void*)(&append_nullbytes_to_sof_field));
 		}
 #endif
 	}
