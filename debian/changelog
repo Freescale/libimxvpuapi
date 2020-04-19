@@ -1,8 +1,18 @@
+libimxvpuapi (2.0.1) stable; urgency=low
+
+  * imx6: replace mxcfb.h check with i.MX6 specific imx header check
+    the mcxfb.h check only makes sense with i.MX6 devices, so requiring
+    those for others like i.MX8 led to build errors
+  * update waf to 2.0.12 and switch wscript to use Python 3
+  * imx6: fix encoder pointer usage in vpu_EncGiveCommand() call
+
+ -- Carlos Rafael Giani <crg7475@mailbox.org>  Sun, 19 Apr 2020 13:35:00 +0200
+
 libimxvpuapi (2.0.0) stable; urgency=low
 
   * complete rewrite to support i.MX6, i.MX8m, i.MX8mm VPUs
 
- -- Carlos Rafael Giani <crg7475@mailbox.org>  Sun, 21 Jul 2017 13:40:00 +0200
+ -- Carlos Rafael Giani <crg7475@mailbox.org>  Sun, 21 Jul 2019 13:40:00 +0200
 
 libimxvpuapi (0.10.3) stable; urgency=low
 

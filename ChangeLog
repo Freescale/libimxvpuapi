@@ -1,3 +1,11 @@
+==== version 2.0.1 (2020-04-19) ====
+
+* imx6: replace mxcfb.h check with i.MX6 specific imx header check
+  the mcxfb.h check only makes sense with i.MX6 devices, so requiring
+  those for others like i.MX8 led to build errors
+* update waf to 2.0.12 and switch wscript to use Python 3
+* imx6: fix encoder pointer usage in vpu_EncGiveCommand() call
+
 ==== version 2.0.0 (2019-07-21) ====
 
 * complete rewrite to support i.MX6, i.MX8m, i.MX8mm VPUs
