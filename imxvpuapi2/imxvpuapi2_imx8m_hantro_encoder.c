@@ -1227,8 +1227,12 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
 
 
 finish:
-	imx_dma_buffer_unmap(encoder->staged_raw_frame.fb_dma_buffer);
-	encoder->staged_raw_frame_set = FALSE;
+	if (encoder->staged_raw_frame_set)
+	{
+		imx_dma_buffer_unmap(encoder->staged_raw_frame.fb_dma_buffer);
+		encoder->staged_raw_frame_set = FALSE;
+	}
+
 	return ret;
 }
 
