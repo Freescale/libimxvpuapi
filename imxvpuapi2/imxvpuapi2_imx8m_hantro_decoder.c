@@ -547,6 +547,9 @@ static size_t imx_vpu_api_dec_add_framebuffer_entries(ImxVpuApiDecoder *decoder,
 	IMX_VPU_API_DEBUG("(re)allocated space for additional %d framebuffer entries", num_new_entries);
 	decoder->num_framebuffer_entries += num_new_entries;
 	decoder->framebuffer_entries = new_entries;
+
+	memset(&decoder->framebuffer_entries[new_entries_index], 0, sizeof(FramebufferEntry) * num_new_entries);
+
 	return new_entries_index;
 }
 
