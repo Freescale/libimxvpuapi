@@ -1,7 +1,6 @@
 #include <config.h>
 #include "imxvpuapi2.h"
 #include "imxvpuapi2_priv.h"
-#include "imxvpuapi2_imx8m_hantro.h"
 
 
 
@@ -240,7 +239,8 @@ static ImxVpuApiCompressionFormat const enc_supported_compression_formats[] =
 };
 
 static ImxVpuApiEncGlobalInfo const enc_global_info = {
-	.flags = IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_HAS_ENCODER | IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_SEMI_PLANAR_FRAMES_SUPPORTED | IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_FULLY_PLANAR_FRAMES_SUPPORTED,
+	.flags = IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_HAS_ENCODER | IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_SEMI_PLANAR_FRAMES_SUPPORTED | IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_FULLY_PLANAR_FRAMES_SUPPORTED |
+		IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_ENCODER_SUPPORTS_RGB_FORMATS,
 	.hardware_type = IMX_VPU_API_HARDWARE_TYPE_HANTRO,
 	.min_required_stream_buffer_size = VPU_ENC_MIN_REQUIRED_STREAM_BUFFER_SIZE,
 	.required_stream_buffer_physaddr_alignment = STREAM_BUFFER_PHYSADDR_ALIGNMENT,
@@ -258,7 +258,16 @@ ImxVpuApiEncGlobalInfo const * imx_vpu_api_enc_get_global_info(void)
 static ImxVpuApiColorFormat const enc_supported_basic_color_formats[] =
 {
 	IMX_VPU_API_COLOR_FORMAT_FULLY_PLANAR_YUV420_8BIT,
-	IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV420_8BIT
+	IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV420_8BIT,
+	IMX_VPU_API_COLOR_FORMAT_PACKED_YUV422_UYVY_8BIT,
+	IMX_VPU_API_COLOR_FORMAT_PACKED_YUV422_YUYV_8BIT,
+	IMX_VPU_API_COLOR_FORMAT_RGB565,
+	IMX_VPU_API_COLOR_FORMAT_BGR565,
+	IMX_VPU_API_COLOR_FORMAT_RGB444,
+	IMX_VPU_API_COLOR_FORMAT_ARGB4444,
+	IMX_VPU_API_COLOR_FORMAT_ARGB1555,
+	IMX_VPU_API_COLOR_FORMAT_RGBA8888,
+	IMX_VPU_API_COLOR_FORMAT_BGRA8888
 };
 
 static ImxVpuApiVP8SupportDetails const enc_vp8_support_details = {
@@ -502,6 +511,42 @@ static void imx_vpu_api_enc_set_pre_processor_config(ImxVpuApiEncoder *encoder, 
 			pp_config->formatType = OMX_COLOR_FormatYUV420SemiPlanar;
 			break;
 
+		case IMX_VPU_API_COLOR_FORMAT_PACKED_YUV422_UYVY_8BIT:
+			pp_config->formatType = OMX_COLOR_FormatCbYCrY;
+			break;
+
+		case IMX_VPU_API_COLOR_FORMAT_PACKED_YUV422_YUYV_8BIT:
+			pp_config->formatType = OMX_COLOR_FormatYCbYCr;
+			break;
+
+		case IMX_VPU_API_COLOR_FORMAT_RGB565:
+			pp_config->formatType = OMX_COLOR_Format16bitRGB565;
+			break;
+
+		case IMX_VPU_API_COLOR_FORMAT_BGR565:
+			pp_config->formatType = OMX_COLOR_Format16bitBGR565;
+			break;
+
+		case IMX_VPU_API_COLOR_FORMAT_RGB444:
+			pp_config->formatType = OMX_COLOR_Format12bitRGB444;
+			break;
+
+		case IMX_VPU_API_COLOR_FORMAT_ARGB4444:
+			pp_config->formatType = OMX_COLOR_Format16bitARGB4444;
+			break;
+
+		case IMX_VPU_API_COLOR_FORMAT_ARGB1555:
+			pp_config->formatType = OMX_COLOR_Format16bitARGB1555;
+			break;
+
+		case IMX_VPU_API_COLOR_FORMAT_RGBA8888:
+			pp_config->formatType = OMX_COLOR_Format32bitBGRA8888;
+			break;
+
+		case IMX_VPU_API_COLOR_FORMAT_BGRA8888:
+			pp_config->formatType = OMX_COLOR_Format32bitARGB8888;
+			break;
+
 		default:
 			assert(FALSE);
 	}
@@ -568,8 +613,6 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 	fb_metrics->actual_frame_height = open_params->frame_height;
 	fb_metrics->aligned_frame_width = IMX_VPU_API_ALIGN_VAL_TO(fb_metrics->actual_frame_width, FRAME_WIDTH_ALIGNMENT);
 	fb_metrics->aligned_frame_height = IMX_VPU_API_ALIGN_VAL_TO(fb_metrics->actual_frame_height, FRAME_HEIGHT_ALIGNMENT);
-	fb_metrics->y_stride = fb_metrics->aligned_frame_width;
-	fb_metrics->y_size = fb_metrics->y_stride * fb_metrics->aligned_frame_height;
 
 	semi_planar = imx_vpu_api_is_color_format_semi_planar(open_params->color_format);
 
@@ -577,8 +620,37 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 	{
 		case IMX_VPU_API_COLOR_FORMAT_FULLY_PLANAR_YUV420_8BIT:
 		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV420_8BIT:
+			fb_metrics->y_stride = fb_metrics->aligned_frame_width;
+			fb_metrics->y_size = fb_metrics->y_stride * fb_metrics->aligned_frame_height;
 			fb_metrics->uv_stride = fb_metrics->y_stride / 2;
 			fb_metrics->uv_size = fb_metrics->y_size / 4;
+			break;
+
+		case IMX_VPU_API_COLOR_FORMAT_PACKED_YUV422_UYVY_8BIT:
+		case IMX_VPU_API_COLOR_FORMAT_PACKED_YUV422_YUYV_8BIT:
+			fb_metrics->y_stride = fb_metrics->aligned_frame_width * 2;
+			fb_metrics->y_size = fb_metrics->y_stride * fb_metrics->aligned_frame_height;
+			fb_metrics->uv_stride = 0;
+			fb_metrics->uv_size = 0;
+			break;
+
+		case IMX_VPU_API_COLOR_FORMAT_RGB565:
+		case IMX_VPU_API_COLOR_FORMAT_BGR565:
+		case IMX_VPU_API_COLOR_FORMAT_RGB444:
+		case IMX_VPU_API_COLOR_FORMAT_ARGB4444:
+		case IMX_VPU_API_COLOR_FORMAT_ARGB1555:
+			fb_metrics->y_stride = fb_metrics->aligned_frame_width * 2;
+			fb_metrics->y_size = fb_metrics->y_stride * fb_metrics->aligned_frame_height;
+			fb_metrics->uv_stride = 0;
+			fb_metrics->uv_size = 0;
+			break;
+
+		case IMX_VPU_API_COLOR_FORMAT_RGBA8888:
+		case IMX_VPU_API_COLOR_FORMAT_BGRA8888:
+			fb_metrics->y_stride = fb_metrics->aligned_frame_width * 4;
+			fb_metrics->y_size = fb_metrics->y_stride * fb_metrics->aligned_frame_height;
+			fb_metrics->uv_stride = 0;
+			fb_metrics->uv_size = 0;
 			break;
 
 		default:

@@ -68,6 +68,11 @@ void imx_vpu_api_set_logging_function(ImxVpuApiLoggingFunc logging_fn);
 		)
 
 
+/* FourCC identifying the hardware as a Hantro codec. */
+#define IMX_VPU_API_HARDWARE_TYPE_HANTRO  IMX_VPU_API_MAKE_FOURCC_UINT32('H','T','R','O')
+#define IMX_VPU_API_HARDWARE_TYPE_CODA960 IMX_VPU_API_MAKE_FOURCC_UINT32('C','9','6','0')
+
+
 /* Possible frame types. */
 typedef enum
 {
@@ -274,10 +279,64 @@ typedef enum
 	/* Semi planar YUV 4:0:0, 10-bit. This is a grayscale frame;
 	 * no chroma data, just one Y plane. */
 	IMX_VPU_API_COLOR_FORMAT_YUV400_10BIT,
-	/* Starting point for additional hardware-specific color formats. */
-	IMX_VPU_API_COLOR_FORMAT_HARDWARE_SPECIFIC
+
+	/* Packed YUV 4:2:2, 8-bit. This has a single plane.
+	 * Values are stored in U0-Y0-V0-Y1 order (0,1 denoting pixels). */
+	IMX_VPU_API_COLOR_FORMAT_PACKED_YUV422_UYVY_8BIT,
+	/* Packed YUV 4:2:2, 8-bit. This has a single plane.
+	 * Values are stored in Y0-U0-Y1-V0 order (0,1 denoting pixels). */
+	IMX_VPU_API_COLOR_FORMAT_PACKED_YUV422_YUYV_8BIT,
+
+	/* VeriSilicon Hantro G2 semi-planar 4x4 tiled YUV 4:2:0, 8-bit.
+	 * The 4x4 pixel tiles are stored in a row-major layout. */
+	IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_8BIT,
+	/* VeriSilicon Hantro G2 semi-planar 4x4 tiled YUV 4:2:0, 10-bit.
+	 * The 4x4 pixel tiles are stored in a row-major layout. */
+	IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_10BIT,
+	/* VeriSilicon Hantro G1 semi-planar 8x4 tiled YUV 4:2:0, 8-bit.
+	 * The 8x4 pixel tiles are stored in a row-major layout. */
+	IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x4TILED_8BIT,
+	/* VeriSilicon Hantro G1 semi-planar 8x4 tiled YUV 4:2:0, 10-bit.
+	 * The 8x4 pixel tiles are stored in a row-major layout. */
+	IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x4TILED_10BIT,
+
+	/* Amphion semi-planar 8x128 tiled YUV 4:2:0, 8-bit.
+	 * This tile layout uses vertical 8x128 strips. Each strip has
+	 * 16 tiles. Each tile has 8x8 pixels. The pixels inside these
+	 * tiles are stored in row-major layout. The first tile of the
+	 * first strip covers the pixels in the frame (0,0)- (7,7).
+	 * The second tile in the first strip, (0,8) - (7,15). The
+	 * 16th tile in the first strip, (0,112) - (7,127). Next comes
+	 * the first tile of the second strip, (8,0) - (15,7) etc. */
+	IMX_VPU_API_AMPHION_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x128TILED_8BIT,
+
+	/* Amphion semi-planar 8x128 tiled YUV 4:2:0, 8-bit.
+	 * This tile layout uses vertical 8x128 strips. Each strip has
+	 * 16 tiles. Each tile has 8x8 pixels. The pixels inside these
+	 * tiles are stored in row-major layout. The first tile of the
+	 * first strip covers the pixels in the frame (0,0)- (7,7).
+	 * The second tile in the first strip, (0,8) - (7,15). The
+	 * 16th tile in the first strip, (0,112) - (7,127). Next comes
+	 * the first tile of the second strip, (8,0) - (15,7) etc. */
+	IMX_VPU_API_AMPHION_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x128TILED_10BIT,
+
+	/* RGB 5:6:5, 16 bits per pixel. */
+	IMX_VPU_API_COLOR_FORMAT_RGB565,
+	/* BGR 5:6:5, 16 bits per pixel. */
+	IMX_VPU_API_COLOR_FORMAT_BGR565,
+	/* RGB 4:4:4, 12 bits per pixel. The 4 MSB are unused. */
+	IMX_VPU_API_COLOR_FORMAT_RGB444,
+	/* ARGB 4:4:4:4, 16 bits per pixel. */
+	IMX_VPU_API_COLOR_FORMAT_ARGB4444,
+	/* ARGB 1:5:5:5, 16 bits per pixel. */
+	IMX_VPU_API_COLOR_FORMAT_ARGB1555,
+	/* RGBA 8:8:8:8, 32 bits per pixel. */
+	IMX_VPU_API_COLOR_FORMAT_RGBA8888,
+	/* BGRA 8:8:8:8, 32 bits per pixel. */
+	IMX_VPU_API_COLOR_FORMAT_BGRA8888
 }
 ImxVpuApiColorFormat;
+
 
 /* Returns a human-readable description of the color format.
  * Useful for logging. */
@@ -316,7 +375,9 @@ typedef struct
 	size_t actual_frame_width, actual_frame_height;
 
 	/* Plane stride sizes, in bytes. The U and V planes always
-	 * use the same stride, so they share the same value. */
+	 * use the same stride, so they share the same value.
+	 * When RGB(A) formats or packed YUV formats are used, the stride of the
+	 * single plane is stored in y_stride, and uv_stride is unusd. */
 	size_t y_stride, uv_stride;
 
 	/* Size of the Y and U/V planes, in bytes.
@@ -324,13 +385,17 @@ typedef struct
 	 * specifies the size of one plane where both U and V values are stored in
 	 * interleaved fashion, otherwise it specifies the size of the separate U
 	 * and V planes. In other words, if the video frames are semi planar, then
-	 * uv_size will be twice as large compared to when frames are fully planar. */
+	 * uv_size will be twice as large compared to when frames are fully planar.
+	 * When RGB(A) formats or packed YUV formats are used, the size of the
+	 * single plane is stored in y_size, and uv_size is unusd. */
 	size_t y_size, uv_size;
 
 	/* These define the starting offsets of each plane relative to the start
 	 * of the buffer. Specified in bytes. With semi-planar frames, the v_offset
 	 * has no meaning, and u_offset is the offset of the combined interleaved
-	 * U/V plane. */
+	 * U/V plane.
+	 * When RGB(A) formats or packed YUV formats are used, the offset to the
+	 * single plane is stored in y_offset, and u_offset and v_offset are unusd. */
 	size_t y_offset, u_offset, v_offset;
 
 	/* Reserved bytes for ABI compatibility. */
@@ -1889,8 +1954,10 @@ typedef enum
 	/* If set, the encoder can accept fully planar input frames. At least this
 	 * or IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_SEMI_PLANAR_FRAMES_SUPPORTED are
 	 * always set. */
-	IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_FULLY_PLANAR_FRAMES_SUPPORTED = (1 << 2)
-
+	IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_FULLY_PLANAR_FRAMES_SUPPORTED = (1 << 2),
+	/* If set, the encoder can also handle at least some of the RGB formats
+	 * in ImxVpuApiColorFormat as input data. */
+	IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_ENCODER_SUPPORTS_RGB_FORMATS = (1 << 3)
 }
 ImxVpuApiEncGlobalInfoFlags;
 

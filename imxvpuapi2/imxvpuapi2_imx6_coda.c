@@ -23,9 +23,6 @@
 /******************************************************/
 
 
-#define IMX_VPU_API_HARDWARE_TYPE_CODA  IMX_VPU_API_MAKE_FOURCC_UINT32('C','O','D','A')
-
-
 #define VPU_DEC_MAIN_BITSTREAM_BUFFER_SIZE          (1024*1024*3)
 #define VPU_ENC_MAIN_BITSTREAM_BUFFER_SIZE          (1024*1024*1)
 #define VPU_ENC_MPEG4_SCRATCH_SIZE                  (0x080000)
@@ -499,23 +496,6 @@ static char const * retcode_to_string(RetCode ret_code)
 		case RETCODE_JPEG_BIT_EMPTY: return "JPEG bit buffer empty - cannot parse header";
 		default: return "unknown error";
 	}
-}
-
-
-
-
-/* Our color_format_string function. Since we don't expose any CODA specific
- * color formats, just call the basic color_format_string function. */
-
-char const *imx_vpu_api_color_format_string(ImxVpuApiColorFormat color_format)
-{
-	return imx_vpu_api_basic_color_format_string(color_format);
-}
-
-
-int imx_vpu_api_is_color_format_semi_planar(ImxVpuApiColorFormat color_format)
-{
-	return imx_vpu_api_is_basic_color_format_semi_planar(color_format);
 }
 
 
@@ -1334,7 +1314,7 @@ static ImxVpuApiCompressionFormat const dec_supported_compression_formats[] =
 
 static ImxVpuApiDecGlobalInfo const dec_global_info = {
 	.flags = IMX_VPU_API_DEC_GLOBAL_INFO_FLAG_HAS_DECODER | IMX_VPU_API_DEC_GLOBAL_INFO_FLAG_SEMI_PLANAR_FRAMES_SUPPORTED | IMX_VPU_API_DEC_GLOBAL_INFO_FLAG_FULLY_PLANAR_FRAMES_SUPPORTED,
-	.hardware_type = IMX_VPU_API_HARDWARE_TYPE_CODA,
+	.hardware_type = IMX_VPU_API_HARDWARE_TYPE_CODA960,
 	.min_required_stream_buffer_size = VPU_DEC_MIN_REQUIRED_BITSTREAM_BUFFER_SIZE,
 	.required_stream_buffer_physaddr_alignment = BITSTREAM_BUFFER_PHYSADDR_ALIGNMENT,
 	.required_stream_buffer_size_alignment = BITSTREAM_BUFFER_SIZE_ALIGNMENT,
@@ -2801,7 +2781,7 @@ static ImxVpuApiCompressionFormat const enc_supported_compression_formats[] =
 
 static ImxVpuApiEncGlobalInfo const enc_global_info = {
 	.flags = IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_HAS_ENCODER | IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_SEMI_PLANAR_FRAMES_SUPPORTED | IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_FULLY_PLANAR_FRAMES_SUPPORTED,
-	.hardware_type = IMX_VPU_API_HARDWARE_TYPE_CODA,
+	.hardware_type = IMX_VPU_API_HARDWARE_TYPE_CODA960,
 	.min_required_stream_buffer_size = VPU_ENC_MIN_REQUIRED_BITSTREAM_BUFFER_SIZE,
 	.required_stream_buffer_physaddr_alignment = BITSTREAM_BUFFER_PHYSADDR_ALIGNMENT,
 	.required_stream_buffer_size_alignment = BITSTREAM_BUFFER_SIZE_ALIGNMENT,

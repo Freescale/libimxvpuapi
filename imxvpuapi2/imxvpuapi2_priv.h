@@ -152,10 +152,6 @@ void imx_vpu_api_insert_divx3_frame_header(uint8_t *header, unsigned int frame_w
 int imx_vpu_api_parse_jpeg_header(void *jpeg_data, size_t jpeg_data_size, BOOL semi_planar_output, unsigned int *width, unsigned int *height, ImxVpuApiColorFormat *color_format);
 
 
-int imx_vpu_api_is_basic_color_format_semi_planar(ImxVpuApiColorFormat color_format);
-char const *imx_vpu_api_basic_color_format_string(ImxVpuApiColorFormat color_format);
-
-
 #ifdef __cplusplus
 }
 #endif

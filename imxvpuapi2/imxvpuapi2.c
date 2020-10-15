@@ -99,6 +99,91 @@ char const *imx_vpu_api_compression_format_string(ImxVpuApiCompressionFormat for
 }
 
 
+char const *imx_vpu_api_color_format_string(ImxVpuApiColorFormat color_format)
+{
+	switch (color_format)
+	{
+		case IMX_VPU_API_COLOR_FORMAT_FULLY_PLANAR_YUV420_8BIT:             return "fully planar YUV 4:2:0 8-bit";
+		case IMX_VPU_API_COLOR_FORMAT_FULLY_PLANAR_YUV420_10BIT:            return "fully planar YUV 4:2:0 10-bit";
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV420_8BIT:              return "semi planar YUV 4:2:0 8-bit";
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV420_10BIT:             return "semi planar YUV 4:2:0 10-bit";
+		case IMX_VPU_API_COLOR_FORMAT_FULLY_PLANAR_YUV411_8BIT:             return "fully planar YUV 4:1:1 8-bit";
+		case IMX_VPU_API_COLOR_FORMAT_FULLY_PLANAR_YUV411_10BIT:            return "fully planar YUV 4:1:1 10-bit";
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV411_8BIT:              return "semi planar YUV 4:1:1 8-bit";
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV411_10BIT:             return "semi planar YUV 4:1:1 10-bit";
+		case IMX_VPU_API_COLOR_FORMAT_FULLY_PLANAR_YUV422_HORIZONTAL_8BIT:  return "fully planar YUV 4:2:2 horizontal 8-bit";
+		case IMX_VPU_API_COLOR_FORMAT_FULLY_PLANAR_YUV422_HORIZONTAL_10BIT: return "fully planar YUV 4:2:2 horizontal 10-bit";
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV422_HORIZONTAL_8BIT:   return "semi planar YUV 4:2:2 horizontal 8-bit";
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV422_HORIZONTAL_10BIT:  return "semi planar YUV 4:2:2 horizontal 10-bit";
+		case IMX_VPU_API_COLOR_FORMAT_FULLY_PLANAR_YUV422_VERTICAL_8BIT:    return "fully planar YUV 2:2:4 vertical 8-bit";
+		case IMX_VPU_API_COLOR_FORMAT_FULLY_PLANAR_YUV422_VERTICAL_10BIT:   return "fully planar YUV 2:2:4 vertical 10-bit";
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV422_VERTICAL_8BIT:     return "semi planar YUV 2:2:4 vertical 8-bit";
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV422_VERTICAL_10BIT:    return "semi planar YUV 2:2:4 vertical 10-bit";
+		case IMX_VPU_API_COLOR_FORMAT_FULLY_PLANAR_YUV444_8BIT:             return "fully planar YUV 4:4:4 8-bit";
+		case IMX_VPU_API_COLOR_FORMAT_FULLY_PLANAR_YUV444_10BIT:            return "fully planar YUV 4:4:4 10-bit";
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV444_8BIT:              return "semi planar YUV 4:4:4 8-bit";
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV444_10BIT:             return "semi planar YUV 4:4:4 10-bit";
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_P010_10BIT:               return "semi planar YUV 4:2:0 Microsoft P010 10-bit";
+		case IMX_VPU_API_COLOR_FORMAT_YUV400_8BIT:                          return "YUV 4:0:0 (8-bit grayscale)";
+		case IMX_VPU_API_COLOR_FORMAT_YUV400_10BIT:                         return "YUV 4:0:0 (10-bit grayscale)";
+
+		case IMX_VPU_API_COLOR_FORMAT_PACKED_YUV422_UYVY_8BIT:              return "packed YUV 4:2:2 U0-Y0-V0-Y1 8-bit";
+		case IMX_VPU_API_COLOR_FORMAT_PACKED_YUV422_YUYV_8BIT:              return "packed YUV 4:2:2 Y0-U0-Y1-V0 8-bit";
+
+		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_8BIT:     return "VeriSilicon Hantro G2 semi planar 4x4 tiled YUV 4:2:0 8-bit";
+		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_10BIT:    return "VeriSilicon Hantro G2 semi planar 4x4 tiled YUV 4:2:0 10-bit";
+		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x4TILED_8BIT:     return "VeriSilicon Hantro G1 semi planar 8x4 tiled YUV 4:2:0 8-bit";
+		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x4TILED_10BIT:    return "VeriSilicon Hantro G1 semi planar 8x4 tiled YUV 4:2:0 10-bit";
+
+		case IMX_VPU_API_AMPHION_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x128TILED_8BIT:  return "Amphion semi planar 8x128 tiled YUV 4:2:0 8-bit";
+		case IMX_VPU_API_AMPHION_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x128TILED_10BIT: return "Amphion semi planar 8x128 tiled YUV 4:2:0 10-bit";
+
+		case IMX_VPU_API_COLOR_FORMAT_RGB565:   return "RGB 5:6:5 (16 bits per pixel)";
+		case IMX_VPU_API_COLOR_FORMAT_BGR565:   return "BGR 5:6:5 (16 bits per pixel)";
+		case IMX_VPU_API_COLOR_FORMAT_ARGB1555: return "ARGB 1:5:5:5 (15 bits per pixel, 1 MSB padding)";
+		case IMX_VPU_API_COLOR_FORMAT_RGBA8888: return "RGBA 8:8:8:8 (32 bits per pixel)";
+		case IMX_VPU_API_COLOR_FORMAT_BGRA8888: return "BGRA 8:8:8:8 (32 bits per pixel)";
+
+		default: return "<unknown>";
+	}
+}
+
+
+int imx_vpu_api_is_color_format_semi_planar(ImxVpuApiColorFormat color_format)
+{
+	switch (color_format)
+	{
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV420_8BIT:
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV420_10BIT:
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV411_8BIT:
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV411_10BIT:
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV422_HORIZONTAL_8BIT:
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV422_HORIZONTAL_10BIT:
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV422_VERTICAL_8BIT:
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV422_VERTICAL_10BIT:
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV444_8BIT:
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV444_10BIT:
+		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_P010_10BIT:
+			return 1;
+
+		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_8BIT:
+		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_10BIT:
+		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x4TILED_8BIT:
+		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x4TILED_10BIT:
+			return 1;
+
+		case IMX_VPU_API_AMPHION_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x128TILED_8BIT:
+		case IMX_VPU_API_AMPHION_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x128TILED_10BIT:
+			return 1;
+
+		default:
+			break;
+	}
+
+	return 0;
+}
+
+
 char const * imx_vpu_api_h264_profile_string(ImxVpuApiH264Profile profile)
 {
 	switch (profile)

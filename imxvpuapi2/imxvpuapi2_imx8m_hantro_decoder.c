@@ -7,7 +7,6 @@
 #include <imxdmabuffer/imxdmabuffer.h>
 #include "imxvpuapi2.h"
 #include "imxvpuapi2_priv.h"
-#include "imxvpuapi2_imx8m_hantro.h"
 
 /* This is necessary to turn off these warning that originate in OMX_Core.h :
  *   "ISO C restricts enumerator values to range of ‘int’""    */
@@ -91,31 +90,6 @@ static char const * codec_state_to_string(CODEC_STATE codec_state)
 		default:
 			return "<unknown>";
 	}
-}
-
-
-
-
-/* Our color_format_string function. There are some Hantro specific
- * formats, so handle these here. Otherwise, fall back to the basic
- * color_format_string function. */
-
-char const *imx_vpu_api_color_format_string(ImxVpuApiColorFormat color_format)
-{
-	switch ((ImxVpuApiHantroColorFormat)color_format)
-	{
-		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_8BIT: return "Hantro G2 semi planar 4x4 tiled YUV 4:2:0 8-bit";
-		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_10BIT: return "Hantro G2 semi planar 4x4 tiled YUV 4:2:0 10-bit";
-		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x4TILED_8BIT: return "Hantro G1 semi planar 8x4 tiled YUV 4:2:0 8-bit";
-		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x4TILED_10BIT: return "Hantro G1 semi planar 8x4 tiled YUV 4:2:0 10-bit";
-		default: return imx_vpu_api_basic_color_format_string(color_format);
-	}
-}
-
-
-int imx_vpu_api_is_color_format_semi_planar(ImxVpuApiColorFormat color_format)
-{
-	return imx_vpu_api_is_basic_color_format_semi_planar(color_format);
 }
 
 
