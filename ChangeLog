@@ -1,3 +1,16 @@
+==== version 2.1.0 (2020-10-18) ====
+
+* introduce RGB and packed YUV formats since the Hantro encoder
+  supports those
+* remove hardware specific public headers since they only added
+  tiled pixel formats; instead, migrate these tiled formats into
+  ImxVpuApiColorFormat
+* imx8 hantro decoder: reorder list of supported decoder color
+  formats to favor 10 bit output
+* imx8 hantro decoder: clear new framebuffer fields to zero
+* imx8 hantro encoder: fix segfault caused by trying to unmap
+  non existing staged raw frame
+
 ==== version 2.0.1 (2020-04-19) ====
 
 * imx6: replace mxcfb.h check with i.MX6 specific imx header check
