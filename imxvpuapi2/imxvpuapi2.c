@@ -127,9 +127,6 @@ char const *imx_vpu_api_color_format_string(ImxVpuApiColorFormat color_format)
 		case IMX_VPU_API_COLOR_FORMAT_YUV400_8BIT:                          return "YUV 4:0:0 (8-bit grayscale)";
 		case IMX_VPU_API_COLOR_FORMAT_YUV400_10BIT:                         return "YUV 4:0:0 (10-bit grayscale)";
 
-		case IMX_VPU_API_COLOR_FORMAT_PACKED_YUV422_UYVY_8BIT:              return "packed YUV 4:2:2 U0-Y0-V0-Y1 8-bit";
-		case IMX_VPU_API_COLOR_FORMAT_PACKED_YUV422_YUYV_8BIT:              return "packed YUV 4:2:2 Y0-U0-Y1-V0 8-bit";
-
 		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_8BIT:     return "VeriSilicon Hantro G2 semi planar 4x4 tiled YUV 4:2:0 8-bit";
 		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_10BIT:    return "VeriSilicon Hantro G2 semi planar 4x4 tiled YUV 4:2:0 10-bit";
 		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x4TILED_8BIT:     return "VeriSilicon Hantro G1 semi planar 8x4 tiled YUV 4:2:0 8-bit";
@@ -137,6 +134,9 @@ char const *imx_vpu_api_color_format_string(ImxVpuApiColorFormat color_format)
 
 		case IMX_VPU_API_AMPHION_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x128TILED_8BIT:  return "Amphion semi planar 8x128 tiled YUV 4:2:0 8-bit";
 		case IMX_VPU_API_AMPHION_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x128TILED_10BIT: return "Amphion semi planar 8x128 tiled YUV 4:2:0 10-bit";
+
+		case IMX_VPU_API_COLOR_FORMAT_PACKED_YUV422_UYVY_8BIT:              return "packed YUV 4:2:2 U0-Y0-V0-Y1 8-bit";
+		case IMX_VPU_API_COLOR_FORMAT_PACKED_YUV422_YUYV_8BIT:              return "packed YUV 4:2:2 Y0-U0-Y1-V0 8-bit";
 
 		case IMX_VPU_API_COLOR_FORMAT_RGB565:   return "RGB 5:6:5 (16 bits per pixel)";
 		case IMX_VPU_API_COLOR_FORMAT_BGR565:   return "BGR 5:6:5 (16 bits per pixel)";

@@ -280,13 +280,6 @@ typedef enum
 	 * no chroma data, just one Y plane. */
 	IMX_VPU_API_COLOR_FORMAT_YUV400_10BIT,
 
-	/* Packed YUV 4:2:2, 8-bit. This has a single plane.
-	 * Values are stored in U0-Y0-V0-Y1 order (0,1 denoting pixels). */
-	IMX_VPU_API_COLOR_FORMAT_PACKED_YUV422_UYVY_8BIT,
-	/* Packed YUV 4:2:2, 8-bit. This has a single plane.
-	 * Values are stored in Y0-U0-Y1-V0 order (0,1 denoting pixels). */
-	IMX_VPU_API_COLOR_FORMAT_PACKED_YUV422_YUYV_8BIT,
-
 	/* VeriSilicon Hantro G2 semi-planar 4x4 tiled YUV 4:2:0, 8-bit.
 	 * The 4x4 pixel tiles are stored in a row-major layout. */
 	IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_8BIT,
@@ -319,6 +312,13 @@ typedef enum
 	 * 16th tile in the first strip, (0,112) - (7,127). Next comes
 	 * the first tile of the second strip, (8,0) - (15,7) etc. */
 	IMX_VPU_API_AMPHION_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x128TILED_10BIT,
+
+	/* Packed YUV 4:2:2, 8-bit. This has a single plane.
+	 * Values are stored in U0-Y0-V0-Y1 order (0,1 denoting pixels). */
+	IMX_VPU_API_COLOR_FORMAT_PACKED_YUV422_UYVY_8BIT,
+	/* Packed YUV 4:2:2, 8-bit. This has a single plane.
+	 * Values are stored in Y0-U0-Y1-V0 order (0,1 denoting pixels). */
+	IMX_VPU_API_COLOR_FORMAT_PACKED_YUV422_YUYV_8BIT,
 
 	/* RGB 5:6:5, 16 bits per pixel. */
 	IMX_VPU_API_COLOR_FORMAT_RGB565,
