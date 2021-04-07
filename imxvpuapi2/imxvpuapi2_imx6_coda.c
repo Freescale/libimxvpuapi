@@ -1103,6 +1103,16 @@ static BOOL imx_vpu_api_dec_fill_stream_info_from_initial_info(ImxVpuApiDecoder 
 	else
 	{
 		color_format = semi_planar ? IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV420_8BIT : IMX_VPU_API_COLOR_FORMAT_FULLY_PLANAR_YUV420_8BIT;
+
+		/* Use the frame width/height from the open params if available.
+		 * The sizes from initial_info can contain padding, and we want
+		 * the actual, unpadded sizes. */
+
+		if (decoder->open_params.frame_width > 0)
+			frame_width = decoder->open_params.frame_width;
+
+		if (decoder->open_params.frame_height > 0)
+			frame_height = decoder->open_params.frame_height;
 	}
 
 	/* Add the extra framebuffers to avoid decoding errors. See the documentation
@@ -1113,7 +1123,7 @@ static BOOL imx_vpu_api_dec_fill_stream_info_from_initial_info(ImxVpuApiDecoder 
 
 	ret = imx_vpu_api_dec_fill_stream_info(
 		decoder,
-		initial_info->picWidth, initial_info->picHeight,
+		frame_width, frame_height,
 		color_format,
 		initial_info->frameRateRes, initial_info->frameRateDiv,
 		min_num_required_framebuffers,
