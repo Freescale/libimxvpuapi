@@ -98,8 +98,8 @@ BOOL imx_vpu_api_imx6_coda_detile_and_copy_frame_with_ipu_vdoa(
 	task.input.format = IPU_PIX_FMT_TILED_NV12;
 	task.input.crop.pos.x = 0;
 	task.input.crop.pos.y = 0;
-	task.input.crop.w = actual_frame_width;
-	task.input.crop.h = actual_frame_height;
+	task.input.crop.w = total_padded_input_width;
+	task.input.crop.h = total_padded_input_height;
 	task.input.paddr = src_paddr;
 	task.input.paddr_n = 0;
 	task.input.deinterlace.enable = 0;
@@ -111,8 +111,8 @@ BOOL imx_vpu_api_imx6_coda_detile_and_copy_frame_with_ipu_vdoa(
 	task.output.rotate = IPU_ROTATE_NONE;
 	task.output.crop.pos.x = 0;
 	task.output.crop.pos.y = 0;
-	task.output.crop.w = actual_frame_width;
-	task.output.crop.h = actual_frame_height;
+	task.output.crop.w = total_padded_output_width;
+	task.output.crop.h = total_padded_output_height;
 	task.output.paddr = dest_paddr;
 
 	if (task.output.format == 0)
