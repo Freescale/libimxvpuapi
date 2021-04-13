@@ -400,9 +400,9 @@ static void imx_vpu_api_enc_set_basic_encoder_config(ImxVpuApiEncoder *encoder)
 	/* Set up rate control information. We only set up the bitrate and
 	 * the rate control type here. The quantization factors (relevant
 	 * if rate control is disabled) are defined per-format, since their
-	 * valid range is format specific. */
-	// TODO: Try out VBR, and if it is useful, add options for it.
-	encoder_config->bitrate.eControlRate = use_rate_control ? OMX_Video_ControlRateConstant : OMX_Video_ControlRateDisable;
+	 * valid range is format specific. We use variable bitrate control
+	 * to better support bitrate changes mid-stream. */
+	encoder_config->bitrate.eControlRate = use_rate_control ? OMX_Video_ControlRateVariable : OMX_Video_ControlRateDisable;
 	/* We specify the bitrate in kbps, the encoder expects bps, so multiply by 1000. */
 	encoder_config->bitrate.nTargetBitrate = open_params->bitrate * 1000;
 
