@@ -1108,7 +1108,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_set_bitrate(ImxVpuApiEncoder *encoder, u
 		return IMX_VPU_API_ENC_RETURN_CODE_INVALID_CALL;
 	}
 
-	IMX_VPU_API_TRACE("setting bitrate to %u kbps");
+	IMX_VPU_API_TRACE("setting bitrate to %u kbps", bitrate);
 
 	/* We specify the bitrate in kbps, the encoder expects bps, so multiply by 1000. */
 	encoder->encoder_config.bitrate.nTargetBitrate = bitrate * 1000;
