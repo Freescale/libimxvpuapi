@@ -1,3 +1,10 @@
+==== version 2.1.1 (2021-04-23) ====
+
+* imx6 coda: fix bug in IPU based detiling related to frame width/height
+* imx6 coda: use the frame width/height from open params if available
+* imx6 coda: fix duplicate VPU firmware unloading
+* imx8 hantro encoder: fix mid-stream bitrate changes and bitrate logging
+
 ==== version 2.1.0 (2020-10-18) ====
 
 * introduce RGB and packed YUV formats since the Hantro encoder

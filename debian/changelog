@@ -1,3 +1,12 @@
+libimxvpuapi (2.1.1) stable; urgency=low
+
+  * imx6 coda: fix bug in IPU based detiling related to frame width/height
+  * imx6 coda: use the frame width/height from open params if available
+  * imx6 coda: fix duplicate VPU firmware unloading
+  * imx8 hantro encoder: fix mid-stream bitrate changes and bitrate logging
+
+ -- Carlos Rafael Giani <crg7475@mailbox.org>  Fri, 23 Apr 2021 21:20:00 +0200
+
 libimxvpuapi (2.1.0) stable; urgency=low
 
   * introduce RGB and packed YUV formats since the Hantro encoder
