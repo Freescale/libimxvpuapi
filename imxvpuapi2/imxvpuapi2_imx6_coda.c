@@ -1701,8 +1701,6 @@ void imx_vpu_api_dec_close(ImxVpuApiDecoder *decoder)
 	imx_vpu_api_dec_free_internal_arrays(decoder);
 
 	free(decoder);
-
-	imx_coda_vpu_unload();
 }
 
 
