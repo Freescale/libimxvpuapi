@@ -910,13 +910,18 @@ static ImxVpuApiColorFormat const jpeg_supported_color_formats[] =
 
 static ImxVpuApiCompressionFormat const supported_compression_formats[] =
 {
+	IMX_VPU_API_COMPRESSION_FORMAT_H264,
+	IMX_VPU_API_COMPRESSION_FORMAT_H265,
+	IMX_VPU_API_COMPRESSION_FORMAT_VP8,
+	IMX_VPU_API_COMPRESSION_FORMAT_VP9,
+
+	/* The Hantro decoder on the i.MX8M Mini does not support these extra formats. */
+#ifndef IMXVPUAPI_IMX8_SOC_TYPE_MX8MM
 	IMX_VPU_API_COMPRESSION_FORMAT_JPEG,
 	IMX_VPU_API_COMPRESSION_FORMAT_WEBP,
 	IMX_VPU_API_COMPRESSION_FORMAT_MPEG2,
 	IMX_VPU_API_COMPRESSION_FORMAT_MPEG4,
 	IMX_VPU_API_COMPRESSION_FORMAT_H263,
-	IMX_VPU_API_COMPRESSION_FORMAT_H264,
-	IMX_VPU_API_COMPRESSION_FORMAT_H265,
 	IMX_VPU_API_COMPRESSION_FORMAT_WMV3,
 	IMX_VPU_API_COMPRESSION_FORMAT_WVC1,
 	IMX_VPU_API_COMPRESSION_FORMAT_VP6,
@@ -929,8 +934,6 @@ static ImxVpuApiCompressionFormat const supported_compression_formats[] =
 	 * but currently it doesn't. */
 	IMX_VPU_API_COMPRESSION_FORMAT_VP7,
 #endif
-	IMX_VPU_API_COMPRESSION_FORMAT_VP8,
-	IMX_VPU_API_COMPRESSION_FORMAT_VP9,
 	IMX_VPU_API_COMPRESSION_FORMAT_AVS,
 	/* TODO: RealVideo integration is not yet working. Either, the slice
 	 * info parsing code is wrong in imx_vpu_api_dec_preprocess_input_data(),
@@ -944,6 +947,7 @@ static ImxVpuApiCompressionFormat const supported_compression_formats[] =
 	IMX_VPU_API_COMPRESSION_FORMAT_DIVX4,
 	IMX_VPU_API_COMPRESSION_FORMAT_DIVX5,
 	IMX_VPU_API_COMPRESSION_FORMAT_SORENSON_SPARK
+#endif
 };
 
 static ImxVpuApiDecGlobalInfo const global_info = {
@@ -986,8 +990,13 @@ static ImxVpuApiH264SupportDetails const h264_support_details = {
 
 	.max_constrained_baseline_profile_level = IMX_VPU_API_H264_LEVEL_4_1,
 	.max_baseline_profile_level = IMX_VPU_API_H264_LEVEL_4_1,
+#ifdef IMXVPUAPI_IMX8_SOC_TYPE_MX8MM
+	.max_main_profile_level = IMX_VPU_API_H264_LEVEL_4_1,
+	.max_high_profile_level = IMX_VPU_API_H264_LEVEL_4_1,
+#else
 	.max_main_profile_level = IMX_VPU_API_H264_LEVEL_5_1,
 	.max_high_profile_level = IMX_VPU_API_H264_LEVEL_5_1,
+#endif
 	.max_high10_profile_level = IMX_VPU_API_H264_LEVEL_UNDEFINED,
 
 	.flags = IMX_VPU_API_H264_FLAG_ACCESS_UNITS_SUPPORTED
@@ -1029,7 +1038,11 @@ static ImxVpuApiVP9SupportDetails const vp9_support_details = {
 		.num_supported_color_formats = sizeof(standard_supported_color_formats) / sizeof(ImxVpuApiColorFormat)
 	},
 
+#ifdef IMXVPUAPI_IMX8_SOC_TYPE_MX8MM
 	.supported_profiles = (1 << IMX_VPU_API_VP9_PROFILE_0)
+#else
+	.supported_profiles = (1 << IMX_VPU_API_VP9_PROFILE_0) | (1 << IMX_VPU_API_VP9_PROFILE_2)
+#endif
 };
 
 ImxVpuApiCompressionFormatSupportDetails const * imx_vpu_api_dec_get_compression_format_support_details(ImxVpuApiCompressionFormat compression_format)

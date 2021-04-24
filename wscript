@@ -98,7 +98,8 @@ class PlatformIMX6:
 class PlatformIMX8M:
 	description = 'i.MX8 M with Hantro G1/G2 decoder (optionally also a Hantro H1 encoder)'
 
-	def __init__(self, has_encoder):
+	def __init__(self, soc_type, has_encoder):
+		self.soc_type = soc_type
 		self.has_encoder = has_encoder
 
 	def configure(self, conf):
@@ -135,6 +136,8 @@ class PlatformIMX8M:
 		if with_hantro_codec_error_frame_retval:
 			conf.define('HAVE_IMXVPUDEC_HANTRO_CODEC_ERROR_FRAME', 1)
 
+		conf.define('IMXVPUAPI_IMX8_SOC_TYPE_' + self.soc_type, 1)
+
 	def build(self, bld):
 		bld(
 			features = ['c'],
@@ -159,8 +162,8 @@ class PlatformIMX8M:
 
 imx_platforms = {
 	'imx6': PlatformIMX6(),
-	'imx8m': PlatformIMX8M(has_encoder = False),
-	'imx8mm': PlatformIMX8M(has_encoder = True)
+	'imx8m': PlatformIMX8M(soc_type = 'MX8M', has_encoder = False),
+	'imx8mm': PlatformIMX8M(soc_type = 'MX8MM', has_encoder = True)
 }
 
 
