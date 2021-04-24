@@ -2292,6 +2292,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 				IMX_VPU_API_DEBUG("skip internal invisible frame for VP8");
 				decoder->dec_output_info.indexFrameDecoded = VPU_DECODER_DECODEIDX_FRAME_NOT_DECODED;
 				decoder->dec_output_info.indexFrameDisplay = VPU_DECODER_DISPLAYIDX_NO_FRAME_TO_DISPLAY;
+				skipped_frame_is_internal = TRUE;
 			}
 		}
 
@@ -2351,6 +2352,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 			decoder->skipped_frame_reason = skipped_frame_is_internal ? IMX_VPU_API_DEC_SKIPPED_FRAME_REASON_INTERNAL_FRAME : IMX_VPU_API_DEC_SKIPPED_FRAME_REASON_CORRUPTED_FRAME;
 			IMX_VPU_API_DEBUG("frame got skipped/dropped (context: %p pts %" PRIu64 " dts %" PRIu64 ")", decoder->skipped_frame_context, decoder->skipped_frame_pts, decoder->skipped_frame_dts);
 			*output_code = IMX_VPU_API_DEC_OUTPUT_CODE_FRAME_SKIPPED;
+			decoder->staged_encoded_frame_set = FALSE;
 		}
 
 		/* Check if information about the decoded frame is available.
