@@ -119,6 +119,22 @@ class PlatformIMX8M:
 			conf.env['DEFINES_HANTRO_ENC'] += ['ENCH1', 'OMX_ENCODER_VIDEO_DOMAIN', 'ENABLE_HANTRO_ENC']
 			conf.check_cc(uselib_store = 'HANTRO_ENC', uselib = 'HANTRO', define_name = '', mandatory = 1, includes = [os.path.join(sysroot_path, 'usr/include/hantro_enc'), os.path.join(sysroot_path, 'usr/include/hantro_enc/headers')], header_name = 'encoder/codec.h')
 
+		with_hantro_codec_error_frame_retval = conf.check_cc(fragment = '''
+			#include "dwl.h"
+			#include "codec.h"
+			int main() {
+				return CODEC_ERROR_FRAME * 0;
+			}
+			''',
+			uselib = ['C99', 'HANTRO', 'HANTRO_DEC'],
+			mandatory = False,
+			execute = False,
+			define_name = '',
+			msg = 'checking if CODEC_ERROR_FRAME exists'
+		)
+		if with_hantro_codec_error_frame_retval:
+			conf.define('HAVE_IMXVPUDEC_HANTRO_CODEC_ERROR_FRAME', 1)
+
 	def build(self, bld):
 		bld(
 			features = ['c'],

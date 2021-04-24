@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <inttypes.h>
 
+#include <config.h>
+
 #include <imxdmabuffer/imxdmabuffer.h>
 #include "imxvpuapi2.h"
 #include "imxvpuapi2_priv.h"
@@ -72,6 +74,9 @@ static char const * codec_state_to_string(CODEC_STATE codec_state)
 		case CODEC_BUFFER_EMPTY: return "CODEC_BUFFER_EMPTY";
 		case CODEC_PENDING_FLUSH: return "CODEC_PENDING_FLUSH";
 		case CODEC_NO_DECODING_BUFFER: return "CODEC_NO_DECODING_BUFFER";
+#ifdef HAVE_IMXVPUDEC_HANTRO_CODEC_ERROR_FRAME
+		case CODEC_ERROR_FRAME: return "CODEC_ERROR_FRAME";
+#endif
 		case CODEC_ERROR_HW_TIMEOUT: return "CODEC_ERROR_HW_TIMEOUT";
 		case CODEC_ERROR_HW_BUS_ERROR: return "CODEC_ERROR_HW_BUS_ERROR";
 		case CODEC_ERROR_SYS: return "CODEC_ERROR_SYS";
@@ -2014,6 +2019,9 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 			}
 
 			case CODEC_PIC_SKIPPED:
+#ifdef HAVE_IMXVPUDEC_HANTRO_CODEC_ERROR_FRAME
+			case CODEC_ERROR_FRAME:
+#endif
 			{
 				FrameEntry *frame_entry;
 
@@ -2021,6 +2029,10 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 				{
 					frame_entry = &(decoder->frame_entries[decoder->last_pushed_frame_entry_index]);
 					decoder->skipped_frame_reason = IMX_VPU_API_DEC_SKIPPED_FRAME_REASON_INTERNAL_FRAME;
+#ifdef HAVE_IMXVPUDEC_HANTRO_CODEC_ERROR_FRAME
+					if (codec_state == CODEC_PIC_SKIPPED)
+						decoder->skipped_frame_reason = IMX_VPU_API_DEC_SKIPPED_FRAME_REASON_CORRUPTED_FRAME;
+#endif
 					decoder->skipped_frame_context = frame_entry->context;
 					decoder->skipped_frame_pts = frame_entry->pts;
 					decoder->skipped_frame_dts = frame_entry->dts;
