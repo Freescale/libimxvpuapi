@@ -1,3 +1,11 @@
+libimxvpuapi (2.1.2) stable; urgency=low
+
+  * imx6-coda: Fix skipped frame reporting
+  * imx8m-hantro: Handle CODEC_ERROR_FRAME codec state
+  * imx8m-hantro: Limit supported formats and profiles if building for m8xmm
+
+ -- Carlos Rafael Giani <crg7475@mailbox.org>  Fri, 25 Apr 2021 12:20:00 +0200
+
 libimxvpuapi (2.1.1) stable; urgency=low
 
   * imx6 coda: fix bug in IPU based detiling related to frame width/height
