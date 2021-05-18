@@ -1657,9 +1657,9 @@ void imx_vpu_api_dec_return_framebuffer_to_decoder(ImxVpuApiDecoder *decoder, Im
  *        Can be NULL if not needed.
  * @param context Pointer to the context that shall be set to the context of the
  *        skipped frame. Can be NULL if not needed.
- * @param context Pointer to the PTS that shall be set to the PTS of the
+ * @param pts Pointer to the PTS that shall be set to the PTS of the
  *        skipped frame. Can be NULL if not needed.
- * @param context Pointer to the DTS that shall be set to the DTS of the
+ * @param dts Pointer to the DTS that shall be set to the DTS of the
  *        skipped frame. Can be NULL if not needed.
  */
 void imx_vpu_api_dec_get_skipped_frame_info(ImxVpuApiDecoder *decoder, ImxVpuApiDecSkippedFrameReasons *reason, void **context, uint64_t *pts, uint64_t *dts);
