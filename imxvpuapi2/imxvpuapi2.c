@@ -288,6 +288,7 @@ char const * imx_vpu_api_dec_output_code_string(ImxVpuApiDecOutputCodes code)
 		case IMX_VPU_API_DEC_OUTPUT_CODE_NEED_ADDITIONAL_FRAMEBUFFER: return "need additional framebuffer";
 		case IMX_VPU_API_DEC_OUTPUT_CODE_DECODED_FRAME_AVAILABLE:     return "decoded frame available";
 		case IMX_VPU_API_DEC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED:      return "more input data needed";
+		case IMX_VPU_API_DEC_OUTPUT_CODE_FRAME_SKIPPED:               return "frame skipped";
 		default: return "<unknown>";
 	}
 }
@@ -325,6 +326,7 @@ char const * imx_vpu_api_enc_return_code_string(ImxVpuApiEncReturnCodes code)
 		case IMX_VPU_API_ENC_RETURN_CODE_INSUFFICIENT_FRAMEBUFFERS:             return "insufficient framebuffers";
 		case IMX_VPU_API_ENC_RETURN_CODE_FRAMES_TOO_LARGE:                      return "frames are too large";
 		case IMX_VPU_API_ENC_RETURN_CODE_INVALID_CALL:                          return "invalid call";
+		case IMX_VPU_API_ENC_RETURN_CODE_TIMEOUT:                               return "timeout";
 		case IMX_VPU_API_ENC_RETURN_CODE_ERROR:                                 return "error";
 		default: return "<unknown>";
 	}
