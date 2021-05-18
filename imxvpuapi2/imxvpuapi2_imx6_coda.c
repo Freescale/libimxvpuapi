@@ -2495,7 +2495,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_get_decoded_frame(ImxVpuApiDecoder *deco
 	decoded_frame->fb_dma_buffer = decoder->output_frame_dma_buffer;
 
 
-	decoded_frame->fb_context = (decoder->open_params.compression_format == IMX_VPU_API_COMPRESSION_FORMAT_JPEG) ? decoder->output_frame_fb_context : decoder->frame_entries[idx].fb_context;
+	decoded_frame->fb_context = decoder->output_frame_fb_context;
 	decoded_frame->frame_types[0] = decoder->frame_entries[idx].frame_types[0];
 	decoded_frame->frame_types[1] = decoder->frame_entries[idx].frame_types[1];
 	decoded_frame->interlacing_mode = decoder->frame_entries[idx].interlacing_mode;
