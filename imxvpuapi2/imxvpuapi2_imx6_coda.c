@@ -3562,6 +3562,28 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_set_bitrate(ImxVpuApiEncoder *encoder, u
 }
 
 
+ImxVpuApiEncReturnCodes imx_vpu_api_enc_set_frame_rate(ImxVpuApiEncoder *encoder, unsigned int frame_rate_numerator, unsigned int frame_rate_denominator)
+{
+	RetCode enc_ret;
+	int param;
+
+	assert(encoder != NULL);
+	assert(frame_rate_denominator > 0);
+
+	IMX_VPU_API_TRACE("setting frame rate to %u/%u fps", frame_rate_numerator, frame_rate_denominator);
+
+	param = (frame_rate_numerator & 0xffffUL) | (((frame_rate_denominator - 1) & 0xffffUL) << 16);
+	enc_ret = vpu_EncGiveCommand(encoder->handle, ENC_SET_FRAME_RATE, &param);
+	if (enc_ret != RETCODE_SUCCESS)
+	{
+		IMX_VPU_API_ERROR("could not set frame rate: %s (%d)", retcode_to_string(enc_ret), enc_ret);
+		return IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+	}
+	else
+		return IMX_VPU_API_ENC_RETURN_CODE_OK;
+}
+
+
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_push_raw_frame(ImxVpuApiEncoder *encoder, ImxVpuApiRawFrame const *raw_frame)
 {
 	assert(encoder != NULL);

@@ -2249,6 +2249,23 @@ void imx_vpu_api_enc_flush(ImxVpuApiEncoder *encoder);
  */
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_set_bitrate(ImxVpuApiEncoder *encoder, unsigned int bitrate);
 
+/* Sets the current encoding frame rate to this new value, in kbps.
+ *
+ * Any raw frames that are pushed into the encoder after this was called
+ * will get encoded with this frame rate.
+ *
+ * @param encoder Encoder instance. Must not be NULL.
+ * @param frame_rate_numerator Numerator of new frame rate to use.
+ * @param frame_rate_denominator Denominator of new frame rate to use.
+ *        Must be at least 1.
+ * @return Return code indicating the outcome. Valid values:
+ *
+ * IMX_VPU_API_ENC_RETURN_CODE_OK: Success.
+ *
+ * IMX_VPU_API_ENC_RETURN_CODE_ERROR: Unspecified error. Consult log output.
+ */
+ImxVpuApiEncReturnCodes imx_vpu_api_enc_set_frame_rate(ImxVpuApiEncoder *encoder, unsigned int frame_rate_numerator, unsigned int frame_rate_denominator);
+
 /* Pushes a new raw frame to be encoded.
  *
  * This function needs to be called right after the encoder was opened and

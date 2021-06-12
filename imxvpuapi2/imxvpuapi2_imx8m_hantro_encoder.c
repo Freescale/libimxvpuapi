@@ -1117,6 +1117,39 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_set_bitrate(ImxVpuApiEncoder *encoder, u
 }
 
 
+ImxVpuApiEncReturnCodes imx_vpu_api_enc_set_frame_rate(ImxVpuApiEncoder *encoder, unsigned int frame_rate_numerator, unsigned int frame_rate_denominator)
+{
+	OMX_U32 frame_rate_qt16;
+	ImxVpuApiEncOpenParams *open_params;
+
+	assert(encoder != NULL);
+	assert(frame_rate_denominator > 0);
+
+	open_params = &(encoder->open_params);
+	frame_rate_qt16 = FLOAT_Q16((double)(open_params->frame_rate_numerator) / (double)(open_params->frame_rate_denominator));
+
+	IMX_VPU_API_TRACE("setting frame rate to %u/%u fps", frame_rate_numerator, frame_rate_denominator);
+
+	/* Not checking the return values of the HantroHwEncOmx_encoder_frame_rate_*
+	 * functions, since these never return anything other than CODEC_OK. */
+	switch (open_params->compression_format)
+	{
+		case IMX_VPU_API_COMPRESSION_FORMAT_VP8:
+			HantroHwEncOmx_encoder_frame_rate_vp8(encoder->encoder, frame_rate_qt16);
+			break;
+
+		case IMX_VPU_API_COMPRESSION_FORMAT_H264:
+			HantroHwEncOmx_encoder_frame_rate_h264(encoder->encoder, frame_rate_qt16);
+			break;
+
+		default:
+			break;
+	}
+
+	return IMX_VPU_API_ENC_RETURN_CODE_OK;
+}
+
+
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_push_raw_frame(ImxVpuApiEncoder *encoder, ImxVpuApiRawFrame const *raw_frame)
 {
 	int err;
