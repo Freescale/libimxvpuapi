@@ -415,8 +415,9 @@ typedef struct
 	 * encoded frame data that shall be consumed by the VPU. This will then
 	 * be used by imx_vpu_api_dec_decode().
 	 *
-	 * When encoding, data is set by the encoder to point to the encoded data.
-	 * This is done by imx_vpu_api_enc_get_encoded_frame(). */
+	 * When encoding, the user must set this to point to a buffer that is large
+	 * enough to hold the encoded data. The size of that data is given to
+	 * the encoded_frame_size output argument of imx_vpu_api_enc_encode(). */
 	uint8_t *data;
 
 	/* Size of the encoded data, in bytes.
@@ -426,7 +427,8 @@ typedef struct
 	 * imx_vpu_api_dec_decode().
 	 *
 	 * When encoding, the encoder sets this to the size of the encoded data,
-	 * in bytes. This is done by imx_vpu_api_enc_encode(). */
+	 * in bytes. This is set by the encoder to the same value as the
+	 * encoded_frame_size output argument of imx_vpu_api_enc_encode(). */
 	size_t data_size;
 
 	/* Nonzero if header data was prepended to the encoded frame data. */
@@ -2276,6 +2278,9 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_set_frame_rate(ImxVpuApiEncoder *encoder
  * in the encoder stream info returned by imx_vpu_api_enc_get_stream_info().
  *
  * This function is not to be called when the drain mode is enabled.
+ *
+ * The ImxVpuApiRawFrame instance pointed to by raw_frame must remain
+ * valid until imx_vpu_api_enc_encode() is called.
  *
  * @param encoder Encoder instance. Must not be NULL.
  * @return Return code indicating the outcome. Valid values:
