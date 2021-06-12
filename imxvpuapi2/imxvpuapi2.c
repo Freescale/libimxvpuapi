@@ -272,6 +272,19 @@ char const * imx_vpu_api_h265_level_string(ImxVpuApiH265Level level)
 }
 
 
+int imx_vpu_api_vp8_profile_number(ImxVpuApiVP8Profile profile)
+{
+	switch (profile)
+	{
+		case IMX_VPU_API_VP8_PROFILE_0: return 0;
+		case IMX_VPU_API_VP8_PROFILE_1: return 1;
+		case IMX_VPU_API_VP8_PROFILE_2: return 2;
+		case IMX_VPU_API_VP8_PROFILE_3: return 3;
+		default: return -1;
+	}
+}
+
+
 
 
 /************************************************/
@@ -364,5 +377,18 @@ char const * imx_vpu_api_enc_output_code_string(ImxVpuApiEncOutputCodes code)
 		case IMX_VPU_API_ENC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED:              return "more input data needed";
 		case IMX_VPU_API_ENC_OUTPUT_CODE_EOS:                                 return "eos";
 		default: return "<unknown>";
+	}
+}
+
+
+int imx_vpu_api_vp8_partition_count_number(ImxVpuApiEncVP8PartitionCount partition_count)
+{
+	switch (partition_count)
+	{
+		case IMX_VPU_API_ENC_VP8_PARTITION_COUNT_1: return 1;
+		case IMX_VPU_API_ENC_VP8_PARTITION_COUNT_2: return 2;
+		case IMX_VPU_API_ENC_VP8_PARTITION_COUNT_4: return 4;
+		case IMX_VPU_API_ENC_VP8_PARTITION_COUNT_8: return 8;
+		default: return -1;
 	}
 }

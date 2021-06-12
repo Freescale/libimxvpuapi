@@ -713,6 +713,11 @@ typedef enum
 }
 ImxVpuApiVP8Profile;
 
+/* Returns the profile as an integer. For example,
+ * IMX_VPU_API_VP8_PROFILE_2 returns 2.
+ * Invalid values return -1. */
+int imx_vpu_api_vp8_profile_number(ImxVpuApiVP8Profile profile);
+
 /* Additional VP8 specific codec support details. */
 typedef struct
 {
@@ -1832,6 +1837,11 @@ typedef enum
 	IMX_VPU_API_ENC_VP8_PARTITION_COUNT_8
 }
 ImxVpuApiEncVP8PartitionCount;
+
+/* Returns the partition count as an integer. For example,
+ * IMX_VPU_API_ENC_VP8_PARTITION_COUNT_4 returns 4.
+ * Invalid values return -1. */
+int imx_vpu_api_vp8_partition_count_number(ImxVpuApiEncVP8PartitionCount partition_count);
 
 /* VP8 specific encoder parameters. */
 typedef struct
