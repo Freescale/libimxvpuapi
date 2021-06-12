@@ -41,6 +41,9 @@ Additional dependencies are specific to the target platform:
   versions installed all Hantro headers in the main include directory. Newer
   ones create `hantro_enc` and `hantro_dec`subdirectories. libimxvpuapi
   expects these directories to exist.
+  Also, currently, there is no specific support for the i.MX8m plus.
+  However, building for i.MX8mm produces a version that is also usable
+  on that SoC.
 
 
 Building and installing
