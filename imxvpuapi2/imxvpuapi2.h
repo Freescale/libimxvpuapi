@@ -1751,7 +1751,7 @@ char const * imx_vpu_api_enc_return_code_string(ImxVpuApiEncReturnCodes code);
 typedef enum
 {
 	/* Encoding did not (yet) yield output. Additional
-	 * imx_vpu_api_enc_decode() calls might. */
+	 * imx_vpu_api_enc_encode() calls might. */
 	IMX_VPU_API_ENC_OUTPUT_CODE_NO_OUTPUT_YET_AVAILABLE = 0,
 	/* The encoder needs one additional framebuffer in its pool for encoding.
 	 * The user is supposed to allocate one extra framebuffer and add it by

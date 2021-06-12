@@ -3530,6 +3530,8 @@ int imx_vpu_api_enc_is_drain_mode_enabled(ImxVpuApiEncoder *encoder)
 
 void imx_vpu_api_enc_flush(ImxVpuApiEncoder *encoder)
 {
+	assert(encoder != NULL);
+
 	encoder->first_frame = TRUE;
 	encoder->staged_raw_frame_set = FALSE;
 	encoder->encoded_frame_available = FALSE;
@@ -3540,6 +3542,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_set_bitrate(ImxVpuApiEncoder *encoder, u
 {
 	RetCode enc_ret;
 	int param;
+
 	assert(encoder != NULL);
 
 	if (encoder->open_params.bitrate == 0)

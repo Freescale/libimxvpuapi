@@ -1091,6 +1091,8 @@ int imx_vpu_api_enc_is_drain_mode_enabled(ImxVpuApiEncoder *encoder)
 
 void imx_vpu_api_enc_flush(ImxVpuApiEncoder *encoder)
 {
+	assert(encoder != NULL);
+
 	/* Force the first frame after the flush to be an intra frame. This
 	 * makes sure that decoders can show a video signal right away
 	 * after the encoder got flushed. */
@@ -1102,6 +1104,8 @@ void imx_vpu_api_enc_flush(ImxVpuApiEncoder *encoder)
 
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_set_bitrate(ImxVpuApiEncoder *encoder, unsigned int bitrate)
 {
+	assert(encoder != NULL);
+
 	if (encoder->open_params.bitrate == 0)
 	{
 		IMX_VPU_API_ERROR("rate control disabled in the imx_vpu_api_enc_open() parameters");
