@@ -348,6 +348,9 @@ char const *imx_vpu_api_color_format_string(ImxVpuApiColorFormat color_format);
  */
 int imx_vpu_api_is_color_format_semi_planar(ImxVpuApiColorFormat color_format);
 
+/* Returns 1 if format is an RGB format, 0 otherwise. */
+int imx_vpu_api_is_color_format_rgb(ImxVpuApiColorFormat color_format);
+
 
 typedef struct
 {

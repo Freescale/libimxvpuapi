@@ -184,6 +184,27 @@ int imx_vpu_api_is_color_format_semi_planar(ImxVpuApiColorFormat color_format)
 }
 
 
+int imx_vpu_api_is_color_format_rgb(ImxVpuApiColorFormat color_format)
+{
+	switch (color_format)
+	{
+		case IMX_VPU_API_COLOR_FORMAT_RGB565:
+		case IMX_VPU_API_COLOR_FORMAT_BGR565:
+		case IMX_VPU_API_COLOR_FORMAT_RGB444:
+		case IMX_VPU_API_COLOR_FORMAT_ARGB4444:
+		case IMX_VPU_API_COLOR_FORMAT_ARGB1555:
+		case IMX_VPU_API_COLOR_FORMAT_RGBA8888:
+		case IMX_VPU_API_COLOR_FORMAT_BGRA8888:
+			return 1;
+
+		default:
+			break;
+	}
+
+	return 0;
+}
+
+
 char const * imx_vpu_api_h264_profile_string(ImxVpuApiH264Profile profile)
 {
 	switch (profile)
