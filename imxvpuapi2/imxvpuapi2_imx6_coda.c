@@ -2592,6 +2592,7 @@ struct _ImxVpuApiEncoder
 
 	ImxVpuApiEncStreamInfo stream_info;
 
+	/* DEPRECATED. This is kept here for backwards compatibility. */
 	BOOL drain_mode_enabled;
 
 	size_t num_framebuffers_to_be_added;
@@ -3592,12 +3593,6 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_push_raw_frame(ImxVpuApiEncoder *encoder
 	assert(encoder != NULL);
 	assert(raw_frame != NULL);
 
-	if (encoder->drain_mode_enabled)
-	{
-		IMX_VPU_API_ERROR("tried to push a raw frame after drain mode was enabled");
-		return IMX_VPU_API_ENC_RETURN_CODE_INVALID_CALL;
-	}
-
 	if (encoder->staged_raw_frame_set)
 	{
 		IMX_VPU_API_ERROR("tried to push a raw frame before a previous one was encoded");
@@ -3631,12 +3626,6 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
 	assert(encoder != NULL);
 	assert(encoded_frame_size != NULL);
 	assert(output_code != NULL);
-
-	if (encoder->drain_mode_enabled)
-	{
-		*output_code = IMX_VPU_API_ENC_OUTPUT_CODE_EOS;
-		return IMX_VPU_API_ENC_RETURN_CODE_OK;
-	}
 
 	if (encoder->encoded_frame_available)
 	{

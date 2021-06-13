@@ -323,6 +323,7 @@ char const * imx_vpu_api_dec_output_code_string(ImxVpuApiDecOutputCodes code)
 		case IMX_VPU_API_DEC_OUTPUT_CODE_DECODED_FRAME_AVAILABLE:     return "decoded frame available";
 		case IMX_VPU_API_DEC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED:      return "more input data needed";
 		case IMX_VPU_API_DEC_OUTPUT_CODE_FRAME_SKIPPED:               return "frame skipped";
+		case IMX_VPU_API_DEC_OUTPUT_CODE_VIDEO_PARAMETERS_CHANGED:    return "video parameters changed";
 		default: return "<unknown>";
 	}
 }

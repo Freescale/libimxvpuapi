@@ -775,6 +775,106 @@ ImxVpuApiVP9SupportDetails;
 /************************************************/
 
 
+/* OVERVIEW ABOUT DECODING
+ *
+ *
+ * INITIALIZING THE DECODER
+ *
+ * First, a stream buffer must be allocated. This is a DMA buffer that
+ * is allocated with libimxdmabuffer's imx_dma_buffer_allocate(). The required
+ * size and alignment can be retrieved from the min_required_stream_buffer_size
+ * and required_stream_buffer_physaddr_alignment fields that are present in
+ * the ImxVpuApiDecGlobalInfo structure. To get the const global instance
+ * of that structure, use imx_vpu_api_dec_get_global_info().
+ *
+ * Once the stream buffer is allocated, an ImxVpuApiDecOpenParams structure
+ * must be initialized. At the very least, its compression_format field
+ * must be set to a valid value. Be sure to set any unused field to zero.
+ *
+ * The decoder can then be created by calling imx_vpu_api_dec_open(). That
+ * function needs the stream buffer and ImxVpuApiDecOpenParams structure.
+ *
+ *
+ * MAIN DECODING LOOP
+ *
+ * The decoding loop goes as follows:
+ *
+ * 1. Fill an ImxVpuApiEncodedFrame instance with information about the frame
+ *    that is to be decoded. If there are no more frames to encode, continue
+ *    at step 5.
+ * 2. Feed that frame into the VPU by calling imx_vpu_api_dec_push_encoded_frame().
+ * 3. If the stream info was already retrieved, and in the global info, the
+ *    IMX_VPU_API_DEC_GLOBAL_INFO_FLAG_DECODED_FRAMES_ARE_FROM_BUFFER_POOL flag
+ *    is not set, set the previously allocated output DMA buffer as the
+ *    decoder's output buffer with imx_vpu_api_dec_set_output_frame_dma_buffer().
+ * 4. Call imx_vpu_api_dec_decode() and get its output code.
+ * 5. - If the output code is IMX_VPU_API_DEC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED,
+ *      go back to step 1.
+ *    - If the output code is IMX_VPU_API_DEC_OUTPUT_CODE_NO_OUTPUT_YET_AVAILABLE,
+ *      just go back to step 4.
+ *    - If the output code is IMX_VPU_API_DEC_OUTPUT_CODE_EOS, go to step 6.
+ *    - If the output code is IMX_VPU_API_DEC_OUTPUT_CODE_NEW_STREAM_INFO_AVAILABLE,
+ *      the stream info must be retrieved with imx_vpu_api_dec_get_stream_info().
+ *      The stream info contains details about the necessary framebuffers. At this
+ *      point, the user must allocate at least as many framebuffers as indicated
+ *      by the min_num_required_framebuffers field in ImxVpuApiDecStreamInfo.
+ *      The details about the framebuffers like its minimum size and alignment are
+ *      found in that structure as well. After allocating the buffers, they are
+ *      added to the VPU decoder with imx_vpu_api_dec_add_framebuffers_to_pool().
+ *      Additionally, an "output buffer" must be allocated at this point if the
+ *      IMX_VPU_API_DEC_GLOBAL_INFO_FLAG_DECODED_FRAMES_ARE_FROM_BUFFER_POOL in
+ *      the ImxVpuApiDecGlobalInfo structure is not set (see step 3 above).
+ *      The output buffer's size must be at least min_output_framebuffer_size
+ *      from the ImxVpuApiDecStreamInfo structure.
+ *      Then go back to step 4.
+ *    - If the output code is IMX_VPU_API_DEC_OUTPUT_CODE_NEED_ADDITIONAL_FRAMEBUFFER,
+ *      allocate an extra framebuffer and add it to the VPU decoder's pool,
+ *      just like in step 5 above (except add just 1 buffer here, not the amount
+ *      added in that step). Then go back to step 4.
+ *    - If the output code is IMX_VPU_API_DEC_OUTPUT_CODE_DECODED_FRAME_AVAILABLE,
+ *      retrieve the decoded frame with imx_vpu_api_dec_get_decoded_frame(), and
+ *      then go back to step 4.
+ *      Once that decoded frame is fully processed by the code and is no longer
+ *      needed, and IMX_VPU_API_DEC_GLOBAL_INFO_FLAG_DECODED_FRAMES_ARE_FROM_BUFFER_POOL
+ *      is not set in the ImxVpuApiDecGlobalInfo structure, then call
+ * 	    imx_vpu_api_dec_return_framebuffer_to_decoder() to return the buffer that
+ *      contains the no longer needed frame back to the VPU's pool.
+ *    - If the output code is IMX_VPU_API_DEC_OUTPUT_CODE_FRAME_SKIPPED, retrieve
+ *      the details about the skipped frame with imx_vpu_api_dec_get_skipped_frame_info(),
+ *      then go back to step 4.
+ * 5. Drain the decoder as explained below.
+ * 6. Exit the loop.
+ *
+ *
+ * DRAINING THE DECODER
+ *
+ * NOTE: This refers to the full draining that is done when the stream ends
+ * and is done before the decoder is closed. Consult the documentation at
+ * imx_vpu_api_dec_enable_drain_mode() for details about this.
+ *
+ * Draining is done by first calling imx_vpu_api_dec_enable_drain_mode(),
+ * followed by repeatedly calling imx_vpu_api_dec_decode() until until one
+ * of the terminating cases occur:
+ *
+ *   1. The IMX_VPU_API_DEC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED output
+ *      code is returned
+ *   2. The IMX_VPU_API_DEC_OUTPUT_CODE_EOS output code is returned
+ *   3. A return code that indicates an error is returned
+ *
+ *
+ * SHUTTING DOWN THE DECODER
+ *
+ * The decoder is shut down by calling imx_vpu_api_dec_close(). Once
+ * that was called, the framebuffers that were previously added to the
+ * VPU decoder's pool are no longer used, and can be deallocated. Note
+ * that calling imx_vpu_api_dec_close() will also drop any decoded
+ * frame data that may be queued in the decoder. Consider draining
+ * the decoder before shutting it down.
+ */
+
+
+
+
 /* Opaque decoder structure. */
 typedef struct _ImxVpuApiDecoder ImxVpuApiDecoder;
 
@@ -1417,26 +1517,27 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_add_framebuffers_to_pool(ImxVpuApiDecode
 
 /* Enables the drain mode.
  *
- * In drain mode, no new input data is used; instead, any not yet decoded frames
- * still stored in the VPU are decoded, until the queue is empty. This is
- * useful when there is no more input data, and playback shall stop once all
- * frames are shown. The drain mode stays enabled until the decoder is closed.
- *
- * Note that the drain mode is solely used for draining the decoder when
- * the user has no more data to decode. In other words, when the user detects
- * that the end of stream was reached, the drain mode should be enabled.
- * Then, imx_vpu_api_dec_decode() can be called until the output code
- * IMX_VPU_API_DEC_OUTPUT_CODE_EOS is returned.
- *
- * If instead the user wants to drain the decoder mid-stream, all that is
- * needed is to repeatedly call imx_vpu_api_dec_decode() until one of the
- * terminating cases occur:
+ * Draining consists of two parts: First, any queued encoded input frame
+ * is decoded by the VPU. Second, any decoded but not yet retrieved output frame
+ * is retrieved and output. The first part can be done simply by repeatedly
+ * calling imx_vpu_api_dec_decode() until one of these terminating cases occur:
  *
  *   1. The IMX_VPU_API_DEC_OUTPUT_CODE_EOS output code
  *      is returned
  *   2. The IMX_VPU_API_DEC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED output code
  *      is returned
  *   3. A return code that indicates an error is returned
+ *
+ * No special mode is needed for this.
+ *
+ * The second part however requires the "drain mode". In this mode, the VPU
+ * will be instructed to not expect any encoded input frames anymore, and instead
+ * provide any queued decoded frame it may still have, until its internal queues
+ * are fully emptied.
+ *
+ * Due to the way some i.MX VPUs work, it is not possible to revert back from
+ * this mode. If there is more data to decode, the user has to reopen the
+ * decoder first.
  *
  * @param decoder Decoder instance. Must not be NULL.
  */
@@ -1545,7 +1646,7 @@ void imx_vpu_api_dec_set_output_frame_dma_buffer(ImxVpuApiDecoder *decoder, ImxD
  * user can continue calling imx_vpu_api_dec_decode() again.
  *
  * In all other cases, the user is expected to act according to the returned
- * output code, and call imx_vpu_api_dec_decode() again. Also check the
+ * output code, and call imx_vpu_api_dec_decode(). Also check the
  * ImxVpuApiDecOutputCodes documentation for details.
  *
  * If the IMX_VPU_API_DEC_GLOBAL_INFO_FLAG_DECODED_FRAMES_ARE_FROM_BUFFER_POOL
@@ -1682,6 +1783,87 @@ void imx_vpu_api_dec_get_skipped_frame_info(ImxVpuApiDecoder *decoder, ImxVpuApi
 /************************************************/
 
 
+/* OVERVIEW ABOUT ENCODING
+ *
+ *
+ * INITIALIZING THE ENCODER
+ *
+ * First, a stream buffer must be allocated. This is a DMA buffer that
+ * is allocated with libimxdmabuffer's imx_dma_buffer_allocate(). The required
+ * size and alignment can be retrieved from the min_required_stream_buffer_size
+ * and required_stream_buffer_physaddr_alignment fields that are present in
+ * the ImxVpuApiEncGlobalInfo structure. To get the const global instance
+ * of that structure, use imx_vpu_api_enc_get_global_info().
+ *
+ * Once the stream buffer is allocated, an ImxVpuApiEncOpenParams structure
+ * must be initialized. Typically, using imx_vpu_api_enc_set_default_open_params()
+ * to fill that structure with default values and then optionally tweaking
+ * some of that structure's values is the preferred way to initialize it.
+ *
+ * The encoder can then be created by calling imx_vpu_api_enc_open(). That
+ * function needs the stream buffer and ImxVpuApiEncOpenParams structure.
+ *
+ * Immediately after creating the encoder, it is necessary to retrieve the
+ * stream info by calling imx_vpu_api_enc_get_stream_info(). That structure
+ * contains several details about the VPU framebuffers like their metrics,
+ * the minimum framebuffer pool size etc. If that structure's
+ * min_num_required_framebuffers field is nonzero, then the VPU uses a framebuffer
+ * pool for its encoding. That pool is not used for output, just for internal
+ * temporary data for the encoder's work. At least as many framebuffers as
+ * indicated by that field must be allocated and added to the VPU encoder's
+ * pool. The framebuffer size in bytes can be looked up in the strema info's
+ * min_framebuffer_size field (also look at framebuffer_alignment), and the
+ * framebuffer must be a DMA buffer, allocated with imx_dma_buffer_allocate().
+ * Once allocated, imx_vpu_api_enc_add_framebuffers_to_pool() must be called
+ * to add the buffer to the pool. The buffer stays in the pool until the
+ * encoder is closed.
+ *
+ *
+ * MAIN ENCODING LOOP
+ *
+ * The encoding loop goes as follows:
+ *
+ * 1. Fill an ImxVpuApiRawFrame instance with information about the frame
+ *    that is to be encoded. If there are no more frames to encode, continue
+ *    at step 5.
+ * 2. Feed that frame into the VPU by calling imx_vpu_api_enc_push_raw_frame().
+ * 3. Call imx_vpu_api_enc_encode() and get its output code.
+ * 4. - If the output code is IMX_VPU_API_ENC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED,
+ *      go back to step 1.
+ *    - If the output code is IMX_VPU_API_ENC_OUTPUT_CODE_NO_OUTPUT_YET_AVAILABLE,
+ *      just go back to step 3.
+ *    - If the output code is IMX_VPU_API_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE,
+ *      use imx_vpu_api_enc_get_encoded_frame() to retrieve the encoded frame,
+ *      output the encoded frame, then go back to step 3.
+ *    - If the output code is IMX_VPU_API_ENC_OUTPUT_CODE_NEED_ADDITIONAL_FRAMEBUFFER,
+ *      add a framebuffer with imx_vpu_api_enc_add_framebuffers_to_pool(), then
+ *      go back to step 3.
+ * 5. Drain the encoder as explained below.
+ * 6. Exit the loop.
+ *
+ *
+ * DRAINING THE ENCODER
+ *
+ * To drain the encoder, all that is needed is to repeatedly call
+ * imx_vpu_api_enc_encode() (_without_ any imx_vpu_api_enc_push_raw_frame()
+ * calls) until one of the terminating cases occur:
+ *
+ *   1. The IMX_VPU_API_ENC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED output
+ *      code is returned
+ *   2. A return code that indicates an error is returned
+ *
+ *
+ * SHUTTING DOWN THE ENCODER
+ *
+ * The encoder is shut down by calling imx_vpu_api_enc_close(). Once
+ * that was called, the framebuffers that were previously added to the
+ * VPU encoder's pool are no longer used, and can be deallocated. Note
+ * that calling imx_vpu_api_enc_close() will also drop any encoded
+ * frame data that may be queued in the encoder. Consider draining
+ * the encoder before shutting it down.
+ */
+
+
 /* Opaque encoder structure. */
 typedef struct _ImxVpuApiEncoder ImxVpuApiEncoder;
 
@@ -1770,8 +1952,8 @@ typedef enum
 	 * now expected to call imx_vpu_api_enc_push_raw_frame() to feed in
 	 * a new raw frame for encoding. Then the encoding can continue. */
 	IMX_VPU_API_ENC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED,
-	/* Encoder encountered the end of stream. No further encoding is possible.
-	 * The only valid API call at this point is imx_vpu_api_dec_close(). */
+	/* DEPRECATED. This output code is not used anymore, and kept here for
+	 * backwards compatibility with existing code. Do not use in new code. */
 	IMX_VPU_API_ENC_OUTPUT_CODE_EOS
 }
 ImxVpuApiEncOutputCodes;
@@ -2174,39 +2356,12 @@ ImxVpuApiEncStreamInfo const * imx_vpu_api_enc_get_stream_info(ImxVpuApiEncoder 
  */
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_add_framebuffers_to_pool(ImxVpuApiEncoder *encoder, ImxDmaBuffer **fb_dma_buffers, size_t num_framebuffers);
 
-/* Enables the drain mode.
- *
- * In drain mode, no new input data is used; instead, any not yet encoded frames
- * still stored in the VPU are encoded, until the queue is empty. This is
- * useful when there is no more input data, and playback shall stop once all
- * frames are encoded. The drain mode stays enabled until the encoder is closed.
- *
- * Note that the drain mode is solely used for draining the encoder when
- * the user has no more data to encode. In other words, when the user detects
- * that the end of stream was reached, the drain mode should be enabled.
- * Then, imx_vpu_api_enc_encode() can be called until the output code
- * IMX_VPU_API_ENC_OUTPUT_CODE_EOS is returned.
- *
- * If instead the user wants to drain the decoder mid-stream, all that is
- * needed is to repeatedly call imx_vpu_api_enc_encode() until one of the
- * terminating cases occur:
- *
- *   1. The IMX_VPU_API_ENC_OUTPUT_CODE_EOS output code
- *      is returned
- *   2. The IMX_VPU_API_ENC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED output code
- *      is returned
- *   3. A return code that indicates an error is returned
- *
- * @param encoder Encoder instance. Must not be NULL.
- */
+/* DEPRECATED FUNCTION. Do not use it in new code. See the documentation at the
+ * start of the encoder section above for an explanation on how to drain properly. */
 void imx_vpu_api_enc_enable_drain_mode(ImxVpuApiEncoder *encoder);
 
-/* Checks if drain mode is enabled.
- *
- * 1 = enabled. 0 = disabled.
- *
- * @param encoder Encoder instance. Must not be NULL.
- */
+/* DEPRECATED FUNCTION. Do not use it in new code. See the
+ * ImxVpuApiEncoder documentation for how to drain properly. */
 int imx_vpu_api_enc_is_drain_mode_enabled(ImxVpuApiEncoder *encoder);
 
 /* Flushes the encoder.
@@ -2288,8 +2443,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_set_frame_rate(ImxVpuApiEncoder *encoder
  * IMX_VPU_API_ENC_RETURN_CODE_OK: Success.
  *
  * IMX_VPU_API_ENC_RETURN_CODE_INVALID_CALL: Tried to call this before
- * the previously pushed raw frame was encoded, or tried to call this
- * in drain mode.
+ * the previously pushed raw frame was encoded.
  *
  * IMX_VPU_API_ENC_RETURN_CODE_DMA_MEMORY_ACCESS_ERROR: Could not access the
  * raw frame's DMA buffer memory.
@@ -2325,11 +2479,6 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_push_raw_frame(ImxVpuApiEncoder *encoder
  * by calling imx_vpu_api_enc_get_encoded_frame() and pass a buffer to that
  * function that is at least as large as the number of bytes that the value
  * pointed to by encoded_frame_size was set to.
- *
- * Repeatedly calling imx_vpu_api_enc_encode() until the output code
- * IMX_VPU_API_ENC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED is needed is a valid way
- * of draining an encoder without having to enable the drain mode. See
- * imx_vpu_api_enc_enable_drain_mode() for details.
  *
  * @param encoder Encoder instance. Must not be NULL.
  * @param encoded_frame_size Pointer to a size_t value that will be set to the
