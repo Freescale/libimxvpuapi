@@ -285,6 +285,19 @@ int imx_vpu_api_vp8_profile_number(ImxVpuApiVP8Profile profile)
 }
 
 
+int imx_vpu_api_vp9_profile_number(ImxVpuApiVP9Profile profile)
+{
+	switch (profile)
+	{
+		case IMX_VPU_API_VP9_PROFILE_0: return 0;
+		case IMX_VPU_API_VP9_PROFILE_1: return 1;
+		case IMX_VPU_API_VP9_PROFILE_2: return 2;
+		case IMX_VPU_API_VP9_PROFILE_3: return 3;
+		default: return -1;
+	}
+}
+
+
 
 
 /************************************************/

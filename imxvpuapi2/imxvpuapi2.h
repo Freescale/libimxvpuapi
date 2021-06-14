@@ -749,6 +749,11 @@ typedef enum
 }
 ImxVpuApiVP9Profile;
 
+/* Returns the profile as an integer. For example,
+ * IMX_VPU_API_VP9_PROFILE_2 returns 2.
+ * Invalid values return -1. */
+int imx_vpu_api_vp9_profile_number(ImxVpuApiVP9Profile profile);
+
 /* Additional VP9 specific codec support details. */
 typedef struct
 {
