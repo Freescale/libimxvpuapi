@@ -842,6 +842,12 @@ ImxVpuApiVP9SupportDetails;
  *    - If the output code is IMX_VPU_API_DEC_OUTPUT_CODE_FRAME_SKIPPED, retrieve
  *      the details about the skipped frame with imx_vpu_api_dec_get_skipped_frame_info(),
  *      then go back to step 4.
+ *    - if the output code is IMX_VPU_API_DEC_OUTPUT_CODE_VIDEO_PARAMETERS_CHANGED,
+ *      drain the decoder as explained below, close the current decoder with
+ *      imx_vpu_api_dec_close(), deallocate all framebuffers and the output buffer
+ *      (if present), open a new decoder with imx_vpu_api_dec_open(), and go back
+ *      to step 2, feedin the same data into the encoder that was previously fed
+ *      and which produced this output code.
  * 5. Drain the decoder as explained below.
  * 6. Exit the loop.
  *
@@ -976,16 +982,6 @@ typedef enum
 	 * many framebuffers as indicated by the min_num_required_framebuffers
 	 * field in ImxVpuApiDecStreamInfo.
 	 *
-	 * With some compression formats, this output code can appear later again,
-	 * mid-stream, for example because the width/height of output frames changed.
-	 * This can happen with h.264 and h.265 bitstreams that contain additional
-	 * SPS/PPS NALUs. In such cases, deallocate any previously allocated
-	 * framebuffers that were added to the decoder's framebuffer pool (they
-	 * got removed from the pool at this point, so it is safe to discard them).
-	 * Retrieve the new stream info by calling imx_vpu_api_dec_get_stream_info().
-	 * Then proceed as usual, by allocating and adding at least as many
-	 * framebuffers as indicated by min_num_required_framebuffers.
-	 *
 	 * Decoding cannot continue until the framebuffers were added to the pool
 	 * (unless the required amount of framebuffers for the pool is 0). */
 	IMX_VPU_API_DEC_OUTPUT_CODE_NEW_STREAM_INFO_AVAILABLE,
@@ -1014,7 +1010,22 @@ typedef enum
 	 * A frame is skipped when it is not needed or not meant to be shown.
 	 * For example, some VP8/VP9 frames may be alt-reference frames or
 	 * "golden frames", neither or which are supposed to be shown. */
-	IMX_VPU_API_DEC_OUTPUT_CODE_FRAME_SKIPPED
+	IMX_VPU_API_DEC_OUTPUT_CODE_FRAME_SKIPPED,
+
+	/* With some compression formats, the video parameters (width, height etc.)
+	 * can change mid-stream. For example, in h.264 and h.265 bitstreams,
+	 * additional SPS/PPS NALUs can be present that contain such changes.
+	 * If a video parameter change occurs, this output code is emitted. The
+	 * user then has to drain the decoder, deallocate any previously allocated
+	 * framebuffers that were added to the decoder's framebuffer pool (they
+	 * got removed from the pool at this point, so it is safe to discard them),
+	 * and reopen the decoder (since the existing decoder's configuration
+	 * is fixed, and is incompatible with the newly changed video parameters).
+	 * Then, the encoded data that produced this output code must be fed into
+	 * the new decoder instance, after which decoding proceeds as if it had
+	 * started from the beginning (that is, new stream info is announced,
+	 * framebuffers must be added etc.) */
+	IMX_VPU_API_DEC_OUTPUT_CODE_VIDEO_PARAMETERS_CHANGED
 }
 ImxVpuApiDecOutputCodes;
 

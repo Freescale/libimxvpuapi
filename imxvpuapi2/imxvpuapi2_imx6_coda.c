@@ -2313,8 +2313,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 		if (decoder->dec_output_info.decodingSuccess & (1 << 20))
 		{
 			IMX_VPU_API_DEBUG("video sequence parameters changed");
-			// TODO: test this
-			*output_code = IMX_VPU_API_DEC_OUTPUT_CODE_NEW_STREAM_INFO_AVAILABLE;
+			*output_code = IMX_VPU_API_DEC_OUTPUT_CODE_VIDEO_PARAMETERS_CHANGED;
 			return IMX_VPU_API_DEC_RETURN_CODE_OK;
 		}
 

@@ -1923,26 +1923,20 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 				break;
 
 			case CODEC_PENDING_FLUSH:
-				/* This is mainly reached when the video parameters change.
+				/* This is reached when the video parameters change.
 				 * The decoder needs to get rid of any remaining decoded
 				 * video frames at this point before it can continue,
 				 * because it needs to empty its buffer pool and request
 				 * new framebuffers to be added (the old ones are no longer
 				 * used since they may have incorrect size due to changed
-				 * resolution for example). So, we exit the loop here, but
-				 * do _not_ set the output code. This will inform callers
-				 * that they need to call imx_vpu_api_dec_decode() again,
-				 * which means that the getframe() call above will be reached.
-				 * This way, we empty the decoder's decoded frame queue,
-				 * which is just what was mentioned earlier. Once all
-				 * frames are dequeued, getframe() will return CODEC_OK, so
-				 * execution will continue to the decode() call, which will
-				 * eventually return CODEC_WAITING_FRAME_BUFFER etc.
-				 *
-				 * This is how changing resolutions and other changing
-				 * parameters are handled. */
+				 * resolution for example). So, we exit the loop here and
+				 * set IMX_VPU_API_DEC_OUTPUT_CODE_VIDEO_PARAMETERS_CHANGED
+				 * as the output code. That way, the caller will know to
+				 * reopen the decoder, get rid of old framebuffers, and
+				 * allocate new ones when requested. */
 				do_loop = FALSE;
-				IMX_VPU_API_DEBUG("decoder is in a pending-flush state, probably because video params changed");
+				IMX_VPU_API_DEBUG("decoder is in a pending-flush state -> video params changed");
+				*output_code = IMX_VPU_API_DEC_OUTPUT_CODE_VIDEO_PARAMETERS_CHANGED;
 				break;
 
 			case CODEC_NO_DECODING_BUFFER:
