@@ -1,3 +1,19 @@
+==== version 2.2.0 (2021-06-14) ====
+
+* Add IMX_VPU_API_DEC_OUTPUT_CODE_VIDEO_PARAMETERS_CHANGED output code
+* Deprecate drain mode, better document decoder drain mode
+* Various documentation fixes and new overviews about en- and
+  decoding to help with the basic concepts
+* Add note about the current state of i.MX8m plus support
+* New functions:
+  imx_vpu_api_is_color_format_rgb()
+  imx_vpu_api_vp8_profile_number()
+  imx_vpu_api_vp8_partition_count_number()
+  imx_vpu_api_vp9_profile_number()
+  imx_vpu_api_enc_set_frame_rate()
+* imx6-coda: Fix decoded frame fb_context
+  This was causing crashes when callers relied on said fb_context
+
 ==== version 2.1.2 (2021-04-25) ====
 
 * imx6-coda: Fix skipped frame reporting
