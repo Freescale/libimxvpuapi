@@ -380,7 +380,7 @@ typedef struct
 	/* Plane stride sizes, in bytes. The U and V planes always
 	 * use the same stride, so they share the same value.
 	 * When RGB(A) formats or packed YUV formats are used, the stride of the
-	 * single plane is stored in y_stride, and uv_stride is unusd. */
+	 * single plane is stored in y_stride, and uv_stride is unused. */
 	size_t y_stride, uv_stride;
 
 	/* Size of the Y and U/V planes, in bytes.
@@ -390,7 +390,7 @@ typedef struct
 	 * and V planes. In other words, if the video frames are semi planar, then
 	 * uv_size will be twice as large compared to when frames are fully planar.
 	 * When RGB(A) formats or packed YUV formats are used, the size of the
-	 * single plane is stored in y_size, and uv_size is unusd. */
+	 * single plane is stored in y_size, and uv_size is unused. */
 	size_t y_size, uv_size;
 
 	/* These define the starting offsets of each plane relative to the start
@@ -398,7 +398,7 @@ typedef struct
 	 * has no meaning, and u_offset is the offset of the combined interleaved
 	 * U/V plane.
 	 * When RGB(A) formats or packed YUV formats are used, the offset to the
-	 * single plane is stored in y_offset, and u_offset and v_offset are unusd. */
+	 * single plane is stored in y_offset, and u_offset and v_offset are unused. */
 	size_t y_offset, u_offset, v_offset;
 
 	/* Reserved bytes for ABI compatibility. */
