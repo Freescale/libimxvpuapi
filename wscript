@@ -144,26 +144,59 @@ class PlatformIMX8M:
 			includes = ['.'],
 			uselib = ['IMXDMABUFFER', 'C99', 'HANTRO', 'HANTRO_DEC'],
 			source = ['imxvpuapi2/imxvpuapi2_imx8m_hantro_decoder.c'],
-			name = 'imx8_decoder'
+			name = 'imx8m_hantro_decoder'
 		)
 		bld(
 			features = ['c'],
 			includes = ['.'],
 			uselib = ['IMXDMABUFFER', 'C99', 'HANTRO', 'HANTRO_ENC'],
 			source = ['imxvpuapi2/imxvpuapi2_imx8m_hantro_encoder.c'],
-			name = 'imx8_encoder'
+			name = 'imx8m_hantro_encoder'
 		)
 
 		return {
 			'uselib': ['HANTRO', 'HANTRO_DEC', 'HANTRO_ENC'],
-			'use': ['imx8_decoder', 'imx8_encoder']
+			'use': ['imx8m_hantro_decoder', 'imx8m_hantro_encoder']
+		}
+
+
+class PlatformIMX8:
+	description = 'i.MX8 with Amphion codec'
+
+	def __init__(self, soc_type):
+		self.soc_type = soc_type
+
+	def configure(self, conf):
+		sysroot_path = conf.env['SYSROOT']
+		conf.env['CFLAGS_AMPHION'] += ['-pthread']
+		conf.env['LINKFLAGS_AMPHION'] += ['-pthread']
+
+		# G2D is used for the conversions of Amphion-tiled frames
+		conf.check_cc(uselib_store = 'AMPHION', uselib = 'AMPHION', define_name = '', mandatory = 1, lib = 'g2d')
+		conf.check_cc(uselib_store = 'AMPHION', uselib = 'AMPHION', define_name = '', mandatory = 1, header_name = 'g2d.h')
+
+		conf.define('IMXVPUAPI_IMX8_SOC_TYPE_' + self.soc_type, 1)
+
+	def build(self, bld):
+		bld(
+			features = ['c'],
+			includes = ['.'],
+			uselib = ['IMXDMABUFFER', 'C99', 'AMPHION'],
+			source = ['imxvpuapi2/imxvpuapi2_imx8_amphion.c'],
+			name = 'imx8_amphion'
+		)
+
+		return {
+			'uselib': ['AMPHION'],
+			'use': ['imx8_amphion']
 		}
 
 
 imx_platforms = {
 	'imx6': PlatformIMX6(),
 	'imx8m': PlatformIMX8M(soc_type = 'MX8M', has_encoder = False),
-	'imx8mm': PlatformIMX8M(soc_type = 'MX8MM', has_encoder = True)
+	'imx8mm': PlatformIMX8M(soc_type = 'MX8MM', has_encoder = True),
+	'imx8qm': PlatformIMX8(soc_type = 'MX8QM')
 }
 
 

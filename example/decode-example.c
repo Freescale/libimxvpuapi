@@ -287,6 +287,8 @@ static Retval decode_encoded_frames(Context *ctx)
 			return RETVAL_ERROR;
 		}
 
+		fprintf(stderr, "decoded frame with output code %s\n", imx_vpu_api_dec_output_code_string(output_code));
+
 		switch (output_code)
 		{
 			case IMX_VPU_API_DEC_OUTPUT_CODE_NO_OUTPUT_YET_AVAILABLE:
@@ -361,6 +363,7 @@ static Retval decode_encoded_frames(Context *ctx)
 				ctx->y4m_context.color_format = stream_info->color_format;
 				if (!y4m_init(ctx->y4m_output_file, &(ctx->y4m_context), 0))
 				{
+					fprintf(stderr, "Could not initialize Y4M output\n");
 					retval = RETVAL_ERROR;
 					do_loop = 0;
 					break;
@@ -523,14 +526,20 @@ Context* init(FILE *input_file, FILE *output_file)
 		| IMX_VPU_API_DEC_OPEN_PARAMS_FLAG_USE_SEMI_PLANAR_COLOR_FORMAT
 		;
 
-	/* Allocate the stream buffer that is used throughout the decoding process. */
-	ctx->stream_buffer = imx_dma_buffer_allocate(
-		ctx->allocator,
-		ctx->dec_global_info->min_required_stream_buffer_size,
-		ctx->dec_global_info->required_stream_buffer_physaddr_alignment,
-		0
-	);
-	assert(ctx->stream_buffer != NULL);
+	/* Allocate the stream buffer that is used throughout
+	 * the decoding process (if the VPU needs one). */
+	if (ctx->dec_global_info->min_required_stream_buffer_size > 0)
+	{
+		ctx->stream_buffer = imx_dma_buffer_allocate(
+			ctx->allocator,
+			ctx->dec_global_info->min_required_stream_buffer_size,
+			ctx->dec_global_info->required_stream_buffer_physaddr_alignment,
+			0
+		);
+		assert(ctx->stream_buffer != NULL);
+	}
+	else
+		ctx->stream_buffer = NULL;
 
 	/* Open a decoder instance, using the previously allocated bitstream buffer */
 	if ((dec_ret = imx_vpu_api_dec_open(&(ctx->decoder), &open_params, ctx->stream_buffer)) != IMX_VPU_API_DEC_RETURN_CODE_OK)

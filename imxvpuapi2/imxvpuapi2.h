@@ -71,6 +71,7 @@ void imx_vpu_api_set_logging_function(ImxVpuApiLoggingFunc logging_fn);
 /* FourCC identifying the hardware as a Hantro codec. */
 #define IMX_VPU_API_HARDWARE_TYPE_HANTRO  IMX_VPU_API_MAKE_FOURCC_UINT32('H','T','R','O')
 #define IMX_VPU_API_HARDWARE_TYPE_CODA960 IMX_VPU_API_MAKE_FOURCC_UINT32('C','9','6','0')
+#define IMX_VPU_API_HARDWARE_TYPE_AMPHION IMX_VPU_API_MAKE_FOURCC_UINT32('A','P','H','N')
 
 
 /* Possible frame types. */
@@ -445,15 +446,10 @@ typedef struct
 	 * for example. */
 	void *context;
 
-	/* User-defined timestamps. These are here for convenience. In many
-	 * cases, the context one wants to associate with raw/encoded frames
-	 * is a PTS-DTS pair. If only the context pointer were available, users
-	 * would have to create a separate data structure containing PTS & DTS
-	 * values for each context. Since this use case is very common, these
-	 * two fields are added to the frame structure. Just like the context
-	 * pointer, this encoded frame and the associated raw frame will have
-	 * the same PTS-DTS values. It is also perfectly OK to not use them,
-	 * and just use the context pointer instead, or vice versa. */
+	/* Frame timestamps. The DTS is optional, and added for convenience.
+	 * The PTS must be set to a valid value, since some backends use it as
+	 * part of the frame reordering process. Similar to the context pointer
+	 * above, PTS and DTS are passed to/from the associated raw frame. */
 	uint64_t pts, dts;
 }
 ImxVpuApiEncodedFrame;
@@ -508,15 +504,10 @@ typedef struct
 	 * example. Not to be confused with the fb_context pointer. */
 	void *context;
 
-	/* User-defined timestamps. These are here for convenience. In many
-	 * cases, the context one wants to associate with raw/encoded frames
-	 * is a PTS-DTS pair. If only the context pointer were available, users
-	 * would have to create a separate data structure containing PTS & DTS
-	 * values for each context. Since this use case very is common, these
-	 * two fields are added to the frame structure. Just like the context
-	 * pointer, this encoded frame and the associated raw frame will have
-	 * the same PTS-DTS values. It is also perfectly OK to not use them, and
-	 * just use the context pointer instead, or vice versa. */
+	/* Frame timestamps. The DTS is optional, and added for convenience.
+	 * The PTS must be set to a valid value, since some backends use it as
+	 * part of the frame reordering process. Similar to the context pointer
+	 * above, PTS and DTS are passed to/from the associated raw frame. */
 	uint64_t pts, dts;
 }
 ImxVpuApiRawFrame;
