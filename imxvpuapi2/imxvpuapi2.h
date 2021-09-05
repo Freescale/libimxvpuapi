@@ -1097,8 +1097,20 @@ typedef enum
 	 * one if this is set. Note that decoders may or may not respect this
 	 * flag. Some decoders can only produce semi planar, others only fully
 	 * planar data etc. So, always check the color_format value in the
-	 * ImxVpuApiDecStreamInfo structure. */
-	IMX_VPU_API_DEC_OPEN_PARAMS_FLAG_USE_SEMI_PLANAR_COLOR_FORMAT = (1 << 5)
+	 * ImxVpuApiDecStreamInfo structure.
+	 * If IMX_VPU_API_DEC_OPEN_PARAMS_FLAG_USE_SUGGESTED_COLOR_FORMAT is
+	 * set, the suggested color format will be tried first. */
+	IMX_VPU_API_DEC_OPEN_PARAMS_FLAG_USE_SEMI_PLANAR_COLOR_FORMAT = (1 << 5),
+	/* If this is set, then the decoder initialization may make use of the
+	 * suggested_color_format value ImxVpuApiDecOpenParams. That format
+	 * is tried first. This takes priority over the other flags
+	 * IMX_VPU_API_DEC_OPEN_PARAMS_FLAG_USE_SEMI_PLANAR_COLOR_FORMAT,
+	 * IMX_VPU_API_DEC_OPEN_PARAMS_FLAG_USE_TILED_OUTPUT, and
+	 * IMX_VPU_API_DEC_OPEN_PARAMS_FLAG_USE_10BIT_DECODING. If the suggested
+	 * format can be used by the decoder, these flags are ignored. Otherwise,
+	 * if the suggested format is unusable for the decoder, these flags are
+	 * processed as usual. */
+	IMX_VPU_API_DEC_OPEN_PARAMS_FLAG_USE_SUGGESTED_COLOR_FORMAT = (1 << 6),
 }
 ImxVpuApiDecOpenParamsFlags;
 
@@ -1131,8 +1143,13 @@ typedef struct
 	uint8_t const *extra_header_data;
 	size_t extra_header_data_size;
 
+	/* A color format the decoder should use for its output. Only valid if
+	 * the IMX_VPU_API_DEC_OPEN_PARAMS_FLAG_USE_SUGGESTED_COLOR_FORMAT flag
+	 * is set. Even then, the decoder is allowed to ignored this value. */
+	ImxVpuApiColorFormat suggested_color_format;
+
 	/* Reserved bytes for ABI compatibility. */
-	uint8_t reserved[IMX_VPU_API_RESERVED_SIZE];
+	uint8_t reserved[IMX_VPU_API_RESERVED_SIZE - sizeof(ImxVpuApiColorFormat)];
 }
 ImxVpuApiDecOpenParams;
 
