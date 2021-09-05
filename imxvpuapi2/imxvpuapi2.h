@@ -792,6 +792,10 @@ ImxVpuApiVP9SupportDetails;
  * the ImxVpuApiDecGlobalInfo structure. To get the const global instance
  * of that structure, use imx_vpu_api_dec_get_global_info().
  *
+ * NOTE: If min_required_stream_buffer_size is 0, then this first step
+ * is to be skipped, since this then means that the VPU does not need
+ * a stream buffer.
+ *
  * Once the stream buffer is allocated, an ImxVpuApiDecOpenParams structure
  * must be initialized. At the very least, its compression_format field
  * must be set to a valid value. Be sure to set any unused field to zero.
@@ -823,6 +827,8 @@ ImxVpuApiVP9SupportDetails;
  *      The stream info contains details about the necessary framebuffers. At this
  *      point, the user must allocate at least as many framebuffers as indicated
  *      by the min_num_required_framebuffers field in ImxVpuApiDecStreamInfo.
+ *      (min_num_required_framebuffers can be 0 if the VPU does not use buffer
+ *      pool, or performs allocation for its buffer pool internally.)
  *      The details about the framebuffers like its minimum size and alignment are
  *      found in that structure as well. After allocating the buffers, they are
  *      added to the VPU decoder with imx_vpu_api_dec_add_framebuffers_to_pool().
@@ -1276,7 +1282,9 @@ typedef struct
 	/* The minimum amount of framebuffers that must be added to the decoder's
 	 * framebuffer pool in order for decoding to proceed. Adding more than
 	 * this amount is okay. Adding less will cause decoding to fail, and the
-	 * decoder will have to be closed. */
+	 * decoder will have to be closed.
+	 * (min_num_required_framebuffers can be 0 if the VPU does not use buffer
+	 * pool, or performs allocation for its buffer pool internally.) */
 	size_t min_num_required_framebuffers;
 
 	/* Color format of the decoded frames. */
@@ -1354,7 +1362,8 @@ typedef struct
 	 * IMX_VPU_API_DEC_OPEN_PARAMS_FLAG_USE_TILED_OUTPUT for that. */
 	uint32_t hardware_type;
 
-	/* Minimum required size for the stream buffer, in bytes. */
+	/* Minimum required size for the stream buffer, in bytes.
+	 * If this is 0, then the VPU decoder does not use a stream buffer. */
 	size_t min_required_stream_buffer_size;
 	/* Required alignment for the stream buffer' physical address, in bytes.
 	 * A value of 0 or 1 indicates that no alignment is required. */
@@ -1414,7 +1423,7 @@ ImxVpuApiCompressionFormatSupportDetails const * imx_vpu_api_dec_get_compression
  * @param open_params Parameters for opening a new decoder instance.
  *        Must not be NULL.
  * @param stream_buffer Stream buffer to be used in the decoding process.
- *        Must not be NULL.
+ *        Must not be NULL unless the minimum stream buffer size is 0.
  * @return Return code indicating the outcome. Valid values:
  *
  * IMX_VPU_API_DEC_RETURN_CODE_OK: Success.
@@ -1811,6 +1820,10 @@ void imx_vpu_api_dec_get_skipped_frame_info(ImxVpuApiDecoder *decoder, ImxVpuApi
  * the ImxVpuApiEncGlobalInfo structure. To get the const global instance
  * of that structure, use imx_vpu_api_enc_get_global_info().
  *
+ * NOTE: If min_required_stream_buffer_size is 0, then this first step
+ * is to be skipped, since this then means that the VPU does not need
+ * a stream buffer.
+ *
  * Once the stream buffer is allocated, an ImxVpuApiEncOpenParams structure
  * must be initialized. Typically, using imx_vpu_api_enc_set_default_open_params()
  * to fill that structure with default values and then optionally tweaking
@@ -2182,8 +2195,8 @@ typedef struct
 	/* FourCC identifying the underlying hardware codec. */
 	uint32_t hardware_type;
 
-	/* Minimum required size for the stream buffer. The stream buffer
-	 * must be of at least this size. */
+	/* Minimum required size for the stream buffer, in bytes.
+	 * If this is 0, then the VPU encoder does not use a stream buffer. */
 	size_t min_required_stream_buffer_size;
 	/* Required alignment for the stream buffer' physical address, in bytes.
 	 * A value of 0 or 1 indicates that no alignment is required. */
@@ -2265,7 +2278,7 @@ void imx_vpu_api_enc_set_default_open_params(ImxVpuApiCompressionFormat compress
  * @param open_params Parameters for opening a new encoder instance.
  *        Must not be NULL.
  * @param stream_buffer Stream buffer to be used in the encoding process.
- *        Must not be NULL.
+ *        Must not be NULL unless the minimum stream buffer size is 0.
  * @return Return code indicating the outcome. Valid values:
  *
  * IMX_VPU_API_ENC_RETURN_CODE_OK: Success.
