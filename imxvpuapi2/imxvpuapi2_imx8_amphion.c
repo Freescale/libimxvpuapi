@@ -458,7 +458,7 @@ DecFrameContextItem;
 
 
 /* Structure for housing a V4L2 output buffer and its associated plane structure.
- * Note that "output" is V4L2 mem2mem terminology refers to "encoded data". */
+ * Note that "output" is V4L2 mem2mem decoder terminology for "encoded data". */
 typedef struct
 {
 	/* The buffer's "planes" pointer is set to point to the "plane" instance
@@ -473,7 +473,7 @@ DecV4L2OutputBufferItem;
 
 
 /* Structure for housing a V4L2 capture buffer and its associated
- * plane structure and DMA buffers. */
+ * plane structure and DMA buffers for housing raw frames. */
 typedef struct
 {
 	/* The buffer's "planes" pointer is set to point to the "plane" instance
@@ -521,8 +521,8 @@ struct _ImxVpuApiDecoder
 
 	/* Capture buffer states */
 
-	/* Array of allocated output buffer items that contain V4L2 output buffers.
-	 * There is exactly one output buffer item for each V4L2 output buffer that
+	/* Array of allocated capture buffer items that contain V4L2 capture buffers.
+	 * There is exactly one capture buffer item for each V4L2 capture buffer that
 	 * was allocated with the VIDIOC_REQBUFS ioctl in
 	 * imx_vpu_api_dec_handle_resolution_change(). */
 	DecV4L2CaptureBufferItem *capture_buffer_items;
@@ -570,7 +570,7 @@ struct _ImxVpuApiDecoder
 	 * associated with the corresponding encoded frame. This array is filled
 	 * and expanded on-demand by imx_vpu_api_dec_add_frame_context().
 	 * The array expansion is dictated by the behavior of the V4L2 driver,
-	 * that is, when the driver decides to decode and output an encoded frame.
+	 * that is, when the driver decides to decode and output a frame.
 	 * A larger array can happen with h.264 and h.265 streams that contain
 	 * B-frames. And, if this array keeps getting expanded over time, it
 	 * indicates that the driver is internally skipping invisible or
@@ -1681,7 +1681,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 		int frame_context_index;
 		DecV4L2CaptureBufferItem *capture_buffer_item;
 
-		IMX_VPU_API_LOG("decoded frames are available");
+		IMX_VPU_API_LOG("decoded frame is available");
 		*output_code = IMX_VPU_API_DEC_OUTPUT_CODE_DECODED_FRAME_AVAILABLE;
 
 		/* The code above already checks for this and returns an error
@@ -1702,7 +1702,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 		/* Dequeue the decoded frame from the CAPTURE queue. */
 		if (ioctl(decoder->v4l2_fd, VIDIOC_DQBUF, &buffer) < 0)
 		{
-			IMX_VPU_API_ERROR("could not dequeue encoded frame buffer: %s (%d)", strerror(errno), errno);
+			IMX_VPU_API_ERROR("could not dequeue decoded frame buffer: %s (%d)", strerror(errno), errno);
 			goto error;
 		}
 
@@ -2099,7 +2099,7 @@ static BOOL imx_vpu_api_dec_handle_resolution_change(ImxVpuApiDecoder *decoder, 
 		goto error;
 	}
 	min_num_buffers_for_capture = control.value;
-	IMX_VPU_API_DEBUG("min num buffers for capture: %d", min_num_buffers_for_capture);
+	IMX_VPU_API_DEBUG("min num buffers for capture queue: %d", min_num_buffers_for_capture);
 
 	IMX_VPU_API_DEBUG("requesting V4L2 capture buffers");
 	memset(&capture_buffer_request, 0, sizeof(capture_buffer_request));
