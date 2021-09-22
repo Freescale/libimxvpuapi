@@ -91,6 +91,10 @@
 #define V4L2_EVENT_SKIP                      (V4L2_EVENT_PRIVATE_START + 2)
 #endif
 
+#ifndef V4L2_CID_USER_FRAME_DIS_REORDER
+#define V4L2_CID_USER_FRAME_DIS_REORDER      (V4L2_CID_USER_BASE + 0x1300)
+#endif
+
 #define V4L2_FOURCC_ARGS(FOURCC) \
 		  ((char)(((FOURCC) >> 0)) & 0xFF) \
 		, ((char)(((FOURCC) >> 8)) & 0xFF) \
@@ -1017,6 +1021,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_open(ImxVpuApiDecoder **decoder, ImxVpuA
 
 		IMX_VPU_API_DEBUG(
 			"  output buffer #%d:  flags: %08x  length: %u  mem offset: %u",
+			i,
 			(unsigned int)(output_buffer_item->buffer.flags),
 			(unsigned int)(output_buffer_item->buffer.m.planes[0].length),
 			(unsigned int)(output_buffer_item->buffer.m.planes[0].m.mem_offset)
@@ -1067,6 +1072,26 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_open(ImxVpuApiDecoder **decoder, ImxVpuA
 		IMX_VPU_API_ERROR("could not subscribe to skip event: %s (%d)", strerror(errno), errno);
 		dec_ret = IMX_VPU_API_DEC_RETURN_CODE_ERROR;
 		goto error;
+	}
+
+
+	/* Enable/disable frame reordering. */
+
+	{
+		struct v4l2_control control;
+		BOOL do_frame_reordering = !!(open_params->flags & IMX_VPU_API_DEC_OPEN_PARAMS_FLAG_ENABLE_FRAME_REORDERING);
+
+		IMX_VPU_API_DEBUG("frame reordering is %s", do_frame_reordering ? "enabled" : "disabled");
+
+		control.id = V4L2_CID_USER_FRAME_DIS_REORDER;
+		control.value = !do_frame_reordering;
+
+		if (ioctl((*decoder)->v4l2_fd, VIDIOC_S_CTRL, &control) < 0)
+		{
+			IMX_VPU_API_ERROR("could not %s frame reordering: %s (%d)", do_frame_reordering ? "enable" : "disable", strerror(errno), errno);
+			dec_ret = IMX_VPU_API_DEC_RETURN_CODE_ERROR;
+			goto error;
+		}
 	}
 
 
