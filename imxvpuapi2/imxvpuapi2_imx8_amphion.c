@@ -2457,31 +2457,209 @@ static BOOL imx_vpu_api_dec_garbage_collect_oldest_frame(ImxVpuApiDecoder *decod
 /************************************************/
 
 
+/* The minimum number of capture buffers we need to let the
+ * driver store encoded frames in. Pick 6 to have a generous
+ * extra amount of buffers available. */
+#define ENC_MIN_NUM_REQUIRED_CAPTURE_BUFFERS 6
+
+/* We allocate 2 MB for each capture v4l2_buffer. This gives
+ * us plenty of room. Encoded frames are expected to be
+ * far smaller than this. */
+#define ENC_REQUESTED_CAPTURE_BUFFER_SIZE (2 * 1024 * 1024)
+
+/* The number of planes in output buffers. The Amphion
+ * Windsor encoder always expects NV12 data, so there are always
+ * exactly 2 planes (one Y- and one UV-plane). */
+#define ENC_NUM_OUTPUT_BUFFER_PLANES 2
+
+/* Alignment for Y/UV strides. */
+#define ENC_STRIDE_ALIGNMENT 16
+
+
+typedef struct
+{
+	/* context pointer, PTS, DTS from the input frame. */
+	void *context;
+	uint64_t pts, dts;
+	/* PTS in microseconds. Used for comparing context items. */
+	uint64_t pts_microseconds;
+	/* Set to TRUE if the frame context currently holds PTS/DTS/context
+	 * data of a pushed raw frame. FALSE if this item is currently
+	 * not used and thus available for storing context data. */
+	BOOL in_use;
+}
+EncFrameContextItem;
+
+
+/* Structure for housing a V4L2 output buffer and its associated
+ * plane structure and DMA buffers for housing raw frames. */
+typedef struct
+{
+	/* The buffer's "planes" pointer is set to point to the "plane" instance
+	 * below when the encoder's output_buffer_items are allocated.
+	 * This happens in the imx_vpu_api_enc_open() function. */
+	struct v4l2_buffer buffer;
+	/* Since the Amphion encoder uses the multi-planar API, we need to
+	 * specify a plane structure. */
+	struct v4l2_plane planes[ENC_NUM_OUTPUT_BUFFER_PLANES];
+	/* The DMA buffer that actually contains the output frame. */
+	ImxDmaBuffer *dma_buffer;
+}
+EncV4L2OutputBufferItem;
+
+
+/* Structure for housing a V4L2 capture buffer and its associated plane structure.
+ * Note that "capture" is V4L2 mem2mem encoder terminology for "encoded data". */
+typedef struct
+{
+	/* The buffer's "planes" pointer is set to point to the "plane" instance
+	 * below when the encoder's capture_buffer_items are allocated.
+	 * This happens in the imx_vpu_api_enc_open() function. */
+	struct v4l2_buffer buffer;
+	/* Since the Amphion encoder uses the multi-planar API, we need to
+	 * specify a plane structure. (Encoded data uses exactly 1 "plane"). */
+	struct v4l2_plane plane;
+}
+EncV4L2CaptureBufferItem;
+
+
 struct _ImxVpuApiEncoder
 {
 	int v4l2_fd;
 
-	/* DEPRECATED. This is kept here for backwards compatibility. */
+
+	/* Output queue states */
+
+	/* Array of allocated output buffer items that contain V4L2 output buffers.
+	 * There is exactly one output buffer item for each V4L2 output buffer that
+	 * was allocated with the VIDIOC_REQBUFS ioctl in imx_vpu_api_enc_open(). */
+	EncV4L2OutputBufferItem *output_buffer_items;
+	int num_output_buffers;
+
+	/* TRUE if the output queue was enabled with the VIDIOC_STREAMON ioctl. */
+	BOOL output_stream_enabled;
+
+	/* Size in bytes of one V4L2 output buffer. This is used as the
+	 * size for the DMA buffers in each EncV4L2OutputBufferItem. */
+	int output_buffer_size;
+
+	/* How many of the output buffers have been pushed into the output queue
+	 * with the VIDIOC_QBUF ioctl and haven't yet been dequeued again. */
+	int num_output_buffers_in_queue;
+
+
+	/* Capture buffer states */
+
+	/* Array of allocated capture buffer items that contain V4L2 capture buffers.
+	 * There is exactly one capture buffer item for each V4L2 capture buffer that
+	 * was allocated with the VIDIOC_REQBUFS ioctl in imx_vpu_api_enc_open(). */
+	EncV4L2CaptureBufferItem *capture_buffer_items;
+	int num_capture_buffers;
+
+	/* TRUE if the capture queue was enabled with the VIDIOC_STREAMON ioctl. */
+	BOOL capture_stream_enabled;
+
+	/* Size in bytes of one V4L2 capture buffer. This is used as the
+	 * size for the DMA buffers in each DecV4L2CaptureBufferItem. */
+	int capture_buffer_size;
+
+
+	/* Frame context states */
+
+	/* Array of frame context items. A "frame context" is the tuple of
+	 * PTS, DTS, and context pointer that is specified by the user through
+	 * the imx_vpu_api_enc_push_raw_frame() function's raw_frame
+	 * argument. That argument points to an ImxVpuApiRawFrame instance
+	 * which contains these three values. The frame context is associated
+	 * with an raw and with the corresponding encoded frame. This means
+	 * that the imx_vpu_api_enc_get_encoded_frame() returns an encoded frame
+	 * and the PTS/DTS/context pointer frame context values that were
+	 * associated with the corresponding raw frame. This array is filled
+	 * and expanded on-demand by imx_vpu_api_enc_add_frame_context().
+	 * The array expansion is dictated by the behavior of the V4L2 driver,
+	 * that is, when the driver decides to encode and output a frame.
+	 * A larger array can happen with h.264 and h.265 streams that contain
+	 * B-frames. */
+	EncFrameContextItem *frame_context_items;
+	int num_frame_context_items;
+
+	/* Array of frame context item indices (= indices into the
+	 * frame_context_items array). Whenever a frame context is to be stored,
+	 * this array is looked into first to reuse a currently unused frame context
+	 * item. New items are allocated only if this array is empty. The size
+	 * of this array is num_frame_context_items. */
+	int *available_frame_context_item_indices;
+	int num_available_frame_context_items;
+
+
+	/* Encoded frame states */
+
+	/* Index of a dequeued capture buffer that contains a newly encoded frame.
+	 * This is -1 initially, and set to a valid index when imx_vpu_api_enc_encode()
+	 * manages to dequeue an encoded frame from the capture queue. This buffer's
+	 * contents need to be copied in imx_vpu_api_enc_get_encoded_frame(), after
+	 * which this index is set to -1 again (in that same function call). */
+	int encoded_frame_capture_buffer_index;
+
+	/* Size of the encoded frame, in bytes. This is filled after an encoded
+	 * frame is dequeued in imx_vpu_api_enc_encode(). */
+	size_t encoded_frame_size;
+
+	EncFrameContextItem *encoded_frame_context_item;
+	int encoded_frame_context_index;
+
+	ImxVpuApiFrameType encoded_frame_type;
+
+
+	/* Miscellaneous */
+
+	/* Stream info that is filled in imx_vpu_api_enc_open(). */
+	ImxVpuApiEncStreamInfo stream_info;
+
+	/* This is TRUE if an imx_vpu_api_enc_encode() call actually
+	 * encoded a frame. imx_vpu_api_enc_get_encoded_frame() uses
+	 * this to check for incorrect calls (that is, when the caller
+	 * tries to get a encoded frame even though none was encoded).
+	 * Set to TRUE in imx_vpu_api_enc_encode() and back to FALSE
+	 * in imx_vpu_api_enc_get_encoded_frame(). */
+	BOOL frame_was_encoded;
+
+	/* Set to TRUE if an encoded buffer's V4L2_BUF_FLAG_LAST flag is set.
+	 * Afterwards, the next imx_vpu_api_enc_encode() call will set the
+	 * output code to IMX_VPU_API_ENC_OUTPUT_CODE_EOS and exit immediately. */
+	BOOL last_encoded_frame_seen;
+
+	/* Set to TRUE in imx_vpu_api_enc_enable_drain_mode(). */
 	BOOL drain_mode_enabled;
 };
+
+
+/* Internal function declarations */
+
+/* Enables/disables the output or capture stream (depending)
+ * on the type) via VIDIOC_STREAMON / VIDIOC_STREAMOFF. */
+static BOOL imx_vpu_api_enc_enable_stream(ImxVpuApiEncoder *encoder, BOOL do_enable, enum v4l2_buf_type type);
+
+static void imx_vpu_api_enc_mark_frame_context_as_available(ImxVpuApiEncoder *encoder, int frame_context_index);
+static int imx_vpu_api_enc_add_frame_context(ImxVpuApiEncoder *encoder, void *context, uint64_t pts, uint64_t dts);
+static int imx_vpu_api_enc_get_frame_context(ImxVpuApiEncoder *encoder, struct v4l2_buffer *buffer);
 
 
 static ImxVpuApiCompressionFormat const enc_supported_compression_formats[] =
 {
 	IMX_VPU_API_COMPRESSION_FORMAT_H264
 };
+static int const num_enc_supported_compression_formats = (sizeof(enc_supported_compression_formats) / sizeof(ImxVpuApiCompressionFormat));
 
 static ImxVpuApiEncGlobalInfo const enc_global_info = {
-	.flags = /*IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_HAS_ENCODER
-	       | IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_SEMI_PLANAR_FRAMES_SUPPORTED
-	       | IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_FULLY_PLANAR_FRAMES_SUPPORTED
-	       | IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_ENCODER_SUPPORTS_RGB_FORMATS*/0,
+	.flags = IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_HAS_ENCODER
+	       | IMX_VPU_API_ENC_GLOBAL_INFO_FLAG_SEMI_PLANAR_FRAMES_SUPPORTED,
 	.hardware_type = IMX_VPU_API_HARDWARE_TYPE_AMPHION,
 	.min_required_stream_buffer_size = 0,
 	.required_stream_buffer_physaddr_alignment = 1,
 	.required_stream_buffer_size_alignment = 1,
 	.supported_compression_formats = enc_supported_compression_formats,
-	.num_supported_compression_formats = sizeof(enc_supported_compression_formats) / sizeof(ImxVpuApiCompressionFormat)
+	.num_supported_compression_formats = num_enc_supported_compression_formats
 };
 
 ImxVpuApiEncGlobalInfo const * imx_vpu_api_enc_get_global_info(void)
@@ -2490,42 +2668,592 @@ ImxVpuApiEncGlobalInfo const * imx_vpu_api_enc_get_global_info(void)
 }
 
 
+static ImxVpuApiColorFormat const enc_supported_color_formats[] =
+{
+	IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV420_8BIT
+};
+static int const num_enc_supported_color_formats = (sizeof(enc_supported_color_formats) / sizeof(ImxVpuApiColorFormat));
+
+static ImxVpuApiH264SupportDetails const enc_compression_format_support_details = {
+	.parent = {
+		.min_width = 4, .max_width = INT_MAX,
+		.min_height = 4, .max_height = INT_MAX,
+		.supported_color_formats = enc_supported_color_formats,
+		.num_supported_color_formats = num_enc_supported_color_formats
+	},
+
+	.max_constrained_baseline_profile_level = IMX_VPU_API_H264_LEVEL_UNDEFINED,
+	.max_baseline_profile_level = IMX_VPU_API_H264_LEVEL_5_1,
+	.max_main_profile_level = IMX_VPU_API_H264_LEVEL_5_1,
+	.max_high_profile_level = IMX_VPU_API_H264_LEVEL_5_1,
+	.max_high10_profile_level = IMX_VPU_API_H264_LEVEL_UNDEFINED,
+
+	/* Windsor encoder does not produce any access units, nor
+	 * can it be configured to do so, so no flags are set. */
+	.flags = 0
+};
+
 ImxVpuApiCompressionFormatSupportDetails const * imx_vpu_api_enc_get_compression_format_support_details(ImxVpuApiCompressionFormat compression_format)
 {
-	IMX_VPU_API_UNUSED_PARAM(compression_format);
-	return NULL;
+	return (compression_format == IMX_VPU_API_COMPRESSION_FORMAT_H264)
+		? (ImxVpuApiCompressionFormatSupportDetails const *)(&enc_compression_format_support_details)
+		: NULL;
 }
 
 
 void imx_vpu_api_enc_set_default_open_params(ImxVpuApiCompressionFormat compression_format, ImxVpuApiColorFormat color_format, size_t frame_width, size_t frame_height, ImxVpuApiEncOpenParams *open_params)
 {
-	IMX_VPU_API_UNUSED_PARAM(compression_format);
-	IMX_VPU_API_UNUSED_PARAM(color_format);
-	IMX_VPU_API_UNUSED_PARAM(frame_width);
-	IMX_VPU_API_UNUSED_PARAM(frame_height);
-	IMX_VPU_API_UNUSED_PARAM(open_params);
+	assert(open_params != NULL);
+
+	open_params->frame_width = frame_width;
+	open_params->frame_height = frame_height;
+	open_params->compression_format = compression_format;
+	open_params->color_format = color_format;
+	open_params->bitrate = 256;
+	open_params->quantization = 0;
+	open_params->gop_size = 16;
+	open_params->frame_rate_numerator = 25;
+	open_params->frame_rate_denominator = 1;
+
+	switch (compression_format)
+	{
+		case IMX_VPU_API_COMPRESSION_FORMAT_H264:
+			open_params->format_specific_open_params.h264_open_params.profile = IMX_VPU_API_H264_PROFILE_BASELINE;
+			open_params->format_specific_open_params.h264_open_params.level = IMX_VPU_API_H264_LEVEL_5_1;
+			open_params->format_specific_open_params.h264_open_params.enable_access_unit_delimiters = 1;
+			break;
+
+		default:
+			break;
+	}
 }
 
 
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuApiEncOpenParams *open_params, ImxDmaBuffer *stream_buffer)
 {
-	IMX_VPU_API_UNUSED_PARAM(encoder);
-	IMX_VPU_API_UNUSED_PARAM(open_params);
+	ImxVpuApiEncReturnCodes enc_ret = IMX_VPU_API_ENC_RETURN_CODE_OK;
+	ImxVpuApiFramebufferMetrics *fb_metrics;
+	struct v4l2_capability capability;
+	struct v4l2_format capture_buffer_format;
+	struct v4l2_format output_buffer_format;
+	struct v4l2_streamparm output_streamparm;
+	struct v4l2_requestbuffers output_buffer_request;
+	struct v4l2_requestbuffers capture_buffer_request;
+	struct v4l2_control control;
+	int fd, i, stride;
+	int min_num_buffers_for_output;
+	ImxVpuApiEncH264OpenParams *h264_open_params;
+
 	IMX_VPU_API_UNUSED_PARAM(stream_buffer);
-	return IMX_VPU_API_ENC_RETURN_CODE_OK;
+
+	assert(encoder != NULL);
+	assert(open_params != NULL);
+
+
+	init_vpu_device_filenames();
+
+
+	/* Allocate the encoder structure and set the first states. */
+
+	*encoder = malloc(sizeof(ImxVpuApiEncoder));
+	assert((*encoder) != NULL);
+
+	memset(*encoder, 0, sizeof(ImxVpuApiEncoder));
+
+
+	/* Open the device and query its capabilities. */
+
+	IMX_VPU_API_DEBUG("opening V4L2 device node \"%s\"", vpu_device_filenames.encoder_filename);
+	(*encoder)->v4l2_fd = fd = open(vpu_device_filenames.encoder_filename, O_RDWR);
+	if (fd < 0)
+	{
+		IMX_VPU_API_ERROR("could not open V4L2 device: %s (%d)", strerror(errno), errno);
+		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+		goto error;
+	}
+
+	if (ioctl(fd, VIDIOC_QUERYCAP, &capability) < 0)
+	{
+		IMX_VPU_API_ERROR("could not query capability: %s (%d)", strerror(errno), errno);
+		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+		goto error;
+	}
+
+	IMX_VPU_API_DEBUG("driver:         [%s]", (char const *)(capability.driver));
+	IMX_VPU_API_DEBUG("card:           [%s]", (char const *)(capability.card));
+	IMX_VPU_API_DEBUG("bus info:       [%s]", (char const *)(capability.bus_info));
+	IMX_VPU_API_DEBUG(
+		"driver version: %d.%d.%d",
+		(int)((capability.version >> 16) & 0xFF),
+		(int)((capability.version >> 8) & 0xFF),
+		(int)((capability.version >> 0) & 0xFF)
+	);
+
+	if ((capability.capabilities & V4L2_CAP_VIDEO_M2M_MPLANE) == 0)
+	{
+		IMX_VPU_API_ERROR("device does not support multi-planar mem2mem encoding");
+		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+		goto error;
+	}
+
+	if ((capability.capabilities & V4L2_CAP_STREAMING) == 0)
+	{
+		IMX_VPU_API_ERROR("device does not support frame streaming");
+		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+		goto error;
+	}
+
+
+	/* Set the encoded data format in the CAPTURE queue. */
+
+	memset(&capture_buffer_format, 0, sizeof(struct v4l2_format));
+	capture_buffer_format.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+	capture_buffer_format.fmt.pix_mp.width = open_params->frame_width;
+	capture_buffer_format.fmt.pix_mp.height = open_params->frame_height;
+	capture_buffer_format.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_H264;
+	capture_buffer_format.fmt.pix_mp.colorspace = V4L2_COLORSPACE_DEFAULT;
+	capture_buffer_format.fmt.pix_mp.num_planes = 1;
+	capture_buffer_format.fmt.pix_mp.plane_fmt[0].sizeimage = ENC_REQUESTED_CAPTURE_BUFFER_SIZE;
+	capture_buffer_format.fmt.pix_mp.plane_fmt[0].bytesperline = 0; /* This is set to 0 for encoded data. */
+
+	if (ioctl(fd, VIDIOC_S_FMT, &capture_buffer_format) < 0)
+	{
+		IMX_VPU_API_ERROR("could not set V4L2 capture buffer video format (= encoded data format): %s (%d)", strerror(errno), errno);
+		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+		goto error;
+	}
+
+	IMX_VPU_API_INFO("set up V4L2 capture buffer video format");
+
+	/* The driver may adjust the size of the capture buffers. Retrieve
+	 * the sizeimage value (which contains what the driver picked). */
+	(*encoder)->capture_buffer_size = capture_buffer_format.fmt.pix_mp.plane_fmt[0].sizeimage;
+	IMX_VPU_API_DEBUG(
+		"V4L2 capture buffer size in bytes:  requested: %d  actual: %d",
+		ENC_REQUESTED_CAPTURE_BUFFER_SIZE,
+		(*encoder)->capture_buffer_size
+	);
+
+
+	/* Calculate raw frame metrics. */
+
+	fb_metrics = &((*encoder)->stream_info.frame_encoding_framebuffer_metrics);
+
+	fb_metrics->actual_frame_width = open_params->frame_width;
+	fb_metrics->actual_frame_height = open_params->frame_height;
+	stride = IMX_VPU_API_ALIGN_VAL_TO(fb_metrics->actual_frame_width, ENC_STRIDE_ALIGNMENT);
+	fb_metrics->y_stride = stride;
+	/* Y and UV stride are the same because in NV12 formats the UV
+	 * values are contained in the same plane. As a result, one UV
+	 * row contains 2 * (y_stride/2) = y_stride values. */
+	fb_metrics->uv_stride = stride;
+
+
+	/* Set the raw data format in the OUTPUT queue. */
+
+	memset(&output_buffer_format, 0, sizeof(struct v4l2_format));
+	output_buffer_format.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+	output_buffer_format.fmt.pix_mp.width = open_params->frame_width;
+	output_buffer_format.fmt.pix_mp.height = open_params->frame_height;
+	output_buffer_format.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12;
+	output_buffer_format.fmt.pix_mp.colorspace = V4L2_COLORSPACE_DEFAULT;
+	output_buffer_format.fmt.pix_mp.num_planes = ENC_NUM_OUTPUT_BUFFER_PLANES;
+	output_buffer_format.fmt.pix_mp.plane_fmt[0].bytesperline = fb_metrics->y_stride;
+	output_buffer_format.fmt.pix_mp.plane_fmt[1].bytesperline = fb_metrics->uv_stride;
+	output_buffer_format.fmt.pix_mp.ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT;
+	output_buffer_format.fmt.pix_mp.quantization = V4L2_QUANTIZATION_DEFAULT;
+	output_buffer_format.fmt.pix_mp.xfer_func = V4L2_XFER_FUNC_DEFAULT;
+
+	if (ioctl(fd, VIDIOC_S_FMT, &output_buffer_format) < 0)
+	{
+		IMX_VPU_API_ERROR("could not set V4L2 output buffer video format (= raw data format): %s (%d)", strerror(errno), errno);
+		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+		goto error;
+	}
+
+	(*encoder)->output_buffer_size = output_buffer_format.fmt.pix_mp.plane_fmt[0].sizeimage
+	                               + output_buffer_format.fmt.pix_mp.plane_fmt[1].sizeimage;
+	IMX_VPU_API_DEBUG(
+		"V4L2 output buffer size in bytes:  %d",
+		(*encoder)->output_buffer_size
+	);
+
+	/* Read back the format fields, since they may have been adjusted by the driver.
+	 * In particular, width/height may have been aligned. */
+	fb_metrics->aligned_frame_width = output_buffer_format.fmt.pix_mp.width;
+	fb_metrics->aligned_frame_height = output_buffer_format.fmt.pix_mp.height;
+	fb_metrics->y_stride = output_buffer_format.fmt.pix_mp.plane_fmt[0].bytesperline;
+	fb_metrics->uv_stride = output_buffer_format.fmt.pix_mp.plane_fmt[1].bytesperline;
+	fb_metrics->y_size = output_buffer_format.fmt.pix_mp.plane_fmt[0].sizeimage;
+	fb_metrics->uv_size = output_buffer_format.fmt.pix_mp.plane_fmt[1].sizeimage;
+	fb_metrics->y_offset = 0;
+	fb_metrics->u_offset = fb_metrics->y_size;
+
+	IMX_VPU_API_DEBUG(
+		"raw frame size: actual: %zux%zu  aligned: %zux%zu",
+		fb_metrics->actual_frame_width, fb_metrics->actual_frame_height,
+		fb_metrics->aligned_frame_width, fb_metrics->aligned_frame_height
+	);
+	IMX_VPU_API_DEBUG(
+		"original stride for Y and UV planes: %zu  adjusted Y/UV stride: %zu/%zu",
+		stride,
+		fb_metrics->y_stride, fb_metrics->uv_stride
+	);
+	IMX_VPU_API_DEBUG("Y/UV plane size: %zu/%zu", fb_metrics->y_size, fb_metrics->uv_size);
+	IMX_VPU_API_DEBUG("Y/UV plane offset: %zu/%zu", fb_metrics->y_offset, fb_metrics->u_offset);
+
+
+	/* Set the framerate at the OUTPUT queue. */
+
+	memset(&output_streamparm, 0, sizeof(output_streamparm));
+	output_streamparm.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+	output_streamparm.parm.output.timeperframe.numerator = open_params->frame_rate_denominator;
+	output_streamparm.parm.output.timeperframe.denominator = open_params->frame_rate_numerator;
+
+	if (ioctl(fd, VIDIOC_S_PARM, &output_streamparm) < 0)
+	{
+		IMX_VPU_API_ERROR("could not set V4L2 output queue parameters: %s (%d)", strerror(errno), errno);
+		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+		goto error;
+	}
+
+	(*encoder)->stream_info.frame_rate_numerator = output_streamparm.parm.output.timeperframe.denominator;
+	(*encoder)->stream_info.frame_rate_denominator = output_streamparm.parm.output.timeperframe.numerator;
+
+	IMX_VPU_API_DEBUG(
+		"frame rate:  original: %u/%u  adjusted: %u/%u",
+		open_params->frame_rate_numerator, open_params->frame_rate_denominator,
+		(*encoder)->stream_info.frame_rate_numerator, (*encoder)->stream_info.frame_rate_denominator
+	);
+
+
+	/* Allocate the output buffers. */
+
+	memset(&control, 0, sizeof(control));
+	control.id = V4L2_CID_MIN_BUFFERS_FOR_OUTPUT;
+	if (ioctl((*encoder)->v4l2_fd, VIDIOC_G_CTRL, &control) < 0)
+	{
+		IMX_VPU_API_ERROR("could not query min number of V4L2 output buffers: %s (%d)", strerror(errno), errno);
+		goto error;
+	}
+	/* Add 2 buffers to the minimum count to make sure
+	 * there can be no pipeline stalling. */
+	min_num_buffers_for_output = control.value + 2;
+	IMX_VPU_API_DEBUG("min num buffers for output queue: %d", min_num_buffers_for_output);
+
+	IMX_VPU_API_DEBUG("requesting output buffers");
+
+	memset(&output_buffer_request, 0, sizeof(output_buffer_request));
+	output_buffer_request.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+	output_buffer_request.memory = V4L2_MEMORY_DMABUF;
+	output_buffer_request.count = min_num_buffers_for_output;
+
+	if (ioctl(fd, VIDIOC_REQBUFS, &output_buffer_request) < 0)
+	{
+		IMX_VPU_API_ERROR("could not request output buffers: %s (%d)", strerror(errno), errno);
+		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+		goto error;
+	}
+
+	/* VIDIOC_REQBUFS stores the number of actually requested buffers in the "count" field. */
+	(*encoder)->num_output_buffers = output_buffer_request.count;
+	IMX_VPU_API_DEBUG(
+		"num V4L2 output buffers:  requested: %d  actual: %d",
+		min_num_buffers_for_output,
+		(*encoder)->num_output_buffers
+	);
+
+	assert((*encoder)->num_output_buffers > 0);
+
+	(*encoder)->output_buffer_items = calloc((*encoder)->num_output_buffers, sizeof(EncV4L2OutputBufferItem));
+	assert((*encoder)->output_buffer_items != NULL);
+
+	for (i = 0; i < (*encoder)->num_output_buffers; ++i)
+	{
+		EncV4L2OutputBufferItem *output_buffer_item = &((*encoder)->output_buffer_items[i]);
+
+		output_buffer_item->planes[0].data_offset = fb_metrics->y_offset;
+		output_buffer_item->planes[0].bytesused = fb_metrics->y_offset + fb_metrics->y_size;
+		output_buffer_item->planes[0].m.fd = -1;
+
+		output_buffer_item->planes[1].data_offset = fb_metrics->u_offset;
+		output_buffer_item->planes[1].bytesused = fb_metrics->u_offset + fb_metrics->uv_size;
+		output_buffer_item->planes[1].m.fd = -1;
+
+		output_buffer_item->buffer.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+		output_buffer_item->buffer.index = i;
+		output_buffer_item->buffer.memory = V4L2_MEMORY_DMABUF;
+		output_buffer_item->buffer.length = ENC_NUM_OUTPUT_BUFFER_PLANES;
+		output_buffer_item->buffer.m.planes = output_buffer_item->planes;
+	}
+
+
+	/* Allocate the capture buffers. */
+
+	IMX_VPU_API_DEBUG("requesting capture buffers");
+
+	memset(&capture_buffer_request, 0, sizeof(capture_buffer_request));
+	capture_buffer_request.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+	capture_buffer_request.memory = V4L2_MEMORY_MMAP;
+	capture_buffer_request.count = ENC_MIN_NUM_REQUIRED_CAPTURE_BUFFERS;
+
+	if (ioctl(fd, VIDIOC_REQBUFS, &capture_buffer_request) < 0)
+	{
+		IMX_VPU_API_ERROR("could not request capture buffers: %s (%d)", strerror(errno), errno);
+		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+		goto error;
+	}
+
+	/* VIDIOC_REQBUFS stores the number of actually requested buffers in the "count" field. */
+	(*encoder)->num_capture_buffers = capture_buffer_request.count;
+	IMX_VPU_API_DEBUG(
+		"num V4L2 capture buffers:  requested: %d  actual: %d",
+		ENC_MIN_NUM_REQUIRED_CAPTURE_BUFFERS,
+		(*encoder)->num_capture_buffers
+	);
+
+	assert((*encoder)->num_capture_buffers > 0);
+
+	(*encoder)->capture_buffer_items = calloc((*encoder)->num_capture_buffers, sizeof(EncV4L2CaptureBufferItem));
+	assert((*encoder)->capture_buffer_items != NULL);
+
+	/* After requesting the capture buffers we need to query them
+	 * to get the necessary information for later access via mmap().
+	 * In here, we also associate each EncV4L2OutputBufferItem's
+	 * v4l2_plane with the accompanying v4l2_buffer. We only need
+	 * to do this for the capture buffers, not the output buffers,
+	 * because the latter use DMA-BUF, and no extra information
+	 * is needed to use those. */
+	for (i = 0; i < (*encoder)->num_capture_buffers; ++i)
+	{
+		struct v4l2_buffer buffer;
+		struct v4l2_plane plane;
+		EncV4L2CaptureBufferItem *capture_buffer_item = &((*encoder)->capture_buffer_items[i]);
+
+		capture_buffer_item->buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+		capture_buffer_item->buffer.memory = V4L2_MEMORY_MMAP;
+		capture_buffer_item->buffer.index = i;
+		capture_buffer_item->buffer.m.planes = &(capture_buffer_item->plane);
+		capture_buffer_item->buffer.length = 1;
+
+		if (ioctl(fd, VIDIOC_QUERYBUF, &(capture_buffer_item->buffer)) < 0)
+		{
+			IMX_VPU_API_ERROR("could not query capture buffer #%d: %s (%d)", i, strerror(errno), errno);
+			enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+			goto error;
+		}
+
+		IMX_VPU_API_DEBUG(
+			"  capture buffer #%d:  flags: %08x  length: %u  mem offset: %u",
+			i,
+			(unsigned int)(capture_buffer_item->buffer.flags),
+			(unsigned int)(capture_buffer_item->buffer.m.planes[0].length),
+			(unsigned int)(capture_buffer_item->buffer.m.planes[0].m.mem_offset)
+		);
+
+		/* We copy the v4l2_buffer instance in case the driver
+		 * modifies its fields. (This preserves the original.) */
+		memcpy(&buffer, &(capture_buffer_item->buffer), sizeof(buffer));
+		memcpy(&plane, &(capture_buffer_item->plane), sizeof(struct v4l2_plane));
+		/* Make sure "planes" points to the _copy_ of the plane structure. */
+		buffer.m.planes = &plane;
+
+		if (ioctl((*encoder)->v4l2_fd, VIDIOC_QBUF, &buffer) < 0)
+		{
+			IMX_VPU_API_ERROR("could not queue capture buffer: %s (%d)", strerror(errno), errno);
+			enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+			goto error;
+		}
+	}
+
+
+	/* Set codec control values. */
+
+	h264_open_params = &(open_params->format_specific_open_params.h264_open_params);
+
+	/* h.264 profile. */
+
+	IMX_VPU_API_DEBUG("setting h.264 profile to \"%s\"", imx_vpu_api_h264_profile_string(h264_open_params->profile));
+	control.id = V4L2_CID_MPEG_VIDEO_H264_PROFILE;
+	switch (h264_open_params->profile)
+	{
+		case IMX_VPU_API_H264_PROFILE_BASELINE: control.value = V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE; break;
+		case IMX_VPU_API_H264_PROFILE_MAIN:     control.value = V4L2_MPEG_VIDEO_H264_PROFILE_MAIN; break;
+		case IMX_VPU_API_H264_PROFILE_HIGH:     control.value = V4L2_MPEG_VIDEO_H264_PROFILE_HIGH; break;
+
+		default:
+			IMX_VPU_API_ERROR("unsupported h.264 profile \"%s\"", imx_vpu_api_h264_profile_string(h264_open_params->profile));
+			enc_ret = IMX_VPU_API_ENC_RETURN_CODE_INVALID_PARAMS;
+			goto error;
+	}
+
+	if (ioctl(fd, VIDIOC_S_CTRL, &control) < 0)
+	{
+		IMX_VPU_API_ERROR("could not set h.264 profile: %s (%d)", strerror(errno), errno);
+		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+		goto error;
+	}
+
+	/* h.264 level. */
+
+	IMX_VPU_API_DEBUG("setting h.264 level to \"%s\"", imx_vpu_api_h264_level_string(h264_open_params->level));
+	control.id = V4L2_CID_MPEG_VIDEO_H264_LEVEL;
+	switch (h264_open_params->level)
+	{
+		case IMX_VPU_API_H264_LEVEL_1:   control.value = V4L2_MPEG_VIDEO_H264_LEVEL_1_0; break;
+		case IMX_VPU_API_H264_LEVEL_1B:  control.value = V4L2_MPEG_VIDEO_H264_LEVEL_1B;  break;
+		case IMX_VPU_API_H264_LEVEL_1_1: control.value = V4L2_MPEG_VIDEO_H264_LEVEL_1_1; break;
+		case IMX_VPU_API_H264_LEVEL_1_2: control.value = V4L2_MPEG_VIDEO_H264_LEVEL_1_2; break;
+		case IMX_VPU_API_H264_LEVEL_1_3: control.value = V4L2_MPEG_VIDEO_H264_LEVEL_1_3; break;
+		case IMX_VPU_API_H264_LEVEL_2:   control.value = V4L2_MPEG_VIDEO_H264_LEVEL_2_0; break;
+		case IMX_VPU_API_H264_LEVEL_2_1: control.value = V4L2_MPEG_VIDEO_H264_LEVEL_2_1; break;
+		case IMX_VPU_API_H264_LEVEL_2_2: control.value = V4L2_MPEG_VIDEO_H264_LEVEL_2_2; break;
+		case IMX_VPU_API_H264_LEVEL_3:   control.value = V4L2_MPEG_VIDEO_H264_LEVEL_3_0; break;
+		case IMX_VPU_API_H264_LEVEL_3_1: control.value = V4L2_MPEG_VIDEO_H264_LEVEL_3_1; break;
+		case IMX_VPU_API_H264_LEVEL_3_2: control.value = V4L2_MPEG_VIDEO_H264_LEVEL_3_2; break;
+		case IMX_VPU_API_H264_LEVEL_4:   control.value = V4L2_MPEG_VIDEO_H264_LEVEL_4_0; break;
+		case IMX_VPU_API_H264_LEVEL_4_1: control.value = V4L2_MPEG_VIDEO_H264_LEVEL_4_1; break;
+		case IMX_VPU_API_H264_LEVEL_4_2: control.value = V4L2_MPEG_VIDEO_H264_LEVEL_4_2; break;
+		case IMX_VPU_API_H264_LEVEL_5:   control.value = V4L2_MPEG_VIDEO_H264_LEVEL_5_0; break;
+		case IMX_VPU_API_H264_LEVEL_5_1: control.value = V4L2_MPEG_VIDEO_H264_LEVEL_5_1; break;
+
+		default:
+			IMX_VPU_API_ERROR("unsupported h.264 level \"%s\"", imx_vpu_api_h264_level_string(h264_open_params->level));
+			enc_ret = IMX_VPU_API_ENC_RETURN_CODE_INVALID_PARAMS;
+			goto error;
+	}
+
+	if (ioctl(fd, VIDIOC_S_CTRL, &control) < 0)
+	{
+		IMX_VPU_API_ERROR("could not set h.264 level: %s (%d)", strerror(errno), errno);
+		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+		goto error;
+	}
+
+	/* Encoding bitrate. */
+	/* NOTE: VBR and constant quantization are not available in the Windsor encoder. */
+
+	IMX_VPU_API_DEBUG("setting bitrate to %u kbps", open_params->bitrate);
+
+	control.id = V4L2_CID_MPEG_VIDEO_BITRATE;
+	control.value = open_params->bitrate * 1024;
+	if (ioctl(fd, VIDIOC_S_CTRL, &control) < 0)
+	{
+		IMX_VPU_API_ERROR("could not set video bitrate: %s (%d)", strerror(errno), errno);
+		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+		goto error;
+	}
+
+	/* GOP size. */
+
+	IMX_VPU_API_DEBUG("setting GOP size to %u", open_params->gop_size);
+	control.id = V4L2_CID_MPEG_VIDEO_GOP_SIZE;
+	control.value = open_params->gop_size;
+
+	if (ioctl(fd, VIDIOC_S_CTRL, &control) < 0)
+	{
+		IMX_VPU_API_ERROR("could not set GOP size: %s (%d)", strerror(errno), errno);
+		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+		goto error;
+	}
+
+
+	/* Fill remaining stream_info fields. */
+
+	(*encoder)->stream_info.min_num_required_framebuffers = 0;
+	(*encoder)->stream_info.min_framebuffer_size = fb_metrics->u_offset + fb_metrics->uv_size;
+	(*encoder)->stream_info.min_framebuffer_size = 0;
+	// TODO: Read back the params with VIDIOC_G_CTRL in case the driver changes them.
+	memcpy(
+		&((*encoder)->stream_info.format_specific_open_params.h264_open_params),
+		&(open_params->format_specific_open_params.h264_open_params),
+		sizeof(ImxVpuApiEncH264OpenParams)
+	);
+
+
+	if (!imx_vpu_api_enc_enable_stream(*encoder, TRUE, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
+	{
+		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+		goto error;
+	}
+
+	if (!imx_vpu_api_enc_enable_stream(*encoder, TRUE, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE))
+	{
+		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+		goto error;
+	}
+
+
+	IMX_VPU_API_INFO("encoder opened successfully");
+
+
+finish:
+	return enc_ret;
+
+error:
+	/* This rolls back any partial initializations. */
+	imx_vpu_api_enc_close(*encoder);
+
+	free(*encoder);
+	*encoder = NULL;
+
+	goto finish;
 }
 
 
 void imx_vpu_api_enc_close(ImxVpuApiEncoder *encoder)
 {
-	IMX_VPU_API_UNUSED_PARAM(encoder);
+	if (encoder == NULL)
+		return;
+
+	if (encoder->v4l2_fd > 0)
+	{
+		struct v4l2_requestbuffers frame_buffer_request;
+
+		/* Disable any ongoing streams. */
+		imx_vpu_api_enc_enable_stream(encoder, FALSE, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
+		imx_vpu_api_enc_enable_stream(encoder, FALSE, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
+
+		/* Deallocate previously requested frame OUTPUT and CAPTURE buffers. */
+
+		IMX_VPU_API_DEBUG("freeing V4L2 output buffers");
+
+		memset(&frame_buffer_request, 0, sizeof(frame_buffer_request));
+		frame_buffer_request.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+		frame_buffer_request.memory = V4L2_MEMORY_DMABUF;
+		frame_buffer_request.count = 0;
+
+		if (ioctl(encoder->v4l2_fd, VIDIOC_REQBUFS, &frame_buffer_request) < 0)
+			IMX_VPU_API_ERROR("could not free V4L2 output buffers: %s (%d)", strerror(errno), errno);
+
+		IMX_VPU_API_DEBUG("freeing V4L2 capture buffers");
+
+		memset(&frame_buffer_request, 0, sizeof(frame_buffer_request));
+		frame_buffer_request.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+		frame_buffer_request.memory = V4L2_MEMORY_MMAP;
+		frame_buffer_request.count = 0;
+
+		if (ioctl(encoder->v4l2_fd, VIDIOC_REQBUFS, &frame_buffer_request) < 0)
+			IMX_VPU_API_ERROR("could not free V4L2 capture buffers: %s (%d)", strerror(errno), errno);
+
+		close(encoder->v4l2_fd);
+	}
+
+	free(encoder->output_buffer_items);
+	free(encoder->capture_buffer_items);
+	free(encoder->frame_context_items);
+	free(encoder->available_frame_context_item_indices);
+
+	free(encoder);
+
+	IMX_VPU_API_INFO("encoder closed");
 }
 
 
 ImxVpuApiEncStreamInfo const * imx_vpu_api_enc_get_stream_info(ImxVpuApiEncoder *encoder)
 {
-	IMX_VPU_API_UNUSED_PARAM(encoder);
-	return NULL;
+	assert(encoder != NULL);
+	return &(encoder->stream_info);
 }
 
 
@@ -2534,21 +3262,35 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_add_framebuffers_to_pool(ImxVpuApiEncode
 	IMX_VPU_API_UNUSED_PARAM(encoder);
 	IMX_VPU_API_UNUSED_PARAM(fb_dma_buffers);
 	IMX_VPU_API_UNUSED_PARAM(num_framebuffers);
-	return IMX_VPU_API_ENC_RETURN_CODE_OK;
+	IMX_VPU_API_ERROR("tried to add framebuffers, but this encoder does not use a framebuffer pool");
+	return IMX_VPU_API_ENC_RETURN_CODE_INVALID_CALL;
 }
 
 
 void imx_vpu_api_enc_enable_drain_mode(ImxVpuApiEncoder *encoder)
 {
-	IMX_VPU_API_UNUSED_PARAM(encoder);
+	struct v4l2_decoder_cmd command;
+
 	assert(encoder != NULL);
+
+	if (encoder->drain_mode_enabled || !encoder->output_stream_enabled || !encoder->capture_stream_enabled)
+		return;
+
+	IMX_VPU_API_DEBUG("starting encoder drain");
+
+	command.cmd = V4L2_DEC_CMD_STOP;
+	command.flags = 0;
+	command.stop.pts = 0;
+
+	if (ioctl(encoder->v4l2_fd, VIDIOC_ENCODER_CMD, &command) < 0)
+		IMX_VPU_API_ERROR("could not initiate drain mode: %s (%d)", strerror(errno), errno);
+
 	encoder->drain_mode_enabled = TRUE;
 }
 
 
 int imx_vpu_api_enc_is_drain_mode_enabled(ImxVpuApiEncoder *encoder)
 {
-	IMX_VPU_API_UNUSED_PARAM(encoder);
 	assert(encoder != NULL);
 	return encoder->drain_mode_enabled;
 }
@@ -2556,47 +3298,679 @@ int imx_vpu_api_enc_is_drain_mode_enabled(ImxVpuApiEncoder *encoder)
 
 void imx_vpu_api_enc_flush(ImxVpuApiEncoder *encoder)
 {
-	IMX_VPU_API_UNUSED_PARAM(encoder);
+	int i;
+	BOOL output_stream_enabled = encoder->output_stream_enabled;
+	BOOL capture_stream_enabled = encoder->capture_stream_enabled;
+
+	assert(encoder != NULL);
+
+	IMX_VPU_API_DEBUG("beginning encoder flush");
+
+	/* Turn off the streams (if they are turned on) to
+	 * flush both output and capture buffer queues. */
+	imx_vpu_api_enc_enable_stream(encoder, FALSE, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
+	imx_vpu_api_enc_enable_stream(encoder, FALSE, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
+
+	/* There are no output buffers queued anymore. */
+	encoder->num_output_buffers_in_queue = 0;
+
+	/* After flushing, all frame context items are available.
+	 * Mark them accordingly. */
+	for (i = 0; i < encoder->num_frame_context_items; ++i)
+	{
+		encoder->frame_context_items[i].in_use = FALSE;
+		encoder->available_frame_context_item_indices[i] = i;
+	}
+	encoder->num_available_frame_context_items = encoder->num_frame_context_items;
+	IMX_VPU_API_DEBUG("marked all frame context items as available");
+
+	/* Any previously encoded frame is no longer available. */
+	encoder->frame_was_encoded = FALSE;
+
+	/* In drain mode, the encoder no longer accepts encoded data.
+	 * It just decodes pending frames. Since flushing gets rid of
+	 * pending frames, we are effectively at the EOS if we flush
+	 * in this mode. */
+	if (encoder->drain_mode_enabled)
+	{
+		IMX_VPU_API_DEBUG("flushing in drain mode; setting flag to let next encode() call return EOS");
+		encoder->last_encoded_frame_seen = TRUE;
+	}
+
+	/* Set up the capture stream again if it was running prior to the flush. */
+
+	if (capture_stream_enabled)
+	{
+		for (i = 0; i < encoder->num_capture_buffers; ++i)
+		{
+			struct v4l2_buffer buffer;
+			struct v4l2_plane plane;
+			EncV4L2CaptureBufferItem *capture_buffer_item = &(encoder->capture_buffer_items[i]);
+
+			IMX_VPU_API_DEBUG("re-queuing V4L2 capture buffer #%d", i);
+
+			/* We copy the v4l2_buffer instance in case the driver
+			 * modifies its fields. (This preserves the original.) */
+			memcpy(&buffer, &(capture_buffer_item->buffer), sizeof(buffer));
+			memcpy(&plane, &(capture_buffer_item->plane), sizeof(struct v4l2_plane));
+			/* Make sure "planes" points to the _copy_ of the plane structure. */
+			buffer.m.planes = &plane;
+
+			if (ioctl(encoder->v4l2_fd, VIDIOC_QBUF, &buffer) < 0)
+				IMX_VPU_API_ERROR("could not queue capture buffer: %s (%d)", strerror(errno), errno);
+		}
+
+		imx_vpu_api_enc_enable_stream(encoder, TRUE, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
+	}
+
+	/* Set up the output stream again if it was running prior to the flush. */
+	if (output_stream_enabled)
+		imx_vpu_api_enc_enable_stream(encoder, TRUE, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
+
+	IMX_VPU_API_DEBUG("encoder flush finished");
 }
 
 
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_set_bitrate(ImxVpuApiEncoder *encoder, unsigned int bitrate)
 {
-	IMX_VPU_API_UNUSED_PARAM(encoder);
-	IMX_VPU_API_UNUSED_PARAM(bitrate);
+	struct v4l2_control control;
+
+	assert(encoder != NULL);
+	assert(bitrate >= 1);
+
+	IMX_VPU_API_DEBUG("setting bitrate to %u kbps", bitrate);
+
+	control.id = V4L2_CID_MPEG_VIDEO_BITRATE;
+	control.value = bitrate * 1024;
+	if (ioctl(encoder->v4l2_fd, VIDIOC_S_CTRL, &control) < 0)
+	{
+		IMX_VPU_API_ERROR("could not set video bitrate: %s (%d)", strerror(errno), errno);
+		return IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+	}
+
 	return IMX_VPU_API_ENC_RETURN_CODE_OK;
 }
 
 
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_set_frame_rate(ImxVpuApiEncoder *encoder, unsigned int frame_rate_numerator, unsigned int frame_rate_denominator)
 {
-	IMX_VPU_API_UNUSED_PARAM(encoder);
-	IMX_VPU_API_UNUSED_PARAM(frame_rate_numerator);
-	IMX_VPU_API_UNUSED_PARAM(frame_rate_denominator);
+	struct v4l2_streamparm output_streamparm;
+
+	assert(encoder != NULL);
+	assert(frame_rate_denominator >= 1);
+
+	memset(&output_streamparm, 0, sizeof(output_streamparm));
+	output_streamparm.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+	output_streamparm.parm.output.timeperframe.numerator = frame_rate_denominator;
+	output_streamparm.parm.output.timeperframe.denominator = frame_rate_numerator;
+
+	if (ioctl(encoder->v4l2_fd, VIDIOC_S_PARM, &output_streamparm) < 0)
+	{
+		IMX_VPU_API_ERROR("could not set framerate (through the V4L2 output queue stream parameters): %s (%d)", strerror(errno), errno);
+		return IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+	}
+
 	return IMX_VPU_API_ENC_RETURN_CODE_OK;
 }
 
 
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_push_raw_frame(ImxVpuApiEncoder *encoder, ImxVpuApiRawFrame const *raw_frame)
 {
-	IMX_VPU_API_UNUSED_PARAM(encoder);
-	IMX_VPU_API_UNUSED_PARAM(raw_frame);
-	return IMX_VPU_API_ENC_RETURN_CODE_OK;
+	ImxVpuApiEncReturnCodes enc_ret = IMX_VPU_API_ENC_RETURN_CODE_OK;
+	struct v4l2_plane planes[ENC_NUM_OUTPUT_BUFFER_PLANES];
+	struct v4l2_buffer buffer;
+	int frame_context_index;
+	int fd;
+
+	assert(encoder != NULL);
+	assert(raw_frame != NULL);
+
+
+	/* Get an unused output buffer for our new raw data. */
+
+	/* Depending on how many output buffers we already queued,
+	 * we might have to dequeue one first. In the beginning,
+	 * the queue is not yet full, so we just keep queuing. */
+	if (encoder->num_output_buffers_in_queue < encoder->num_output_buffers)
+	{
+		int output_buffer_index = encoder->num_output_buffers_in_queue;
+		EncV4L2OutputBufferItem *output_buffer_item = &(encoder->output_buffer_items[output_buffer_index]);
+		encoder->num_output_buffers_in_queue++;
+
+		/* We copy the v4l2_buffer instance in case the driver
+		 * modifies its fields. (This preserves the original.) */
+		memcpy(&buffer, &(output_buffer_item->buffer), sizeof(buffer));
+		memcpy(planes, output_buffer_item->planes, sizeof(planes));
+		buffer.m.planes = planes;
+		buffer.length = ENC_NUM_OUTPUT_BUFFER_PLANES;
+
+		IMX_VPU_API_LOG(
+			"V4L2 output queue has room for %d more buffer(s); using buffer with buffer index %d to fill it with new raw data and enqueue it",
+			encoder->num_output_buffers - encoder->num_output_buffers_in_queue,
+			output_buffer_index
+		);
+	}
+	else
+	{
+		memset(&buffer, 0, sizeof(buffer));
+		buffer.m.planes = planes;
+		buffer.length = ENC_NUM_OUTPUT_BUFFER_PLANES;
+		buffer.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+		buffer.memory = V4L2_MEMORY_DMABUF;
+
+		if (ioctl(encoder->v4l2_fd, VIDIOC_DQBUF, &buffer) < 0)
+		{
+			IMX_VPU_API_ERROR("could not dequeue V4L2 output buffer: %s (%d)", strerror(errno), errno);
+			enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+			goto error;
+		}
+
+		IMX_VPU_API_LOG(
+			"V4L2 output queue is full; dequeued output buffer with buffer index %d to fill it with new encoded data and then re-enqueue it",
+			(int)(buffer.index)
+		);
+	}
+
+
+	/* Store the frame context in the frame context array, and
+	 * keep track of the index where the context is stored.
+	 * We'll store that index in the frames that get queued. */
+
+	frame_context_index = imx_vpu_api_enc_add_frame_context(encoder, raw_frame->context, raw_frame->pts, raw_frame->dts);
+	if (frame_context_index < 0)
+		goto error;
+
+
+	/* Set the DMA-BUF FD from the DMA buffer in the plane structures. */
+	fd = imx_dma_buffer_get_fd(raw_frame->fb_dma_buffer);
+	planes[0].m.fd = fd;
+	planes[1].m.fd = fd;
+
+	planes[0].length = encoder->output_buffer_size;
+	planes[1].length = encoder->output_buffer_size;
+
+	/* Look up the code in imx_vpu_api_enc_get_frame_context()
+	 * to see why the PTS is stored in the timestamp field. */
+	buffer.timestamp.tv_sec = raw_frame->pts / 1000000000;
+	buffer.timestamp.tv_usec = (raw_frame->pts - ((uint64_t)(buffer.timestamp.tv_sec)) * 1000000000) / 1000;
+
+
+	IMX_VPU_API_LOG(
+		"queuing V4L2 output buffer with DMA-BUF FD %d buffer index %d and frame context index %d (context pointer %p PTS %" PRIu64 " DTS %" PRIu64 " pts_microseconds %" PRIu64 ")",
+		fd,
+		(int)(buffer.index),
+		frame_context_index,
+		raw_frame->context,
+		raw_frame->pts,
+		raw_frame->dts,
+		encoder->frame_context_items[frame_context_index].pts_microseconds
+	);
+
+
+	if ((raw_frame->frame_types[0] == IMX_VPU_API_FRAME_TYPE_I) ||
+	    (raw_frame->frame_types[0] == IMX_VPU_API_FRAME_TYPE_IDR))
+	{
+		/* Force the Windsor encoder to produce an IDR frame out
+		 * of this raw frame. We must set this control _before_
+		 * queuing that raw frame to accomplish this. */
+
+		struct v4l2_control control;
+
+		IMX_VPU_API_LOG("forcing encoder to encode raw frame as IDR keyframe");
+
+		control.id = V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME;
+		control.value = 0;
+		if (ioctl(fd, VIDIOC_S_CTRL, &control) < 0)
+		{
+			IMX_VPU_API_ERROR("could not force next queued frame to be encoded as a keyframe: %s (%d)", strerror(errno), errno);
+			enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+			goto error;
+		}
+	}
+
+
+	/* Finally, queue the buffer. */
+	if (ioctl(encoder->v4l2_fd, VIDIOC_QBUF, &buffer) < 0)
+	{
+		IMX_VPU_API_ERROR("could not queue output buffer: %s (%d)", strerror(errno), errno);
+		goto error;
+	}
+
+
+finish:
+	return enc_ret;
+
+error:
+	if (enc_ret == IMX_VPU_API_ENC_RETURN_CODE_OK)
+		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+
+	goto finish;
 }
 
 
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t *encoded_frame_size, ImxVpuApiEncOutputCodes *output_code)
 {
-	IMX_VPU_API_UNUSED_PARAM(encoder);
-	IMX_VPU_API_UNUSED_PARAM(encoded_frame_size);
-	IMX_VPU_API_UNUSED_PARAM(output_code);
-	return IMX_VPU_API_ENC_RETURN_CODE_OK;
+	ImxVpuApiEncReturnCodes enc_ret = IMX_VPU_API_ENC_RETURN_CODE_OK;
+	struct pollfd pfd;
+
+	assert(encoder != NULL);
+	assert(encoded_frame_size != NULL);
+	assert(output_code != NULL);
+
+	*output_code = IMX_VPU_API_ENC_OUTPUT_CODE_NO_OUTPUT_YET_AVAILABLE;
+
+
+	/* Handle EOS case. */
+	if (encoder->last_encoded_frame_seen)
+	{
+		IMX_VPU_API_INFO("end of stream reached");
+		*output_code = IMX_VPU_API_ENC_OUTPUT_CODE_EOS;
+		return IMX_VPU_API_ENC_RETURN_CODE_OK;
+	}
+
+
+	/* This happens when this function is called after a previous call
+	 * returned the IMX_VPU_API_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE
+	 * output code and the user did not retrieve the encoded frame with
+	 * imx_vpu_api_enc_get_decoded_frame(). */
+	if (encoder->frame_was_encoded)
+	{
+		IMX_VPU_API_ERROR("attempted to encode frame before the previously encoded frame was retrieved");
+		return IMX_VPU_API_ENC_RETURN_CODE_INVALID_CALL;
+	}
+
+
+	/* Check if raw frames can be queued and encoded frames dequeued. */
+
+	pfd.fd = encoder->v4l2_fd;
+	pfd.events = POLLIN;
+
+	if (!encoder->drain_mode_enabled)
+		pfd.events |= POLLOUT;
+	else
+		IMX_VPU_API_LOG("drain mode is active; not enabling POLLOUT event");
+
+	/* The actual poll() call. This is done in a loop in case poll() gets
+	 * interrupted by a signal, in which case we can safely try again. */
+	while (TRUE)
+	{
+		int poll_ret = poll(&pfd, 1, -1);
+		if (poll_ret < 0)
+		{
+			switch (errno)
+			{
+				case EINTR:
+					IMX_VPU_API_LOG("poll() was interrupted by signal; retrying call");
+					break;
+
+				default:
+					IMX_VPU_API_ERROR("poll() failed: %s (%d)", strerror(errno), errno);
+					goto error;
+			}
+		}
+		else
+			break;
+	}
+
+
+	/* Handle the returned poll() events. */
+
+	/* POLLIN = encoded frame available at the CAPTURE queue. */
+	if (pfd.revents & POLLIN)
+	{
+		struct v4l2_buffer buffer;
+		struct v4l2_plane plane;
+		int frame_context_index;
+
+		IMX_VPU_API_LOG("encoded frame is available");
+		*output_code = IMX_VPU_API_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE;
+
+		/* Dequeue the encoded frame. */
+
+		memset(&buffer, 0, sizeof(buffer));
+		memset(&plane, 0, sizeof(plane));
+
+		buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+		buffer.memory = V4L2_MEMORY_MMAP;
+		buffer.m.planes = &plane;
+		buffer.length = 1;
+
+		/* Dequeue the encoded frame from the CAPTURE queue. */
+		if (ioctl(encoder->v4l2_fd, VIDIOC_DQBUF, &buffer) < 0)
+		{
+			IMX_VPU_API_ERROR("could not dequeue encoded frame buffer: %s (%d)", strerror(errno), errno);
+			goto error;
+		}
+
+		/* Get information about the dequeued buffer. */
+
+		if (buffer.flags & V4L2_BUF_FLAG_LAST)
+		{
+			int buffer_index = buffer.index;
+			IMX_VPU_API_DEBUG("this encoded frame is the last frame in the stream");
+			encoder->last_encoded_frame_seen = TRUE;
+
+			/* Add the V4L2 capture buffer back to the queue. */
+
+			if (ioctl(encoder->v4l2_fd, VIDIOC_QBUF, &buffer) < 0)
+			{
+				IMX_VPU_API_ERROR(
+					"could not re-queue capture buffer with index %d: %s (%d)",
+					buffer_index,
+					strerror(errno), errno
+				);
+				goto error;
+			}
+
+			*output_code = IMX_VPU_API_ENC_OUTPUT_CODE_EOS;
+		}
+		else
+		{
+			encoder->encoded_frame_capture_buffer_index = buffer.index;
+			assert(encoder->encoded_frame_capture_buffer_index < encoder->num_capture_buffers);
+
+			*encoded_frame_size = encoder->encoded_frame_size = buffer.m.planes[0].bytesused;
+
+			frame_context_index = imx_vpu_api_enc_get_frame_context(encoder, &buffer);
+			assert(frame_context_index >= 0);
+			assert(frame_context_index < (int)(encoder->num_frame_context_items));
+			encoder->encoded_frame_context_index = frame_context_index;
+			encoder->encoded_frame_context_item = &(encoder->frame_context_items[frame_context_index]);
+
+			if (buffer.flags & V4L2_BUF_FLAG_KEYFRAME)
+				encoder->encoded_frame_type = IMX_VPU_API_FRAME_TYPE_IDR;
+			else if (buffer.flags & V4L2_BUF_FLAG_PFRAME)
+				encoder->encoded_frame_type = IMX_VPU_API_FRAME_TYPE_P;
+			else if (buffer.flags & V4L2_BUF_FLAG_BFRAME)
+				encoder->encoded_frame_type = IMX_VPU_API_FRAME_TYPE_B;
+			else
+				encoder->encoded_frame_type = IMX_VPU_API_FRAME_TYPE_UNKNOWN;
+
+			IMX_VPU_API_LOG(
+				"got encoded frame:"
+				"  capture buffer index %d  frame context index %d"
+				"  V4L2 buffer flags %08x  encoded frame size %zu byte(s)"
+				"  context pointer %p PTS %" PRIu64 " DTS %" PRIu64
+				"  frame type %s",
+				encoder->encoded_frame_capture_buffer_index,
+				frame_context_index,
+				(unsigned int)(buffer.flags),
+				encoder->encoded_frame_size,
+				encoder->encoded_frame_context_item->context,
+				encoder->encoded_frame_context_item->pts,
+				encoder->encoded_frame_context_item->dts,
+				imx_vpu_api_frame_type_string(encoder->encoded_frame_type)
+			);
+
+			encoder->frame_was_encoded = TRUE;
+		}
+
+		goto finish;
+	}
+
+	/* POLLOUT = we can or need to write another raw frame to the OUTPUT queue. */
+	if (pfd.revents & POLLOUT)
+	{
+		*output_code = IMX_VPU_API_ENC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED;
+		IMX_VPU_API_LOG("driver can now accept more raw data");
+		goto finish;
+	}
+
+
+finish:
+	return enc_ret;
+
+error:
+	if (enc_ret == IMX_VPU_API_ENC_RETURN_CODE_OK)
+		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+
+	goto finish;
 }
 
 
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_encoded_frame(ImxVpuApiEncoder *encoder, ImxVpuApiEncodedFrame *encoded_frame)
 {
-	IMX_VPU_API_UNUSED_PARAM(encoder);
-	IMX_VPU_API_UNUSED_PARAM(encoded_frame);
+	struct v4l2_buffer buffer;
+	struct v4l2_plane plane;
+	EncV4L2CaptureBufferItem *capture_buffer_item;
+	void *mapped_buffer_data = NULL;
+
+	assert(encoder != NULL);
+
+
+	/* Sanity checks. */
+
+	if (!encoder->frame_was_encoded)
+	{
+		IMX_VPU_API_ERROR("attempted to get encoder frame even though no frame has been encoder yet");
+		return IMX_VPU_API_ENC_RETURN_CODE_INVALID_CALL;
+	}
+
+	assert(encoder->encoded_frame_capture_buffer_index >= 0);
+	assert(encoder->encoded_frame_capture_buffer_index < (encoder->num_capture_buffers));
+
+
+	capture_buffer_item = &(encoder->capture_buffer_items[encoder->encoded_frame_capture_buffer_index]);
+
+
+	/* Output the result. */
+
+	encoded_frame->has_header = (encoder->encoded_frame_type == IMX_VPU_API_FRAME_TYPE_IDR);
+	encoded_frame->context = encoder->encoded_frame_context_item->context;
+	encoded_frame->pts = encoder->encoded_frame_context_item->pts;
+	encoded_frame->dts = encoder->encoded_frame_context_item->dts;
+	encoded_frame->frame_type = encoder->encoded_frame_type;
+	encoded_frame->data_size = encoder->encoded_frame_size;
+
+	imx_vpu_api_enc_mark_frame_context_as_available(encoder, encoder->encoded_frame_context_index);
+
+	mapped_buffer_data = mmap(
+		NULL,
+		encoded_frame->data_size,
+		PROT_READ | PROT_WRITE,
+		MAP_SHARED,
+		encoder->v4l2_fd,
+		capture_buffer_item->buffer.m.planes[0].m.mem_offset
+	);
+	if (mapped_buffer_data == MAP_FAILED)
+	{
+		IMX_VPU_API_ERROR(
+			"could not map V4L2 capture buffer with index %d:: %s (%d)",
+			encoder->encoded_frame_capture_buffer_index,
+			strerror(errno), errno
+		);
+		return IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+	}
+	memcpy(encoded_frame->data, mapped_buffer_data, encoded_frame->data_size);
+	munmap(mapped_buffer_data, encoded_frame->data_size);
+
+
+	/* Add the V4L2 capture buffer back to the queue. */
+
+	/* We copy the v4l2_buffer instance in case the driver
+	 * modifies its fields. (This preserves the original.) */
+	memcpy(&buffer, &(capture_buffer_item->buffer), sizeof(buffer));
+	memcpy(&plane, &(capture_buffer_item->plane), sizeof(plane));
+	/* Make sure "planes" points to the _copy_ of the planes structures. */
+	buffer.m.planes = &plane;
+
+	if (ioctl(encoder->v4l2_fd, VIDIOC_QBUF, &buffer) < 0)
+	{
+		IMX_VPU_API_ERROR(
+			"could not re-queue capture buffer with index %d: %s (%d)",
+			encoder->encoded_frame_capture_buffer_index,
+			strerror(errno), errno
+		);
+		return IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+	}
+
+
+	/* Clear this flag since we are now done with this encoded frame. */
+	encoder->frame_was_encoded = FALSE;
+
 	return IMX_VPU_API_ENC_RETURN_CODE_OK;
+}
+
+
+static BOOL imx_vpu_api_enc_enable_stream(ImxVpuApiEncoder *encoder, BOOL do_enable, enum v4l2_buf_type type)
+{
+	BOOL *stream_enabled;
+	char const *stream_name;
+
+	switch (type)
+	{
+		case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
+			stream_enabled = &(encoder->output_stream_enabled);
+			stream_name = "output (= raw data)";
+			break;
+
+		case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
+			stream_enabled = &(encoder->capture_stream_enabled);
+			stream_name = "capture (= encoded data)";
+			break;
+
+		default:
+			assert(FALSE);
+	}
+
+	if (*stream_enabled == do_enable)
+		return TRUE;
+
+	IMX_VPU_API_DEBUG("%s %s stream", (do_enable ? "enabling" : "disabling"), stream_name);
+
+	if (ioctl(encoder->v4l2_fd, do_enable ? VIDIOC_STREAMON : VIDIOC_STREAMOFF, &type) < 0)
+	{
+		IMX_VPU_API_ERROR("could not %s %s stream: %s (%d)", (do_enable ? "enable" : "disable"), stream_name, strerror(errno), errno);
+		return FALSE;
+	}
+	else
+	{
+		IMX_VPU_API_DEBUG("%s stream %s", stream_name, (do_enable ? "enabled" : "disabled"));
+		*stream_enabled = do_enable;
+		return TRUE;
+	}
+}
+
+
+static void imx_vpu_api_enc_mark_frame_context_as_available(ImxVpuApiEncoder *encoder, int frame_context_index)
+{
+	assert(frame_context_index >= 0);
+	assert(frame_context_index < encoder->num_frame_context_items);
+	encoder->num_available_frame_context_items++;
+	encoder->available_frame_context_item_indices[encoder->num_available_frame_context_items - 1] = frame_context_index;
+
+	encoder->frame_context_items[frame_context_index].in_use = FALSE;
+
+	IMX_VPU_API_LOG(
+		"marked frame context item as available:  index: %d  num available / total frame context items: %d / %d",
+		frame_context_index,
+		encoder->num_available_frame_context_items,
+		encoder->num_frame_context_items
+	);
+}
+
+
+static int imx_vpu_api_enc_add_frame_context(ImxVpuApiEncoder *encoder, void *context, uint64_t pts, uint64_t dts)
+{
+	EncFrameContextItem *frame_context_item;
+	int index, i;
+
+	if (encoder->num_available_frame_context_items == 0)
+	{
+		int const item_count_increment = 10;
+		size_t new_num_frame_context_items;
+		EncFrameContextItem *new_frame_context_items;
+		int *new_available_frame_context_indices;
+
+		new_num_frame_context_items = encoder->num_frame_context_items + item_count_increment;
+		new_frame_context_items = realloc(encoder->frame_context_items, new_num_frame_context_items * sizeof(EncFrameContextItem));
+		if (new_frame_context_items == NULL)
+		{
+			IMX_VPU_API_ERROR("could not allocate space for frame context");
+			return -1;
+		}
+		new_available_frame_context_indices = realloc(encoder->available_frame_context_item_indices, new_num_frame_context_items * sizeof(int));
+		if (new_available_frame_context_indices == NULL)
+		{
+			IMX_VPU_API_ERROR("could not allocate space for available frame context indices");
+			return -1;
+		}
+
+		memset(&(new_frame_context_items[encoder->num_frame_context_items]), 0, item_count_increment * sizeof(EncFrameContextItem));
+
+		for (i = 0; i < item_count_increment; ++i)
+		{
+			new_available_frame_context_indices[encoder->num_available_frame_context_items + i] = encoder->num_frame_context_items + i;
+		}
+
+		encoder->frame_context_items = new_frame_context_items;
+		encoder->num_frame_context_items = new_num_frame_context_items;
+
+		encoder->available_frame_context_item_indices = new_available_frame_context_indices;
+		encoder->num_available_frame_context_items += item_count_increment;
+
+		IMX_VPU_API_LOG(
+			"all frame context items are in use, or none exist yet; allocated %d more items (total amount now %d)",
+			item_count_increment,
+			encoder->num_frame_context_items
+		);
+	}
+
+	index = encoder->available_frame_context_item_indices[encoder->num_available_frame_context_items - 1];
+	frame_context_item = &(encoder->frame_context_items[index]);
+	encoder->num_available_frame_context_items--;
+
+	frame_context_item->context = context;
+	frame_context_item->pts_microseconds = pts / 1000;
+	frame_context_item->pts = pts;
+	frame_context_item->dts = dts;
+	frame_context_item->in_use = TRUE;
+
+	return index;
+}
+
+
+static int imx_vpu_api_enc_get_frame_context(ImxVpuApiEncoder *encoder, struct v4l2_buffer *buffer)
+{
+	uint64_t pts_microseconds;
+	int i;
+	int frame_context_index;
+	EncFrameContextItem *frame_context_item;
+
+	/* Look up the frame context items that matches the frame that is stored in the v4l2_buffer.
+	 * TODO: Check if we really need to use the PTS, or if we can just use indices.
+	 * Maybe the Windsor encoder does not need PTS unlike the Malone decoder. */
+
+	pts_microseconds = ((uint64_t)(buffer->timestamp.tv_sec)) * 1000000 + ((uint64_t)(buffer->timestamp.tv_usec));
+	frame_context_index = -1;
+
+	for (i = 0; i < encoder->num_frame_context_items; ++i)
+	{
+		frame_context_item = &(encoder->frame_context_items[i]);
+
+		if (!frame_context_item->in_use)
+			continue;
+
+		if (frame_context_item->pts_microseconds == pts_microseconds)
+		{
+			frame_context_index = i;
+			break;
+		}
+	}
+
+	if (frame_context_index < 0)
+	{
+		IMX_VPU_API_ERROR(
+			"could not find frame context index for V4L2 capture buffer with index %d"
+			"  flags %08x"
+			"  bytesused %u"
+			"  pts_microseconds %" PRIu64,
+			(int)(buffer->index),
+			(unsigned int)(buffer->flags),
+			(unsigned int)(buffer->m.planes[0].bytesused),
+			pts_microseconds
+		);
+	}
+
+	return frame_context_index;
 }
