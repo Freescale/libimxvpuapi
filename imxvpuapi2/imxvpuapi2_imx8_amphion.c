@@ -1230,6 +1230,28 @@ void imx_vpu_api_dec_enable_drain_mode(ImxVpuApiDecoder *decoder)
 }
 
 
+void imx_vpu_api_dec_disable_drain_mode(ImxVpuApiDecoder *decoder)
+{
+	struct v4l2_decoder_cmd command;
+
+	assert(decoder != NULL);
+
+	if (!decoder->drain_mode_enabled || !decoder->output_stream_enabled || !decoder->capture_stream_enabled)
+		return;
+
+	IMX_VPU_API_DEBUG("stopping decoder drain");
+
+	command.cmd = V4L2_DEC_CMD_START;
+	command.flags = 0;
+	command.stop.pts = 0;
+
+	if (ioctl(decoder->v4l2_fd, VIDIOC_DECODER_CMD, &command) < 0)
+		IMX_VPU_API_ERROR("could not terminate drain mode: %s (%d)", strerror(errno), errno);
+
+	decoder->drain_mode_enabled = FALSE;
+}
+
+
 int imx_vpu_api_dec_is_drain_mode_enabled(ImxVpuApiDecoder *decoder)
 {
 	assert(decoder != NULL);

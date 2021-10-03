@@ -1576,6 +1576,8 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_add_framebuffers_to_pool(ImxVpuApiDecode
  */
 void imx_vpu_api_dec_enable_drain_mode(ImxVpuApiDecoder *decoder);
 
+void imx_vpu_api_dec_disable_drain_mode(ImxVpuApiDecoder *decoder);
+
 /* Checks if drain mode is enabled.
  *
  * 1 = enabled. 0 = disabled.
