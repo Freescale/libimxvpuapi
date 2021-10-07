@@ -477,7 +477,7 @@ DecV4L2OutputBufferItem;
 
 
 /* Structure for housing a V4L2 capture buffer and its associated
- * plane structure and DMA buffers for housing raw frames. */
+ * plane structure and DMA-BUF FDs & physical addresses for the planes. */
 typedef struct
 {
 	/* The buffer's "planes" pointer is set to point to the "plane" instance
@@ -487,8 +487,11 @@ typedef struct
 	/* Since the Amphion decoder uses the multi-planar API, we need to
 	 * specify a plane structure. */
 	struct v4l2_plane planes[DEC_NUM_CAPTURE_BUFFER_PLANES];
-	/* The DMA buffer that actually contains the captured frame. */
-	ImxDmaBuffer *dma_buffer;
+	/* FD and physical address of the planes, exported as DMA-BUF.
+	 * The physical address for each DMA-BUF FD is retrieved using
+	 * imx_dma_buffer_ion_get_physical_address_from_dmabuf_fd(). */
+	int dmabuf_fds[DEC_NUM_CAPTURE_BUFFER_PLANES];
+	imx_physical_address_t physical_addresses[DEC_NUM_CAPTURE_BUFFER_PLANES];
 }
 DecV4L2CaptureBufferItem;
 
@@ -539,16 +542,6 @@ struct _ImxVpuApiDecoder
 	 * The driver may pick a format that differs from the requested format
 	 * (requested with the VIDIOC_S_FMT ioctl), so we store the actual format here. */
 	struct v4l2_format capture_buffer_format;
-
-	/* Size in bytes of one V4L2 capture buffer. This is used as the
-	 * size for the DMA buffers in each DecV4L2CaptureBufferItem. */
-	int capture_buffer_size;
-
-	/* Plane sizes/offsets. Used for setting up the fields in the
-	 * v4l2_plane instances in DecV4L2CaptureBufferItem. */
-	int capture_buffer_y_offset, capture_buffer_uv_offset;
-	int capture_buffer_y_stride, capture_buffer_uv_stride;
-	int capture_buffer_y_size, capture_buffer_uv_size;
 
 	/* This is the V4L2 pixelformat that was requested from the capture queue via
 	 * the VIDIOC_S_FMT ioctl. The driver is free to pick a different one. To be
@@ -639,8 +632,8 @@ struct _ImxVpuApiDecoder
 	 * output code to IMX_VPU_API_DEC_OUTPUT_CODE_EOS and exit immediately. */
 	BOOL last_decoded_frame_seen;
 
-	/* ION allocator to allocate the DMA buffers for the V4L2 capture buffers. */
-	ImxDmaBufferAllocator *ion_dma_buffer_allocator;
+	/* ION FD, used for imx_dma_buffer_ion_get_physical_address_from_dmabuf_fd() calls. */
+	int ion_fd;
 
 	/* How many frames have been detected as having being skipped by the driver.
 	 * This is incremented every time the V4L2_EVENT_SKIP event is received,
@@ -803,7 +796,7 @@ ImxVpuApiCompressionFormatSupportDetails const * imx_vpu_api_dec_get_compression
 ImxVpuApiDecReturnCodes imx_vpu_api_dec_open(ImxVpuApiDecoder **decoder, ImxVpuApiDecOpenParams *open_params, ImxDmaBuffer *stream_buffer)
 {
 	ImxVpuApiDecReturnCodes dec_ret = IMX_VPU_API_DEC_RETURN_CODE_OK;
-	int fd, i, errornum;
+	int fd, i;
 	struct v4l2_capability capability;
 	struct v4l2_format requested_output_buffer_format;
 	struct v4l2_requestbuffers output_buffer_request;
@@ -824,6 +817,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_open(ImxVpuApiDecoder **decoder, ImxVpuA
 	assert((*decoder) != NULL);
 
 	memset(*decoder, 0, sizeof(ImxVpuApiDecoder));
+	(*decoder)->ion_fd = -1;
 
 	/* Configure the V4L2 pixel format to request. This is always an
 	 * Amphion tiled format. The choice is between 8 and 10 bit output. */
@@ -908,16 +902,14 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_open(ImxVpuApiDecoder **decoder, ImxVpuA
 	}
 
 
-	/* Create the ION allocator for the capture buffer DMA buffers. */
-	(*decoder)->ion_dma_buffer_allocator = imx_dma_buffer_ion_allocator_new(
-		IMX_DMA_BUFFER_ION_ALLOCATOR_DEFAULT_ION_FD,
-		IMX_DMA_BUFFER_ION_ALLOCATOR_DEFAULT_HEAP_ID_MASK,
-		IMX_DMA_BUFFER_ION_ALLOCATOR_DEFAULT_HEAP_FLAGS,
-		&errornum
-	);
-	if ((*decoder)->ion_dma_buffer_allocator == NULL)
+	/* Open /dev/ion for retrieving physical addresses later. Note
+	 * that this is NXP specific functionality - upstream ION does
+	 * not allow for this. We need this since G2D requires physical
+	 * addresses (and not FDs) for acessing pixel data. */
+	(*decoder)->ion_fd = open("/dev/ion", O_RDONLY);
+	if ((*decoder)->ion_fd < 0)
 	{
-		IMX_VPU_API_ERROR("could not create ION allocator: %s (%d)", strerror(errornum), errornum);
+		IMX_VPU_API_ERROR("could not open /dev/ion: %s (%d)", strerror(errno), errno);
 		dec_ret = IMX_VPU_API_DEC_RETURN_CODE_ERROR;
 		goto error;
 	}
@@ -1137,7 +1129,7 @@ void imx_vpu_api_dec_close(ImxVpuApiDecoder *decoder)
 
 	if (decoder->v4l2_fd > 0)
 	{
-		int i;
+		int i, plane_nr;
 		struct v4l2_requestbuffers frame_buffer_request;
 
 		/* Disable any ongoing streams. */
@@ -1161,12 +1153,18 @@ void imx_vpu_api_dec_close(ImxVpuApiDecoder *decoder)
 		for (i = 0; i < decoder->num_capture_buffers; ++i)
 		{
 			DecV4L2CaptureBufferItem *capture_buffer_item = &(decoder->capture_buffer_items[i]);
-			imx_dma_buffer_deallocate(capture_buffer_item->dma_buffer);
+
+			for (plane_nr = 0; plane_nr < DEC_NUM_CAPTURE_BUFFER_PLANES; ++plane_nr)
+			{
+				int dmabuf_fd = capture_buffer_item->dmabuf_fds[plane_nr];
+				if (dmabuf_fd >= 0)
+					close(dmabuf_fd);
+			}
 		}
 
 		memset(&frame_buffer_request, 0, sizeof(frame_buffer_request));
 		frame_buffer_request.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-		frame_buffer_request.memory = V4L2_MEMORY_DMABUF;
+		frame_buffer_request.memory = V4L2_MEMORY_MMAP;
 		frame_buffer_request.count = 0;
 
 		if (ioctl(decoder->v4l2_fd, VIDIOC_REQBUFS, &frame_buffer_request) < 0)
@@ -1175,8 +1173,8 @@ void imx_vpu_api_dec_close(ImxVpuApiDecoder *decoder)
 		close(decoder->v4l2_fd);
 	}
 
-	if (decoder->ion_dma_buffer_allocator != NULL)
-		imx_dma_buffer_allocator_destroy(decoder->ion_dma_buffer_allocator);
+	if (decoder->ion_fd >= 0)
+		close(decoder->ion_fd);
 
 	if (decoder->g2d_handle != NULL)
 		g2d_close(decoder->g2d_handle);
@@ -1309,14 +1307,11 @@ void imx_vpu_api_dec_flush(ImxVpuApiDecoder *decoder)
 	{
 		for (i = 0; i < decoder->num_capture_buffers; ++i)
 		{
-			int dmabuf_fd;
 			struct v4l2_buffer buffer;
 			struct v4l2_plane planes[DEC_NUM_CAPTURE_BUFFER_PLANES];
 			DecV4L2CaptureBufferItem *capture_buffer_item = &(decoder->capture_buffer_items[i]);
 
-			dmabuf_fd = imx_dma_buffer_get_fd(capture_buffer_item->dma_buffer);
-
-			IMX_VPU_API_DEBUG("re-queuing V4L2 capture buffer #%d with DMA-BUF FD %d", i, dmabuf_fd);
+			IMX_VPU_API_DEBUG("re-queuing V4L2 capture buffer #%d", i);
 
 			/* We copy the v4l2_buffer instance in case the driver
 			 * modifies its fields. (This preserves the original.) */
@@ -1742,7 +1737,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 		memset(planes, 0, sizeof(planes));
 
 		buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-		buffer.memory = V4L2_MEMORY_DMABUF;
+		buffer.memory = V4L2_MEMORY_MMAP;
 		buffer.m.planes = planes;
 		buffer.length = DEC_NUM_CAPTURE_BUFFER_PLANES;
 
@@ -1770,12 +1765,10 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 		 * frame from the capture buffer to the output_frame_dma_buffer. */
 		{
 			ImxVpuApiFramebufferMetrics *fb_metrics = &(decoder->stream_info.decoded_frame_framebuffer_metrics);
-			ImxDmaBuffer *capture_dma_buffer = capture_buffer_item->dma_buffer;
-			imx_physical_address_t src_physical_address = imx_dma_buffer_get_physical_address(capture_dma_buffer);
 			imx_physical_address_t dest_physical_address = imx_dma_buffer_get_physical_address(decoder->output_frame_dma_buffer);
 
-			decoder->source_g2d_surface.base.planes[0] = src_physical_address + decoder->capture_buffer_y_offset;
-			decoder->source_g2d_surface.base.planes[1] = src_physical_address + decoder->capture_buffer_uv_offset;
+			decoder->source_g2d_surface.base.planes[0] = capture_buffer_item->physical_addresses[0];
+			decoder->source_g2d_surface.base.planes[1] = capture_buffer_item->physical_addresses[1];
 
 			decoder->dest_g2d_surface.base.planes[0] = dest_physical_address + fb_metrics->y_offset;
 			decoder->dest_g2d_surface.base.planes[1] = dest_physical_address + fb_metrics->u_offset;
@@ -2061,13 +2054,14 @@ static int imx_vpu_api_dec_get_frame_context(ImxVpuApiDecoder *decoder, struct v
 
 static BOOL imx_vpu_api_dec_handle_resolution_change(ImxVpuApiDecoder *decoder, ImxVpuApiDecOutputCodes *output_code)
 {
-	int i, num_planes, errornum;
+	int i, num_planes;
 	int min_num_buffers_for_capture;
 	ImxVpuApiDecStreamInfo *stream_info;
 	ImxVpuApiFramebufferMetrics *fb_metrics;
 	struct v4l2_control control;
 	struct v4l2_requestbuffers capture_buffer_request;
 	enum g2d_format g2d_dest_format;
+	int capture_buffer_y_stride, capture_buffer_y_size;
 
 
 	/* Preliminary checks. */
@@ -2122,20 +2116,6 @@ static BOOL imx_vpu_api_dec_handle_resolution_change(ImxVpuApiDecoder *decoder, 
 	);
 
 
-	/* Compute the Y/UV offsets and sizes for the capture buffers.
-	 * (The sizes/offsets for the stream info framebuffer metrics
-	 * are handled separately later.) */
-
-	decoder->capture_buffer_y_stride = decoder->capture_buffer_format.fmt.pix_mp.plane_fmt[0].bytesperline;
-	decoder->capture_buffer_uv_stride = decoder->capture_buffer_format.fmt.pix_mp.plane_fmt[1].bytesperline;
-	decoder->capture_buffer_y_size = decoder->capture_buffer_format.fmt.pix_mp.plane_fmt[0].sizeimage;
-	decoder->capture_buffer_uv_size = decoder->capture_buffer_format.fmt.pix_mp.plane_fmt[1].sizeimage;
-	decoder->capture_buffer_y_offset = 0;
-	decoder->capture_buffer_uv_offset = decoder->capture_buffer_y_size;
-
-	decoder->capture_buffer_size = decoder->capture_buffer_uv_offset + decoder->capture_buffer_uv_size;
-
-
 	/* Allocate and queue the capture buffers. */
 
 	memset(&control, 0, sizeof(control));
@@ -2151,7 +2131,7 @@ static BOOL imx_vpu_api_dec_handle_resolution_change(ImxVpuApiDecoder *decoder, 
 	IMX_VPU_API_DEBUG("requesting V4L2 capture buffers");
 	memset(&capture_buffer_request, 0, sizeof(capture_buffer_request));
 	capture_buffer_request.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-	capture_buffer_request.memory = V4L2_MEMORY_DMABUF;
+	capture_buffer_request.memory = V4L2_MEMORY_MMAP;
 	capture_buffer_request.count = min_num_buffers_for_capture;
 
 	if (ioctl(decoder->v4l2_fd, VIDIOC_REQBUFS, &capture_buffer_request) < 0)
@@ -2192,50 +2172,59 @@ static BOOL imx_vpu_api_dec_handle_resolution_change(ImxVpuApiDecoder *decoder, 
 	decoder->capture_buffer_items = calloc(decoder->num_capture_buffers, sizeof(DecV4L2CaptureBufferItem));
 	assert(decoder->capture_buffer_items != NULL);
 
+	/* For each requested buffer, query its details, export the buffer
+	 * as a DMA-BUF buffer (getting its FD), and retrieving the
+	 * physical address associated with it. */
 	for (i = 0; i < decoder->num_capture_buffers; ++i)
 	{
-		int dmabuf_fd;
+		int plane_nr;
+		struct v4l2_exportbuffer expbuf;
 		struct v4l2_buffer buffer;
 		struct v4l2_plane planes[DEC_NUM_CAPTURE_BUFFER_PLANES];
 		DecV4L2CaptureBufferItem *capture_buffer_item = &(decoder->capture_buffer_items[i]);
 
-		capture_buffer_item->dma_buffer = imx_dma_buffer_allocate(
-			decoder->ion_dma_buffer_allocator,
-			decoder->capture_buffer_size,
-			1,
-			&errornum
-		);
-		if (capture_buffer_item->dma_buffer == NULL)
+		capture_buffer_item->buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+		capture_buffer_item->buffer.index = i;
+		capture_buffer_item->buffer.m.planes = capture_buffer_item->planes;
+		capture_buffer_item->buffer.length = DEC_NUM_CAPTURE_BUFFER_PLANES;
+
+		if (ioctl(decoder->v4l2_fd, VIDIOC_QUERYBUF, &(capture_buffer_item->buffer)) < 0)
 		{
-			IMX_VPU_API_ERROR("could not allocate DMA buffer for V4L2 capture buffer #%d: %s (%d)", i, strerror(errornum), errornum);
+			IMX_VPU_API_ERROR("could not query capture buffer #%d: %s (%d)", i, strerror(errno), errno);
 			goto error;
 		}
 
-		dmabuf_fd = imx_dma_buffer_get_fd(capture_buffer_item->dma_buffer);
+		for (plane_nr = 0; plane_nr < DEC_NUM_CAPTURE_BUFFER_PLANES; ++plane_nr)
+		{
+			int error;
+			imx_physical_address_t physical_address;
 
-		IMX_VPU_API_DEBUG("allocated DMA buffer for V4L2 capture buffer #%d with DMA-BUF FD %d", i, dmabuf_fd);
+			memset(&expbuf, 0, sizeof(expbuf));
+			expbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+			expbuf.index = i;
+			expbuf.plane = plane_nr;
 
-		/* Set the offsets, sizes, and DMA-BUF FDs in the V4L2 plane
-		 * structures. Note that here, we (= the application) set
-		 * the data_offset fields, even though the v4l2_plane
-		 * documentation suggests that normally, these fields are
-		 * set by the driver. That rule seems to be specific to
-		 * video capture devices (like webcams), and not apply to
-		 * mem2mem decoders. */
+			if (ioctl(decoder->v4l2_fd, VIDIOC_EXPBUF, &expbuf) < 0)
+			{
+				IMX_VPU_API_ERROR("could not export plane #%d of capture buffer #%d as DMA-BUF FD: %s (%d)", plane_nr, i, strerror(errno), errno);
+				goto error;
+			}
 
-		capture_buffer_item->planes[0].data_offset = decoder->capture_buffer_y_offset;
-		capture_buffer_item->planes[0].bytesused = decoder->capture_buffer_y_offset + decoder->capture_buffer_y_size;
-		capture_buffer_item->planes[0].m.fd = dmabuf_fd;
+			capture_buffer_item->dmabuf_fds[plane_nr] = expbuf.fd;
 
-		capture_buffer_item->planes[1].data_offset = decoder->capture_buffer_uv_offset;
-		capture_buffer_item->planes[1].bytesused = decoder->capture_buffer_uv_offset + decoder->capture_buffer_uv_size;
-		capture_buffer_item->planes[1].m.fd = dmabuf_fd;
+			physical_address = imx_dma_buffer_ion_get_physical_address_from_dmabuf_fd(decoder->ion_fd, expbuf.fd, &error);
+			if (physical_address == 0)
+			{
+				IMX_VPU_API_ERROR("could not get physical address from DMA-BUF FD %d: %s (%d)", expbuf.fd, strerror(errno), errno);
+				goto error;
+			}
+			IMX_VPU_API_DEBUG(
+				"got physical address %" IMX_PHYSICAL_ADDRESS_FORMAT " from DMA-BUF FD %d plane #%d capture buffer #%d",
+				physical_address, expbuf.fd, plane_nr, i
+			);
 
-		capture_buffer_item->buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-		capture_buffer_item->buffer.index = i;
-		capture_buffer_item->buffer.memory = V4L2_MEMORY_DMABUF;
-		capture_buffer_item->buffer.length = DEC_NUM_CAPTURE_BUFFER_PLANES;
-		capture_buffer_item->buffer.m.planes = capture_buffer_item->planes;
+			capture_buffer_item->physical_addresses[plane_nr] = physical_address;
+		}
 
 		/* We copy the v4l2_buffer instance in case the driver
 		 * modifies its fields. (This preserves the original.) */
@@ -2358,18 +2347,21 @@ static BOOL imx_vpu_api_dec_handle_resolution_change(ImxVpuApiDecoder *decoder, 
 
 	/* Set up the G2D surfaces. */
 
+	capture_buffer_y_stride = decoder->capture_buffer_format.fmt.pix_mp.plane_fmt[0].bytesperline;
+	capture_buffer_y_size = decoder->capture_buffer_format.fmt.pix_mp.plane_fmt[0].sizeimage;
+
 	memset(&(decoder->source_g2d_surface), 0, sizeof(struct g2d_surfaceEx));
 	decoder->source_g2d_surface.base.format = G2D_NV12;
 	decoder->source_g2d_surface.base.left = 0;
 	decoder->source_g2d_surface.base.top = 0;
 	decoder->source_g2d_surface.base.right = fb_metrics->actual_frame_width;
 	decoder->source_g2d_surface.base.bottom = fb_metrics->actual_frame_height;
-	decoder->source_g2d_surface.base.stride = decoder->capture_buffer_y_stride;
-	decoder->source_g2d_surface.base.width = decoder->capture_buffer_y_stride;
+	decoder->source_g2d_surface.base.stride = capture_buffer_y_stride;
+	decoder->source_g2d_surface.base.width = capture_buffer_y_stride;
 	/* Include padding rows in the "height" field, since G2D has no other
 	 * way to specify how many padding rows there are.
 	 * (The actual frame height is written into the "bottom" field above.) */
-	decoder->source_g2d_surface.base.height = decoder->capture_buffer_y_size / decoder->capture_buffer_y_stride;
+	decoder->source_g2d_surface.base.height = capture_buffer_y_size / capture_buffer_y_stride;
 	decoder->source_g2d_surface.base.blendfunc = G2D_ONE;
 	decoder->source_g2d_surface.tiling = (decoder->actual_v4l2_pixelformat == V4L2_PIX_FMT_NV12) ? G2D_AMPHION_TILED : G2D_AMPHION_TILED_10BIT;
 
