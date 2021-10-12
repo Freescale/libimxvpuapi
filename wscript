@@ -173,6 +173,7 @@ def options(opt):
 	opt.add_option('--imx-platform', action='store', default='', help='i.MX platform to build for (valid platforms: ' + ' '.join(imx_platforms.keys()) + ')')
 	opt.add_option('--imx-headers', action='store', default='', help='path to where linux/mxcfb.h etc. can be found [default: <sysroot path>/usr/include/imx]')
 	opt.add_option('--sysroot-path', action='store', default='', help='path to the sysroot')
+	opt.add_option('--disable-examples', action = 'store_true', default = False, help = 'do not compile examples [default: build examples]')
 	opt.load('compiler_c')
 	opt.load('gnu_dirs')
 
@@ -203,6 +204,7 @@ def configure(conf):
 	conf.env['CFLAGS'] = basic_cflags
 	conf.env['LINKFLAGS'] = basic_ldflags
 	conf.env['BUILD_STATIC'] = conf.options.enable_static
+	conf.env['DISABLE_EXAMPLES'] = conf.options.disable_examples
 
 
 	# check libimxdmabuffer dependency
@@ -277,29 +279,30 @@ def build(bld):
 		install_path="${LIBDIR}/pkgconfig"
 	)
 
-	examples = [ \
-		{ 'name': 'decode-example',         'source': ['example/decode-example.c']         }, \
-		{ 'name': 'encode-example',         'source': ['example/encode-example.c']         }, \
-		{ 'name': 'jpeg-dec-example',       'source': ['example/jpeg-dec-example.c']       }, \
-		{ 'name': 'jpeg-enc-example',       'source': ['example/jpeg-enc-example.c']       }, \
-	]
+	if not bld.env['DISABLE_EXAMPLES']:
+		examples = [ \
+			{ 'name': 'decode-example',         'source': ['example/decode-example.c']         }, \
+			{ 'name': 'encode-example',         'source': ['example/encode-example.c']         }, \
+			{ 'name': 'jpeg-dec-example',       'source': ['example/jpeg-dec-example.c']       }, \
+			{ 'name': 'jpeg-enc-example',       'source': ['example/jpeg-enc-example.c']       }, \
+		]
 
-	bld(
-		features = ['c'],
-		includes = ['.', 'example'],
-		uselib = ['IMXDMABUFFER', 'C99'],
-		use = 'imxvpuapi2',
-		source = ['example/main.c', 'example/y4m_io.c', 'example/h264_utils.c'],
-		name = 'examples-common'
-	)
-
-	for example in examples:
 		bld(
-			features = ['c', 'cprogram'],
+			features = ['c'],
 			includes = ['.', 'example'],
 			uselib = ['IMXDMABUFFER', 'C99'],
-			use = 'imxvpuapi2 examples-common',
-			source = example['source'],
-			target = 'example/' + example['name'],
-			install_path = None # makes sure the example is not installed
+			use = 'imxvpuapi2',
+			source = ['example/main.c', 'example/y4m_io.c', 'example/h264_utils.c'],
+			name = 'examples-common'
 		)
+
+		for example in examples:
+			bld(
+				features = ['c', 'cprogram'],
+				includes = ['.', 'example'],
+				uselib = ['IMXDMABUFFER', 'C99'],
+				use = 'imxvpuapi2 examples-common',
+				source = example['source'],
+				target = 'example/' + example['name'],
+				install_path = None # makes sure the example is not installed
+			)
