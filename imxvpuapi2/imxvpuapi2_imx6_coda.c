@@ -2427,6 +2427,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 		{
 			IMX_VPU_API_LOG("EOS reached");
 			decoder->available_decoded_frame_idx = -1;
+			decoder->drain_mode_enabled = FALSE;
 			*output_code = IMX_VPU_API_DEC_OUTPUT_CODE_EOS;
 		}
 		else
