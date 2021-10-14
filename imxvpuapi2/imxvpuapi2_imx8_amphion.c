@@ -2986,14 +2986,6 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 	{
 		EncV4L2OutputBufferItem *output_buffer_item = &((*encoder)->output_buffer_items[i]);
 
-		output_buffer_item->planes[0].data_offset = fb_metrics->y_offset;
-		output_buffer_item->planes[0].bytesused = fb_metrics->y_offset + fb_metrics->y_size;
-		output_buffer_item->planes[0].m.fd = -1;
-
-		output_buffer_item->planes[1].data_offset = fb_metrics->u_offset;
-		output_buffer_item->planes[1].bytesused = fb_metrics->u_offset + fb_metrics->uv_size;
-		output_buffer_item->planes[1].m.fd = -1;
-
 		output_buffer_item->buffer.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
 		output_buffer_item->buffer.index = i;
 		output_buffer_item->buffer.memory = V4L2_MEMORY_DMABUF;
@@ -3435,9 +3427,12 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_push_raw_frame(ImxVpuApiEncoder *encoder
 	struct v4l2_buffer buffer;
 	int frame_context_index;
 	int fd;
+	ImxVpuApiFramebufferMetrics *fb_metrics;
 
 	assert(encoder != NULL);
 	assert(raw_frame != NULL);
+
+	fb_metrics = &(encoder->stream_info.frame_encoding_framebuffer_metrics);
 
 
 	/* Get an unused output buffer for our new raw data. */
@@ -3457,6 +3452,12 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_push_raw_frame(ImxVpuApiEncoder *encoder
 		memcpy(planes, output_buffer_item->planes, sizeof(planes));
 		buffer.m.planes = planes;
 		buffer.length = ENC_NUM_OUTPUT_BUFFER_PLANES;
+
+		planes[0].data_offset = fb_metrics->y_offset;
+		planes[0].bytesused = fb_metrics->y_offset + fb_metrics->y_size;
+
+		planes[1].data_offset = fb_metrics->u_offset;
+		planes[1].bytesused = fb_metrics->u_offset + fb_metrics->uv_size;
 
 		IMX_VPU_API_LOG(
 			"V4L2 output queue has room for %d more buffer(s); using buffer with buffer index %d to fill it with new raw data and enqueue it",
@@ -3535,6 +3536,146 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_push_raw_frame(ImxVpuApiEncoder *encoder
 		control.id = V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME;
 		control.value = 0;
 		if (ioctl(fd, VIDIOC_S_CTRL, &control) < 0)
+		{
+			IMX_VPU_API_ERROR("could not force next queued frame to be encoded as a keyframe: %s (%d)", strerror(errno), errno);
+			enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+			goto error;
+		}
+	}
+
+
+	/* Finally, queue the buffer. */
+	if (ioctl(encoder->v4l2_fd, VIDIOC_QBUF, &buffer) < 0)
+	{
+		IMX_VPU_API_ERROR("could not queue output buffer: %s (%d)", strerror(errno), errno);
+		goto error;
+	}
+
+
+finish:
+	return enc_ret;
+
+error:
+	if (enc_ret == IMX_VPU_API_ENC_RETURN_CODE_OK)
+		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+
+	goto finish;
+}
+
+
+ImxVpuApiEncReturnCodes imx_vpu_api_enc_push_raw_frame_2(ImxVpuApiEncoder *encoder, ImxVpuApiRawFrame const *raw_frame, ImxDmaBuffer **additional_planes)
+{
+	ImxVpuApiEncReturnCodes enc_ret = IMX_VPU_API_ENC_RETURN_CODE_OK;
+	struct v4l2_plane planes[ENC_NUM_OUTPUT_BUFFER_PLANES];
+	struct v4l2_buffer buffer;
+	int frame_context_index;
+	ImxVpuApiFramebufferMetrics *fb_metrics;
+
+	assert(encoder != NULL);
+	assert(raw_frame != NULL);
+
+	fb_metrics = &(encoder->stream_info.frame_encoding_framebuffer_metrics);
+
+
+	/* Get an unused output buffer for our new raw data. */
+
+	/* Depending on how many output buffers we already queued,
+	 * we might have to dequeue one first. In the beginning,
+	 * the queue is not yet full, so we just keep queuing. */
+	if (encoder->num_output_buffers_in_queue < encoder->num_output_buffers)
+	{
+		int output_buffer_index = encoder->num_output_buffers_in_queue;
+		EncV4L2OutputBufferItem *output_buffer_item = &(encoder->output_buffer_items[output_buffer_index]);
+		encoder->num_output_buffers_in_queue++;
+
+		/* We copy the v4l2_buffer instance in case the driver
+		 * modifies its fields. (This preserves the original.) */
+		memcpy(&buffer, &(output_buffer_item->buffer), sizeof(buffer));
+		memcpy(planes, output_buffer_item->planes, sizeof(planes));
+		buffer.m.planes = planes;
+		buffer.length = ENC_NUM_OUTPUT_BUFFER_PLANES;
+
+		output_buffer_item->planes[0].data_offset = 0;
+		output_buffer_item->planes[0].bytesused = fb_metrics->y_size;
+
+		output_buffer_item->planes[1].data_offset = 0;
+		output_buffer_item->planes[1].bytesused = fb_metrics->uv_size;
+
+		IMX_VPU_API_LOG(
+			"V4L2 output queue has room for %d more buffer(s); using buffer with buffer index %d to fill it with new raw data and enqueue it",
+			encoder->num_output_buffers - encoder->num_output_buffers_in_queue,
+			output_buffer_index
+		);
+	}
+	else
+	{
+		memset(&buffer, 0, sizeof(buffer));
+		buffer.m.planes = planes;
+		buffer.length = ENC_NUM_OUTPUT_BUFFER_PLANES;
+		buffer.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+		buffer.memory = V4L2_MEMORY_DMABUF;
+
+		if (ioctl(encoder->v4l2_fd, VIDIOC_DQBUF, &buffer) < 0)
+		{
+			IMX_VPU_API_ERROR("could not dequeue V4L2 output buffer: %s (%d)", strerror(errno), errno);
+			enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+			goto error;
+		}
+
+		IMX_VPU_API_LOG(
+			"V4L2 output queue is full; dequeued output buffer with buffer index %d to fill it with new encoded data and then re-enqueue it",
+			(int)(buffer.index)
+		);
+	}
+
+
+	/* Store the frame context in the frame context array, and
+	 * keep track of the index where the context is stored.
+	 * We'll store that index in the frames that get queued. */
+
+	frame_context_index = imx_vpu_api_enc_add_frame_context(encoder, raw_frame->context, raw_frame->pts, raw_frame->dts);
+	if (frame_context_index < 0)
+		goto error;
+
+
+	/* Set the DMA-BUF FD from the DMA buffer in the plane structures. */
+	planes[0].m.fd = imx_dma_buffer_get_fd(raw_frame->fb_dma_buffer);
+	planes[1].m.fd = imx_dma_buffer_get_fd(additional_planes[0]);
+
+	planes[0].length = imx_dma_buffer_get_size(raw_frame->fb_dma_buffer);
+	planes[1].length = imx_dma_buffer_get_size(additional_planes[0]);
+
+	/* Look up the code in imx_vpu_api_enc_get_frame_context()
+	 * to see why the PTS is stored in the timestamp field. */
+	buffer.timestamp.tv_sec = raw_frame->pts / 1000000000;
+	buffer.timestamp.tv_usec = (raw_frame->pts - ((uint64_t)(buffer.timestamp.tv_sec)) * 1000000000) / 1000;
+
+
+	IMX_VPU_API_LOG(
+		"queuing V4L2 output buffer with buffer index %d and frame context index %d (context pointer %p PTS %" PRIu64 " DTS %" PRIu64 " pts_microseconds %" PRIu64 ")",
+		(int)(buffer.index),
+		frame_context_index,
+		raw_frame->context,
+		raw_frame->pts,
+		raw_frame->dts,
+		encoder->frame_context_items[frame_context_index].pts_microseconds
+	);
+
+
+	if ((raw_frame->frame_types[0] == IMX_VPU_API_FRAME_TYPE_I) ||
+	    (raw_frame->frame_types[0] == IMX_VPU_API_FRAME_TYPE_IDR))
+	{
+		/* Force the Windsor encoder to produce an IDR frame out
+		 * of this raw frame. We must set this control _before_
+		 * queuing that raw frame to accomplish this. */
+
+		struct v4l2_control control;
+
+		IMX_VPU_API_LOG("forcing encoder to encode raw frame as IDR keyframe");
+
+		control.id = V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME;
+		control.value = 0;
+		if (ioctl(encoder->v4l2_fd, VIDIOC_S_CTRL, &control) < 0)
 		{
 			IMX_VPU_API_ERROR("could not force next queued frame to be encoded as a keyframe: %s (%d)", strerror(errno), errno);
 			enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;

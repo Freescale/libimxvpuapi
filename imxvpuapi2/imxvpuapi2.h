@@ -2489,6 +2489,8 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_set_frame_rate(ImxVpuApiEncoder *encoder
  */
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_push_raw_frame(ImxVpuApiEncoder *encoder, ImxVpuApiRawFrame const *raw_frame);
 
+ImxVpuApiEncReturnCodes imx_vpu_api_enc_push_raw_frame_2(ImxVpuApiEncoder *encoder, ImxVpuApiRawFrame const *raw_frame, ImxDmaBuffer **additional_planes);
+
 /* Performs an encoding step.
  *
  * This function is used in conjunction with imx_vpu_api_enc_push_raw_frame().
