@@ -1756,7 +1756,10 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 		capture_buffer_item = &(decoder->capture_buffer_items[dequeued_capture_buffer_index]);
 
 		frame_context_index = imx_vpu_api_dec_get_frame_context(decoder, &buffer);
-		assert(frame_context_index >= 0);
+ 		if (frame_context_index < 0)
+		{
+ 			goto error;
+		}
 		assert(frame_context_index < (int)(decoder->num_frame_context_items));
 		decoder->decoded_frame_context_index = frame_context_index;
 		decoder->decoded_frame_context_item = &(decoder->frame_context_items[frame_context_index]);
@@ -3827,7 +3830,10 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
 			*encoded_frame_size = encoder->encoded_frame_size = buffer.m.planes[0].bytesused;
 
 			frame_context_index = imx_vpu_api_enc_get_frame_context(encoder, &buffer);
-			assert(frame_context_index >= 0);
+ 			if (frame_context_index < 0)
+			{
+ 				goto error;
+			}
 			assert(frame_context_index < (int)(encoder->num_frame_context_items));
 			encoder->encoded_frame_context_index = frame_context_index;
 			encoder->encoded_frame_context_item = &(encoder->frame_context_items[frame_context_index]);
