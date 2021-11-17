@@ -1418,8 +1418,8 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_push_encoded_frame(ImxVpuApiDecoder *dec
 	buffer.m.planes[0].bytesused = encoded_frame->data_size;
 	/* Look up the code in imx_vpu_api_dec_get_frame_context()
 	 * to see why the PTS is stored in the timestamp field. */
-	buffer.timestamp.tv_sec = encoded_frame->pts / 1000000000;
-	buffer.timestamp.tv_usec = (encoded_frame->pts - ((uint64_t)(buffer.timestamp.tv_sec)) * 1000000000) / 1000;
+	buffer.timestamp.tv_sec = ((uint64_t)(encoded_frame->context)) / 1000000000;
+	buffer.timestamp.tv_usec = ((uint64_t)(encoded_frame->context)) - ((uint64_t)(buffer.timestamp.tv_sec)) * 1000000000;
 
 
 	/* Copy the encoded data into the output buffer. */
@@ -1999,7 +1999,7 @@ static int imx_vpu_api_dec_add_frame_context(ImxVpuApiDecoder *decoder, void *co
 	decoder->num_available_frame_context_items--;
 
 	frame_context_item->context = context;
-	frame_context_item->pts_microseconds = pts / 1000;
+	frame_context_item->pts_microseconds = (uint64_t)context;
 	frame_context_item->pts = pts;
 	frame_context_item->dts = dts;
 	frame_context_item->in_use = TRUE;
@@ -2010,19 +2010,14 @@ static int imx_vpu_api_dec_add_frame_context(ImxVpuApiDecoder *decoder, void *co
 
 static int imx_vpu_api_dec_get_frame_context(ImxVpuApiDecoder *decoder, struct v4l2_buffer *buffer)
 {
-	uint64_t pts_microseconds;
+	uint64_t context;
 	int i;
 	int frame_context_index;
 	DecFrameContextItem *frame_context_item;
 
-	/* Look up the frame context items that matches the frame that is stored in the v4l2_buffer.
-	 * TODO: Normally, this should be doable by storing the frame context index in the
-	 * buffer->timestamp field. However, the Amphion decoder seems to expect PTS in that
-	 * timestamp to use this for reordering frames, so we can't store the index directly.
-	 * Instead, "timestamp" contains the frame PTS in microseconds, and we have to find
-	 * the context that has a matching PTS. */ 
+	/* Look up the frame context items that matches the frame that is stored in the v4l2_buffer. */
 
-	pts_microseconds = ((uint64_t)(buffer->timestamp.tv_sec)) * 1000000 + ((uint64_t)(buffer->timestamp.tv_usec));
+	context = ((uint64_t)(buffer->timestamp.tv_sec)) * 1000000 + ((uint64_t)(buffer->timestamp.tv_usec));
 	frame_context_index = -1;
 
 	for (i = 0; i < decoder->num_frame_context_items; ++i)
@@ -2032,7 +2027,7 @@ static int imx_vpu_api_dec_get_frame_context(ImxVpuApiDecoder *decoder, struct v
 		if (!frame_context_item->in_use)
 			continue;
 
-		if (frame_context_item->pts_microseconds == pts_microseconds)
+		if (((uint64_t)(frame_context_item->context)) == context)
 		{
 			frame_context_index = i;
 			break;
@@ -2042,9 +2037,9 @@ static int imx_vpu_api_dec_get_frame_context(ImxVpuApiDecoder *decoder, struct v
 	if (frame_context_index < 0)
 	{
 		IMX_VPU_API_ERROR(
-			"could not find frame context index for V4L2 capture buffer with index %d (pts_microseconds %" PRIu64 ")",
+			"could not find frame context index for V4L2 capture buffer with index %d (context %" PRIu64 ")",
 			(int)(buffer->index),
-			pts_microseconds
+			context
 		);
 	}
 
