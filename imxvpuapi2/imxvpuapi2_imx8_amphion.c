@@ -1756,43 +1756,68 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 		capture_buffer_item = &(decoder->capture_buffer_items[dequeued_capture_buffer_index]);
 
 		frame_context_index = imx_vpu_api_dec_get_frame_context(decoder, &buffer);
-		assert(frame_context_index >= 0);
 		assert(frame_context_index < (int)(decoder->num_frame_context_items));
-		decoder->decoded_frame_context_index = frame_context_index;
-		decoder->decoded_frame_context_item = &(decoder->frame_context_items[frame_context_index]);
 
-		/* Do the detiling with G2D, which also implicitly copies the
-		 * frame from the capture buffer to the output_frame_dma_buffer. */
+		if (frame_context_index < 0)
 		{
-			ImxVpuApiFramebufferMetrics *fb_metrics = &(decoder->stream_info.decoded_frame_framebuffer_metrics);
-			imx_physical_address_t dest_physical_address = imx_dma_buffer_get_physical_address(decoder->output_frame_dma_buffer);
+			/* XXX: The V4L2 Amphion Malone B0 decoder driver contains a "timestamp
+			 * manager" that sometimes interpolates timestamps. Since these are
+			 * timestamps that were never associated with the corresponding encoding
+			 * frame, imx_vpu_api_dec_get_frame_context() fails to find a frame
+			 * context index. The obvious solution would be to turn that timestamp
+			 * manager off and have the driver just copy the v4l2_buffer timestamp
+			 * value from the encoded to the associated decoded frame (which is the
+			 * behavior the V4L2 spec actually requires), but NXP did not add that
+			 * option, and there is no indication that they ever will. Instead, we
+			 * have to skip frames with such timestamps, since we cannot associate
+			 * them with PTS/DTS/context values from any frame context. */
 
-			decoder->source_g2d_surface.base.planes[0] = capture_buffer_item->physical_addresses[0];
-			decoder->source_g2d_surface.base.planes[1] = capture_buffer_item->physical_addresses[1];
-
-			decoder->dest_g2d_surface.base.planes[0] = dest_physical_address + fb_metrics->y_offset;
-			decoder->dest_g2d_surface.base.planes[1] = dest_physical_address + fb_metrics->u_offset;
-
-			if (g2d_blitEx(decoder->g2d_handle, &(decoder->source_g2d_surface), &(decoder->dest_g2d_surface)) != 0)
-			{
-				IMX_VPU_API_ERROR("could not detile frame by using the G2D blitter");
-				return IMX_VPU_API_DEC_RETURN_CODE_ERROR;
-			}
+			IMX_VPU_API_DEBUG("did not find frame context index for decoded frame; recording frame for skipping it later");
+			decoder->num_detected_skipped_frames++;
+			/* Claim that there is no output, since the output we got is unusable. */
+			*output_code = IMX_VPU_API_DEC_OUTPUT_CODE_NO_OUTPUT_YET_AVAILABLE;
 		}
+		else
+		{
+			/* Frame was decoded, and the timestamp was not interpolated. Consequently,
+			 * we were able to retrieve a frame context index and can output a frame. */
 
-		IMX_VPU_API_LOG(
-			"got decoded frame:"
-			"  capture buffer index %d  frame context index %d"
-			"  V4L2 buffer flags %08x bytesused %u"
-			"  context pointer %p PTS %" PRIu64 " DTS %" PRIu64,
-			dequeued_capture_buffer_index,
-			frame_context_index,
-			(unsigned int)(buffer.flags),
-			(unsigned int)(buffer.bytesused),
-			decoder->decoded_frame_context_item->context,
-			decoder->decoded_frame_context_item->pts,
-			decoder->decoded_frame_context_item->dts
-		);
+			decoder->decoded_frame_context_index = frame_context_index;
+			decoder->decoded_frame_context_item = &(decoder->frame_context_items[frame_context_index]);
+
+			/* Do the detiling with G2D, which also implicitly copies the
+			 * frame from the capture buffer to the output_frame_dma_buffer. */
+			{
+				ImxVpuApiFramebufferMetrics *fb_metrics = &(decoder->stream_info.decoded_frame_framebuffer_metrics);
+				imx_physical_address_t dest_physical_address = imx_dma_buffer_get_physical_address(decoder->output_frame_dma_buffer);
+
+				decoder->source_g2d_surface.base.planes[0] = capture_buffer_item->physical_addresses[0];
+				decoder->source_g2d_surface.base.planes[1] = capture_buffer_item->physical_addresses[1];
+
+				decoder->dest_g2d_surface.base.planes[0] = dest_physical_address + fb_metrics->y_offset;
+				decoder->dest_g2d_surface.base.planes[1] = dest_physical_address + fb_metrics->u_offset;
+
+				if (g2d_blitEx(decoder->g2d_handle, &(decoder->source_g2d_surface), &(decoder->dest_g2d_surface)) != 0)
+				{
+					IMX_VPU_API_ERROR("could not detile frame by using the G2D blitter");
+					return IMX_VPU_API_DEC_RETURN_CODE_ERROR;
+				}
+			}
+
+			IMX_VPU_API_LOG(
+				"got decoded frame:"
+				"  capture buffer index %d  frame context index %d"
+				"  V4L2 buffer flags %08x bytesused %u"
+				"  context pointer %p PTS %" PRIu64 " DTS %" PRIu64,
+				dequeued_capture_buffer_index,
+				frame_context_index,
+				(unsigned int)(buffer.flags),
+				(unsigned int)(buffer.bytesused),
+				decoder->decoded_frame_context_item->context,
+				decoder->decoded_frame_context_item->pts,
+				decoder->decoded_frame_context_item->dts
+			);
+		}
 
 		if (buffer.flags & V4L2_BUF_FLAG_LAST)
 		{
@@ -1815,7 +1840,9 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 			goto error;
 		}
 
-		decoder->frame_was_decoded = TRUE;
+		/* output_code is set to IMX_VPU_API_DEC_OUTPUT_CODE_DECODED_FRAME_AVAILABLE
+		 * unless the decoded frame has an interpolated timestamp (see above). */
+		decoder->frame_was_decoded = ((*output_code) == IMX_VPU_API_DEC_OUTPUT_CODE_DECODED_FRAME_AVAILABLE);
 
 		goto finish;
 	}
@@ -2041,7 +2068,7 @@ static int imx_vpu_api_dec_get_frame_context(ImxVpuApiDecoder *decoder, struct v
 
 	if (frame_context_index < 0)
 	{
-		IMX_VPU_API_ERROR(
+		IMX_VPU_API_DEBUG(
 			"could not find frame context index for V4L2 capture buffer with index %d (pts_microseconds %" PRIu64 ")",
 			(int)(buffer->index),
 			pts_microseconds
