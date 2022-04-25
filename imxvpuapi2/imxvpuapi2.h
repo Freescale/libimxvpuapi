@@ -878,6 +878,10 @@ ImxVpuApiVP9SupportDetails;
  *   2. The IMX_VPU_API_DEC_OUTPUT_CODE_EOS output code is returned
  *   3. A return code that indicates an error is returned
  *
+ * Once EOS has been reported, imx_vpu_api_dec_is_drain_mode_enabled()
+ * will return 0 again, since the drain mode is automatically turned off
+ * when the end of stream is reached.
+ *
  *
  * SHUTTING DOWN THE DECODER
  *
@@ -1577,9 +1581,10 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_add_framebuffers_to_pool(ImxVpuApiDecode
  * provide any queued decoded frame it may still have, until its internal queues
  * are fully emptied.
  *
- * Due to the way some i.MX VPUs work, it is not possible to revert back from
- * this mode. If there is more data to decode, the user has to reopen the
- * decoder first.
+ * Once this mode is enabled, imx_vpu_api_dec_decode() has to be until it reports
+ * the IMX_VPU_API_ENC_OUTPUT_CODE_EOS output code. After EOS is reached, the drain
+ * mode is automatically turned off again, and decoding new encoded frames can again
+ * take place.
  *
  * @param decoder Decoder instance. Must not be NULL.
  */
@@ -1599,6 +1604,8 @@ int imx_vpu_api_dec_is_drain_mode_enabled(ImxVpuApiDecoder *decoder);
  *
  * If this is called before framebuffers were added to the decoder instance,
  * then this function does nothing.
+ *
+ * An ongoing drain mode is turned off by this function.
  *
  * After calling this function, before calling imx_vpu_api_dec_decode(),
  * it is necessary to feed in data with imx_vpu_api_dec_push_encoded_frame(),
@@ -1701,7 +1708,7 @@ void imx_vpu_api_dec_set_output_frame_dma_buffer(ImxVpuApiDecoder *decoder, ImxD
  *
  * Repeatedly calling imx_vpu_api_dec_decode() until the output code
  * IMX_VPU_API_DEC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED is needed is a valid way
- * of draining a decoder without having to enable the drain mode. See
+ * of partially draining a decoder without having to enable the drain mode. See
  * imx_vpu_api_dec_enable_drain_mode() for details.
  *
  * @param decoder Decoder instance. Must not be NULL.

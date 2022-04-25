@@ -1605,6 +1605,9 @@ void imx_vpu_api_dec_flush(ImxVpuApiDecoder *decoder)
 	decoder->decoded_frame_reported = FALSE;
 	decoder->encoded_data_available = FALSE;
 
+	decoder->end_of_stream_reached = FALSE;
+	decoder->drain_mode_enabled = FALSE;
+
 	IMX_VPU_API_DEBUG("flushing decoder");
 
 	while (do_loop)
@@ -1684,6 +1687,10 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_push_encoded_frame(ImxVpuApiDecoder *dec
 
 	decoder->encoded_data_available = TRUE;
 
+	/* Clear end_of_stream_reached flag since feeding in data
+	 * means that we are no longer at the end of stream. */
+	decoder->end_of_stream_reached = FALSE;
+
 	return IMX_VPU_API_DEC_RETURN_CODE_OK;
 }
 
@@ -1729,9 +1736,9 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 		return IMX_VPU_API_DEC_RETURN_CODE_INVALID_CALL;
 	}
 
-	IMX_VPU_API_LOG("decoding frame(s); drain mode enabled: %d", decoder->drain_mode_enabled);
-
 	codec_state = decoder->codec->getframe(decoder->codec, &frame, decoder->drain_mode_enabled ? OMX_TRUE : OMX_FALSE);
+	IMX_VPU_API_LOG("decoding frame(s);  drain mode enabled: %d  codec state %s (%d)", decoder->drain_mode_enabled, codec_state_to_string(codec_state), codec_state);
+
 	switch (codec_state)
 	{
 		case CODEC_HAS_FRAME:
@@ -1774,6 +1781,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 			{
 				IMX_VPU_API_DEBUG("single frame decoding is enabled, and a frame was just decoded; setting EOS flag");
 				decoder->end_of_stream_reached = TRUE;
+				decoder->drain_mode_enabled = FALSE;
 			}
 
 			return IMX_VPU_API_DEC_RETURN_CODE_OK;
@@ -1782,6 +1790,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 		case CODEC_END_OF_STREAM:
 			IMX_VPU_API_DEBUG("video codec reports end of stream");
 			decoder->end_of_stream_reached = TRUE;
+			decoder->drain_mode_enabled = FALSE;
 			*output_code = IMX_VPU_API_DEC_OUTPUT_CODE_EOS;
 			return IMX_VPU_API_DEC_RETURN_CODE_OK;
 
@@ -1843,6 +1852,9 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 			 * really needed. So, only call it if necessary. */
 			if (decoder->use_endofstream_function)
 			{
+				/* endofstream() initiates the actual drain. For this
+				 * reason, we do not yet report IMX_VPU_API_DEC_OUTPUT_CODE_EOS
+				 * here - that will happen in imx_vpu_api_dec_decode(). */
 				codec_state = decoder->codec->endofstream(decoder->codec);
 				IMX_VPU_API_DEBUG("endofstream(): %s (%d)", codec_state_to_string(codec_state), codec_state);
 				return (codec_state == CODEC_OK) ? IMX_VPU_API_DEC_RETURN_CODE_OK : IMX_VPU_API_DEC_RETURN_CODE_ERROR;
@@ -1851,6 +1863,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 			{
 				IMX_VPU_API_DEBUG("stream buffer empty, endofstream() is not to be called, and drain mode is enabled; we are at the end of stream");
 				decoder->end_of_stream_reached = TRUE;
+				decoder->drain_mode_enabled = FALSE;
 				*output_code = IMX_VPU_API_DEC_OUTPUT_CODE_EOS;
 				return IMX_VPU_API_DEC_RETURN_CODE_OK;
 			}
