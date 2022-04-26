@@ -1932,6 +1932,9 @@ void imx_vpu_api_dec_flush(ImxVpuApiDecoder *decoder)
 	decoder->num_used_framebuffers = 0;
 	decoder->staged_encoded_frame_set = FALSE;
 
+	decoder->drain_mode_enabled = FALSE;
+	decoder->drain_eos_sent_to_vpu = FALSE;
+
 	IMX_VPU_API_DEBUG("flushed decoder");
 }
 
