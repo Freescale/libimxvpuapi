@@ -2,6 +2,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
+#include <sys/eventfd.h>
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
@@ -94,6 +95,11 @@
 #ifndef V4L2_CID_USER_FRAME_DIS_REORDER
 #define V4L2_CID_USER_FRAME_DIS_REORDER      (V4L2_CID_USER_BASE + 0x1300)
 #endif
+
+/* This is the number of pollfd structs used during en- and decoding.
+ * One struct is there for the V4L2 FD, another struct is there for an
+ * eventfd. The latter one is used to allow for cancelling. */
+#define NUM_POLLFDS 2
 
 #define V4L2_FOURCC_ARGS(FOURCC) \
 		  ((char)(((FOURCC) >> 0)) & 0xFF) \
@@ -499,6 +505,7 @@ DecV4L2CaptureBufferItem;
 struct _ImxVpuApiDecoder
 {
 	int v4l2_fd;
+	int cancel_eventfd;
 
 
 	/* Output queue states */
@@ -818,6 +825,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_open(ImxVpuApiDecoder **decoder, ImxVpuA
 
 	memset(*decoder, 0, sizeof(ImxVpuApiDecoder));
 	(*decoder)->ion_fd = -1;
+	(*decoder)->cancel_eventfd = -1;
 
 	/* Configure the V4L2 pixel format to request. This is always an
 	 * Amphion tiled format. The choice is between 8 and 10 bit output. */
@@ -857,6 +865,14 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_open(ImxVpuApiDecoder **decoder, ImxVpuA
 				imx_vpu_api_color_format_string((*decoder)->decoded_frame_format)
 			);
 		}
+	}
+
+	(*decoder)->cancel_eventfd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+	if ((*decoder)->cancel_eventfd < 0)
+	{
+		IMX_VPU_API_ERROR("could not create eventfd for cancelling: %s (%d)", strerror(errno), errno);
+		dec_ret = IMX_VPU_API_DEC_RETURN_CODE_ERROR;
+		goto error;
 	}
 
 	/* Open the device and query its capabilities. */
@@ -1172,6 +1188,9 @@ void imx_vpu_api_dec_close(ImxVpuApiDecoder *decoder)
 
 		close(decoder->v4l2_fd);
 	}
+
+	if (decoder->cancel_eventfd >= 0)
+		close(decoder->cancel_eventfd);
 
 	if (decoder->ion_fd >= 0)
 		close(decoder->ion_fd);
@@ -1494,13 +1513,18 @@ void imx_vpu_api_dec_set_output_frame_dma_buffer(ImxVpuApiDecoder *decoder, ImxD
 ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpuApiDecOutputCodes *output_code)
 {
 	ImxVpuApiDecReturnCodes dec_ret = IMX_VPU_API_DEC_RETURN_CODE_OK;
-	struct pollfd pfd;
+	struct pollfd pfds[NUM_POLLFDS];
+	struct pollfd *v4l2_pfd = &(pfds[0]);
+	struct pollfd *eventfd_pfd = &(pfds[1]);
 	int num_used_frame_context_items;
 
 	assert(decoder != NULL);
 	assert(output_code != NULL);
 
 	*output_code = IMX_VPU_API_DEC_OUTPUT_CODE_NO_OUTPUT_YET_AVAILABLE;
+
+	eventfd_pfd->fd = decoder->cancel_eventfd;
+	eventfd_pfd->events = POLLIN | POLLPRI;
 
 
 	/* Handle EOS case. */
@@ -1610,20 +1634,20 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 	 * want the decoder to decode the pending frames.
 	 */
 
-	pfd.fd = decoder->v4l2_fd;
-	pfd.events = POLLIN | POLLPRI;
+	v4l2_pfd->fd = decoder->v4l2_fd;
+	v4l2_pfd->events = POLLIN | POLLPRI;
 
 	if (!decoder->drain_mode_enabled)
 	{
 		if (!decoder->stream_info_announced)
 		{
 			IMX_VPU_API_LOG("stream info has not yet been announced; enabling POLLOUT event");
-			pfd.events |= POLLOUT;
+			v4l2_pfd->events |= POLLOUT;
 		}
 		else if (num_used_frame_context_items < decoder->used_frame_context_item_count_limit)
 		{
 			IMX_VPU_API_LOG("there is room for more encoded frames to be pushed into the V4L2 output queue; enabling POLLOUT event");
-			pfd.events |= POLLOUT;
+			v4l2_pfd->events |= POLLOUT;
 		}
 		else
 		{
@@ -1639,7 +1663,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 	 * interrupted by a signal, in which case we can safely try again. */
 	while (TRUE)
 	{
-		int poll_ret = poll(&pfd, 1, -1);
+		int poll_ret = poll(pfds, NUM_POLLFDS, -1);
 		if (poll_ret < 0)
 		{
 			switch (errno)
@@ -1660,8 +1684,15 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 
 	/* Handle the returned poll() events. */
 
+	if (eventfd_pfd->revents & (POLLIN | POLLPRI))
+	{
+		/* User cancelled decoding. Return EOS. */
+		*output_code = IMX_VPU_API_DEC_OUTPUT_CODE_EOS;
+		return IMX_VPU_API_DEC_RETURN_CODE_OK;
+	}
+
 	/* POLLPRI = a V4L2 event has arrived. */
-	if (pfd.revents & POLLPRI)
+	if (v4l2_pfd->revents & POLLPRI)
 	{
 		struct v4l2_event event;
 
@@ -1715,7 +1746,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 	}
 
 	/* POLLIN = decoded (raw) frame available at the CAPTURE queue. */
-	if (pfd.revents & POLLIN)
+	if (v4l2_pfd->revents & POLLIN)
 	{
 		struct v4l2_buffer buffer;
 		struct v4l2_plane planes[DEC_NUM_CAPTURE_BUFFER_PLANES];
@@ -1848,7 +1879,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 	}
 
 	/* POLLOUT = we can or need to write another encoded frame to the OUTPUT queue. */
-	if (pfd.revents & POLLOUT)
+	if (v4l2_pfd->revents & POLLOUT)
 	{
 		*output_code = IMX_VPU_API_DEC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED;
 		IMX_VPU_API_LOG("driver can now accept more encoded data");
@@ -1864,6 +1895,17 @@ error:
 		dec_ret = IMX_VPU_API_DEC_RETURN_CODE_ERROR;
 
 	goto finish;
+}
+
+
+void imx_vpu_api_dec_cancel_decode(ImxVpuApiDecoder *decoder)
+{
+	uint64_t dummy_eventfd_value = 1;
+
+	assert(decoder != NULL);
+	assert(decoder->cancel_eventfd > 0);
+
+	write(decoder->cancel_eventfd, &dummy_eventfd_value, sizeof(dummy_eventfd_value));
 }
 
 
@@ -2567,6 +2609,7 @@ EncV4L2CaptureBufferItem;
 struct _ImxVpuApiEncoder
 {
 	int v4l2_fd;
+	int cancel_eventfd;
 
 
 	/* Output queue states */
@@ -2800,6 +2843,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 	assert((*encoder) != NULL);
 
 	memset(*encoder, 0, sizeof(ImxVpuApiEncoder));
+	(*encoder)->cancel_eventfd = -1;
 
 
 	/* Open the device and query its capabilities. */
@@ -2809,6 +2853,14 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 	if (fd < 0)
 	{
 		IMX_VPU_API_ERROR("could not open V4L2 device: %s (%d)", strerror(errno), errno);
+		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+		goto error;
+	}
+
+	(*encoder)->cancel_eventfd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+	if ((*encoder)->cancel_eventfd < 0)
+	{
+		IMX_VPU_API_ERROR("could not create eventfd for cancelling: %s (%d)", strerror(errno), errno);
 		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
 		goto error;
 	}
@@ -3272,6 +3324,9 @@ void imx_vpu_api_enc_close(ImxVpuApiEncoder *encoder)
 		close(encoder->v4l2_fd);
 	}
 
+	if (encoder->cancel_eventfd >= 0)
+		close(encoder->cancel_eventfd);
+
 	free(encoder->output_buffer_items);
 	free(encoder->capture_buffer_items);
 	free(encoder->frame_context_items);
@@ -3733,13 +3788,18 @@ error:
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t *encoded_frame_size, ImxVpuApiEncOutputCodes *output_code)
 {
 	ImxVpuApiEncReturnCodes enc_ret = IMX_VPU_API_ENC_RETURN_CODE_OK;
-	struct pollfd pfd;
+	struct pollfd pfds[NUM_POLLFDS];
+	struct pollfd *v4l2_pfd = &(pfds[0]);
+	struct pollfd *eventfd_pfd = &(pfds[1]);
 
 	assert(encoder != NULL);
 	assert(encoded_frame_size != NULL);
 	assert(output_code != NULL);
 
 	*output_code = IMX_VPU_API_ENC_OUTPUT_CODE_NO_OUTPUT_YET_AVAILABLE;
+
+	eventfd_pfd->fd = encoder->cancel_eventfd;
+	eventfd_pfd->events = POLLIN | POLLPRI;
 
 
 	/* Handle EOS case. */
@@ -3764,11 +3824,11 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
 
 	/* Check if raw frames can be queued and encoded frames dequeued. */
 
-	pfd.fd = encoder->v4l2_fd;
-	pfd.events = POLLIN;
+	v4l2_pfd->fd = encoder->v4l2_fd;
+	v4l2_pfd->events = POLLIN;
 
 	if (!encoder->drain_mode_enabled)
-		pfd.events |= POLLOUT;
+		v4l2_pfd->events |= POLLOUT;
 	else
 		IMX_VPU_API_LOG("drain mode is active; not enabling POLLOUT event");
 
@@ -3776,7 +3836,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
 	 * interrupted by a signal, in which case we can safely try again. */
 	while (TRUE)
 	{
-		int poll_ret = poll(&pfd, 1, -1);
+		int poll_ret = poll(pfds, NUM_POLLFDS, -1);
 		if (poll_ret < 0)
 		{
 			switch (errno)
@@ -3797,8 +3857,15 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
 
 	/* Handle the returned poll() events. */
 
+	if (eventfd_pfd->revents & (POLLIN | POLLPRI))
+	{
+		/* User cancelled encoding. Return EOS. */
+		*output_code = IMX_VPU_API_DEC_OUTPUT_CODE_EOS;
+		return IMX_VPU_API_DEC_RETURN_CODE_OK;
+	}
+
 	/* POLLIN = encoded frame available at the CAPTURE queue. */
-	if (pfd.revents & POLLIN)
+	if (v4l2_pfd->revents & POLLIN)
 	{
 		struct v4l2_buffer buffer;
 		struct v4l2_plane plane;
@@ -3891,7 +3958,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
 	}
 
 	/* POLLOUT = we can or need to write another raw frame to the OUTPUT queue. */
-	if (pfd.revents & POLLOUT)
+	if (v4l2_pfd->revents & POLLOUT)
 	{
 		*output_code = IMX_VPU_API_ENC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED;
 		IMX_VPU_API_LOG("driver can now accept more raw data");
@@ -3907,6 +3974,17 @@ error:
 		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
 
 	goto finish;
+}
+
+
+void imx_vpu_api_enc_cancel_encode(ImxVpuApiEncoder *encoder)
+{
+	uint64_t dummy_eventfd_value = 1;
+
+	assert(encoder != NULL);
+	assert(encoder->cancel_eventfd > 0);
+
+	write(encoder->cancel_eventfd, &dummy_eventfd_value, sizeof(dummy_eventfd_value));
 }
 
 

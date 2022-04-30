@@ -1728,6 +1728,8 @@ void imx_vpu_api_dec_set_output_frame_dma_buffer(ImxVpuApiDecoder *decoder, ImxD
  */
 ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpuApiDecOutputCodes *output_code);
 
+void imx_vpu_api_dec_cancel_decode(ImxVpuApiDecoder *decoder);
+
 /* Get details about a decoded frame.
  *
  * This must not be called until imx_vpu_api_dec_decode() returns the output
@@ -2542,6 +2544,8 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_push_raw_frame_2(ImxVpuApiEncoder *encod
  * available for encoding.
  */
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t *encoded_frame_size, ImxVpuApiEncOutputCodes *output_code);
+
+void imx_vpu_api_enc_cancel_encode(ImxVpuApiEncoder *encoder);
 
 /* Get details about an encoded frame.
  *
