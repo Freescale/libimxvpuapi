@@ -1517,8 +1517,13 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_open(ImxVpuApiDecoder **decoder, ImxVpuA
 
 	/* Map the stream buffer. We need to keep it mapped always so we can
 	 * keep updating it. It is mapped as readwrite so we can shift data
-	 * inside it later with memmove() if necessary. */
-	(*decoder)->stream_buffer_virtual_address = imx_dma_buffer_map(stream_buffer, IMX_DMA_BUFFER_MAPPING_FLAG_WRITE | IMX_DMA_BUFFER_MAPPING_FLAG_READ, &err);
+	 * inside it later with memmove() if necessary.
+	 * Mapping this with IMX_DMA_BUFFER_MAPPING_FLAG_MANUAL_SYNC since
+	 * the stream buffer stays mapped until the decoder is closed, and
+	 * we do copy encoded data into the stream buffer. Also see the
+	 * imx_dma_buffer_start_sync_session() / imx_dma_buffer_stop_sync_session()
+	 * calls in imx_vpu_api_dec_push_encoded_frame(). */
+	(*decoder)->stream_buffer_virtual_address = imx_dma_buffer_map(stream_buffer, IMX_DMA_BUFFER_MAPPING_FLAG_WRITE | IMX_DMA_BUFFER_MAPPING_FLAG_READ | IMX_DMA_BUFFER_MAPPING_FLAG_MANUAL_SYNC, &err);
 	if ((*decoder)->stream_buffer_virtual_address == NULL)
 	{
 			IMX_VPU_API_ERROR("mapping stream buffer to virtual address space failed: %s (%d)", strerror(err), err);
@@ -1953,6 +1958,10 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_push_encoded_frame(ImxVpuApiDecoder *dec
 		return IMX_VPU_API_DEC_RETURN_CODE_INVALID_CALL;
 	}
 
+	/* Begin synced access since we have to copy the encoded
+	 * data into the stream buffer. */
+	imx_dma_buffer_start_sync_session(decoder->stream_buffer);
+
 	/* Process input data first to make sure any headers are
 	 * inserted and any necessary parsing is done before the
 	 * main frame. */
@@ -1974,6 +1983,8 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_push_encoded_frame(ImxVpuApiDecoder *dec
 	decoder->staged_encoded_frame_set = TRUE;
 
 	decoder->encoded_data_got_pushed = TRUE;
+
+	imx_dma_buffer_stop_sync_session(decoder->stream_buffer);
 
 	return IMX_VPU_API_DEC_RETURN_CODE_OK;
 }
@@ -2963,8 +2974,13 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 
 	/* Map the stream buffer. We need to keep it mapped always so we can
 	 * keep updating it. It is mapped as readwrite so we can shift data
-	 * inside it later with memmove() if necessary. */
-	(*encoder)->stream_buffer_virtual_address = imx_dma_buffer_map(stream_buffer, IMX_DMA_BUFFER_MAPPING_FLAG_WRITE | IMX_DMA_BUFFER_MAPPING_FLAG_READ, &err);
+	 * inside it later with memmove() if necessary.
+	 * Mapping this with IMX_DMA_BUFFER_MAPPING_FLAG_MANUAL_SYNC since
+	 * the stream buffer stays mapped until the encoder is closed, and
+	 * we do copy encoded data into the stream buffer. Also see the
+	 * imx_dma_buffer_start_sync_session() / imx_dma_buffer_stop_sync_session()
+	 * calls in imx_vpu_api_enc_get_encoded_frame(). */
+	(*encoder)->stream_buffer_virtual_address = imx_dma_buffer_map(stream_buffer, IMX_DMA_BUFFER_MAPPING_FLAG_WRITE | IMX_DMA_BUFFER_MAPPING_FLAG_READ | IMX_DMA_BUFFER_MAPPING_FLAG_MANUAL_SYNC, &err);
 	if ((*encoder)->stream_buffer_virtual_address == NULL)
 	{
 			IMX_VPU_API_ERROR("mapping stream buffer to virtual address space failed: %s (%d)", strerror(err), err);
@@ -3971,9 +3987,15 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_encoded_frame(ImxVpuApiEncoder *enco
 		if (!check_available_space(write_pointer, write_pointer_end, encoder->enc_output_info.bitstreamSize, "encoded frame data"))
 			return IMX_VPU_API_ENC_RETURN_CODE_ERROR;
 
+		/* Begin synced access since we have to copy the encoded
+		 * data out of the stream buffer. */
+		imx_dma_buffer_start_sync_session(encoder->stream_buffer);
+
 		output_data_ptr = IMX_VPU_API_ENC_GET_STREAM_VIRT_ADDR(encoder, encoder->enc_output_info.bitstreamBuffer);
 		memcpy(write_pointer, output_data_ptr, encoder->enc_output_info.bitstreamSize);
 		write_pointer += encoder->enc_output_info.bitstreamSize;
+
+		imx_dma_buffer_stop_sync_session(encoder->stream_buffer);
 	}
 
 	encoded_frame->data_size = encoder->encoded_frame_data_size;

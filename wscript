@@ -208,7 +208,7 @@ def configure(conf):
 
 
 	# check libimxdmabuffer dependency
-	conf.check_cfg(package = 'libimxdmabuffer >= 0.9.0', uselib_store = 'IMXDMABUFFER', define_name = '', args = '--cflags --libs', mandatory = 1)
+	conf.check_cfg(package = 'libimxdmabuffer >= 1.1.1', uselib_store = 'IMXDMABUFFER', define_name = '', args = '--cflags --libs', mandatory = 1)
 
 
 	# check sysroot path

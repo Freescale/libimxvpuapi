@@ -586,8 +586,13 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 
 	/* Map the stream buffer. We need to keep it mapped always so we can
 	 * keep updating it. It is mapped as readwrite so we can shift data
-	 * inside it later with memmove() if necessary. */
-	(*encoder)->stream_buffer_virtual_address = imx_dma_buffer_map(stream_buffer, IMX_DMA_BUFFER_MAPPING_FLAG_WRITE | IMX_DMA_BUFFER_MAPPING_FLAG_READ, &err);
+	 * inside it later with memmove() if necessary.
+	 * Mapping this with IMX_DMA_BUFFER_MAPPING_FLAG_MANUAL_SYNC since
+	 * the stream buffer stays mapped until the encoder is closed, and
+	 * we do copy encoded data into the stream buffer. Also see the
+	 * imx_dma_buffer_start_sync_session() / imx_dma_buffer_stop_sync_session()
+	 * calls in imx_vpu_api_enc_push_encoded_frame(). */
+	(*encoder)->stream_buffer_virtual_address = imx_dma_buffer_map(stream_buffer, IMX_DMA_BUFFER_MAPPING_FLAG_WRITE | IMX_DMA_BUFFER_MAPPING_FLAG_READ | IMX_DMA_BUFFER_MAPPING_FLAG_MANUAL_SYNC, &err);
 	if ((*encoder)->stream_buffer_virtual_address == NULL)
 	{
 			IMX_VPU_API_ERROR("mapping stream buffer to virtual address space failed: %s (%d)", strerror(err), err);
@@ -1343,6 +1348,10 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_encoded_frame(ImxVpuApiEncoder *enco
 	}
 
 
+	/* Begin synced access since we have to copy the encoded
+	 * data out of the stream buffer. */
+	imx_dma_buffer_start_sync_session(encoder->stream_buffer);
+
 	/* As explained in imx_vpu_api_enc_encode(), h.264 data can be accessed
 	 * in one go, while VP8 data is spread amongst partitions that we have
 	 * to access individually. */
@@ -1361,6 +1370,8 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_encoded_frame(ImxVpuApiEncoder *enco
 	}
 	else
 		memcpy(encoded_data, encoder->stream_buffer_virtual_address, encoder->num_bytes_in_stream_buffer);
+
+	imx_dma_buffer_stop_sync_session(encoder->stream_buffer);
 
 
 	/* Copy encoded frame metadata. */
