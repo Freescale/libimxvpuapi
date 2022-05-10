@@ -1,3 +1,15 @@
+libimxvpuapi (2.2.1) stable; urgency=low
+
+ * Add option to not compile examples
+ * imx8m-hantro: Allow for reusing decoder after drain mode finishes
+ * imx6-coda: Reset drain mode after EOS processed
+ * imx6-coda: Reset drain mode flags when flushing
+ * Use libimxdmabuffer sync access functions to ensure cache coherence
+ * Add imx_vpu_api_is_color_format_10bit() function
+ * Documentation fixes
+
+ -- Carlos Rafael Giani <crg7475@mailbox.org>  Tue, 10 May 2022 18:31:00 +0200
+
 libimxvpuapi (2.2.0) stable; urgency=low
 
  * Add IMX_VPU_API_DEC_OUTPUT_CODE_VIDEO_PARAMETERS_CHANGED output code
