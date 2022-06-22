@@ -2342,16 +2342,25 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 		}
 
 		/* Check if decoding was incomplete (bit #0 is then 0, bit #4 1).
-		 * Incomplete decoding indicates incomplete input data. */
+		 * Incomplete decoding indicates incomplete input data, and we cannot
+		 * handle that (libimxvpuapi expects complete frames). This can for
+		 * example happen with RTSP streams where the first frame is incomplete. */
 		if (decoder->dec_output_info.decodingSuccess & (1 << 4))
 		{
-			IMX_VPU_API_DEBUG("not enough input data was available");
-			*output_code = IMX_VPU_API_DEC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED;
+			decoder->skipped_frame_context = decoder->staged_encoded_frame.context;
+			decoder->skipped_frame_pts = decoder->staged_encoded_frame.pts;
+			decoder->skipped_frame_dts = decoder->staged_encoded_frame.dts;
+			decoder->skipped_frame_reason = IMX_VPU_API_DEC_SKIPPED_FRAME_REASON_CORRUPTED_FRAME;
+			IMX_VPU_API_DEBUG("dropping frame because it is corrupted/incomplete (context: %p pts %" PRIu64 " dts %" PRIu64 ")", decoder->skipped_frame_context, decoder->skipped_frame_pts, decoder->skipped_frame_dts);
+			*output_code = IMX_VPU_API_DEC_OUTPUT_CODE_FRAME_SKIPPED;
+			decoder->staged_encoded_frame_set = FALSE;
 		}
 
-		/* Report dropped frames. */
+		/* Report dropped frames. However, if the code determined the input data
+		 * to be insufficient, or if the code already determined this input frame
+		 * as to be skipped, don't report. */
 		if (
-		  (((*output_code) & IMX_VPU_API_DEC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED) == 0) &&
+		  (((*output_code) & (IMX_VPU_API_DEC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED | IMX_VPU_API_DEC_OUTPUT_CODE_FRAME_SKIPPED)) == 0) &&
 		  (decoder->dec_output_info.indexFrameDecoded == VPU_DECODER_DECODEIDX_FRAME_NOT_DECODED) &&
 		  (
 		    (decoder->dec_output_info.indexFrameDisplay == VPU_DECODER_DISPLAYIDX_NO_FRAME_TO_DISPLAY) ||
