@@ -2715,6 +2715,9 @@ struct _ImxVpuApiEncoder
 
 	/* Set to TRUE in imx_vpu_api_enc_enable_drain_mode(). */
 	BOOL drain_mode_enabled;
+
+	/* The current bitrate, or 0 if VBR mode (= constant quantization) is used. */
+	unsigned int bitrate;
 };
 
 
@@ -2763,7 +2766,8 @@ static ImxVpuApiH264SupportDetails const enc_compression_format_support_details 
 		.min_width = 4, .max_width = INT_MAX,
 		.min_height = 4, .max_height = INT_MAX,
 		.supported_color_formats = enc_supported_color_formats,
-		.num_supported_color_formats = num_enc_supported_color_formats
+		.num_supported_color_formats = num_enc_supported_color_formats,
+		.min_quantization = 1, .max_quantization = 51
 	},
 
 	.max_constrained_baseline_profile_level = IMX_VPU_API_H264_LEVEL_UNDEFINED,
@@ -3216,17 +3220,68 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 	}
 
 	/* Encoding bitrate. */
-	/* NOTE: VBR and constant quantization are not available in the Windsor encoder. */
 
-	IMX_VPU_API_DEBUG("setting bitrate to %u kbps", open_params->bitrate);
+	(*encoder)->bitrate = open_params->bitrate;
 
-	control.id = V4L2_CID_MPEG_VIDEO_BITRATE;
-	control.value = open_params->bitrate * 1024;
+	control.id = V4L2_CID_MPEG_VIDEO_BITRATE_MODE;
+	control.value = ((*encoder)->bitrate > 0) ? V4L2_MPEG_VIDEO_BITRATE_MODE_CBR : V4L2_MPEG_VIDEO_BITRATE_MODE_VBR;
 	if (ioctl(fd, VIDIOC_S_CTRL, &control) < 0)
 	{
-		IMX_VPU_API_ERROR("could not set video bitrate: %s (%d)", strerror(errno), errno);
+		IMX_VPU_API_ERROR("could not set video bitrate mode: %s (%d)", strerror(errno), errno);
 		enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
 		goto error;
+	}
+
+	if ((*encoder)->bitrate > 0)
+	{
+		IMX_VPU_API_DEBUG("setting bitrate to %u kbps", (*encoder)->bitrate);
+
+		control.id = V4L2_CID_MPEG_VIDEO_BITRATE;
+		control.value = (*encoder)->bitrate * 1024;
+		if (ioctl(fd, VIDIOC_S_CTRL, &control) < 0)
+		{
+			IMX_VPU_API_ERROR("could not set video bitrate: %s (%d)", strerror(errno), errno);
+			enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+			goto error;
+		}
+	}
+	else
+	{
+		if ((open_params->quantization < 1) || (open_params->quantization > 51))
+		{
+			IMX_VPU_API_ERROR("quantization parameter %u is outside of the valid range (1-51)", open_params->quantization);
+			enc_ret = IMX_VPU_API_ENC_RETURN_CODE_INVALID_PARAMS;
+			goto error;
+		}
+
+		IMX_VPU_API_DEBUG("setting quantization to %u", open_params->quantization);
+
+		control.id = V4L2_CID_MPEG_VIDEO_H264_I_FRAME_QP;
+		control.value = open_params->quantization;
+		if (ioctl(fd, VIDIOC_S_CTRL, &control) < 0)
+		{
+			IMX_VPU_API_ERROR("could not set I frame quantization parameter: %s (%d)", strerror(errno), errno);
+			enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+			goto error;
+		}
+
+		control.id = V4L2_CID_MPEG_VIDEO_H264_P_FRAME_QP;
+		control.value = open_params->quantization;
+		if (ioctl(fd, VIDIOC_S_CTRL, &control) < 0)
+		{
+			IMX_VPU_API_ERROR("could not set P frame quantization parameter: %s (%d)", strerror(errno), errno);
+			enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+			goto error;
+		}
+
+		control.id = V4L2_CID_MPEG_VIDEO_H264_B_FRAME_QP;
+		control.value = open_params->quantization;
+		if (ioctl(fd, VIDIOC_S_CTRL, &control) < 0)
+		{
+			IMX_VPU_API_ERROR("could not set B frame quantization parameter: %s (%d)", strerror(errno), errno);
+			enc_ret = IMX_VPU_API_ENC_RETURN_CODE_ERROR;
+			goto error;
+		}
 	}
 
 	/* GOP size. */
@@ -3465,6 +3520,17 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_set_bitrate(ImxVpuApiEncoder *encoder, u
 
 	assert(encoder != NULL);
 	assert(bitrate >= 1);
+
+	/* Check for attempts to set the bitrate in VBR mode. */
+	if (encoder->bitrate == 0)
+	{
+		IMX_VPU_API_ERROR("cannot set bitrate - rate control is disabled");
+		return IMX_VPU_API_ENC_RETURN_CODE_INVALID_CALL;
+	}
+
+	/* Filter out redundant calls. */
+	if (bitrate == encoder->bitrate)
+		return IMX_VPU_API_ENC_RETURN_CODE_OK;
 
 	IMX_VPU_API_DEBUG("setting bitrate to %u kbps", bitrate);
 
