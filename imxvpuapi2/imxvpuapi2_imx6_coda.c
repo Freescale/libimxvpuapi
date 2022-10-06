@@ -1669,8 +1669,14 @@ void imx_vpu_api_dec_close(ImxVpuApiDecoder *decoder)
 	IMX_VPU_API_DEBUG("closing decoder");
 
 
-	/* Flush the VPU bit buffer. */
-	if (decoder->open_params.compression_format != IMX_VPU_API_COMPRESSION_FORMAT_JPEG)
+	/* Flush the VPU bit buffer if we registered framebuffers earlier.
+	 * Calling vpu_DecBitBufferFlush() without registered framebuffers
+	 * leads to a "wrong call sequence error" that, while inconsequential
+	 * here (because we are closing the decoder already anyway), can
+	 * alert users unnecessarily when looking at the logs.
+	 * Also, flushing is not done when decoding JPEG, since it
+	 * is unnecessary and can lead to errors as well. */
+	if ((decoder->open_params.compression_format != IMX_VPU_API_COMPRESSION_FORMAT_JPEG) && (decoder->internal_framebuffers != NULL))
 	{
 		dec_ret = vpu_DecBitBufferFlush(decoder->handle);
 		if (dec_ret != RETCODE_SUCCESS)
