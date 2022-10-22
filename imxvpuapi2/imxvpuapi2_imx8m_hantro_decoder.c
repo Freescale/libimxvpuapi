@@ -441,7 +441,7 @@ static void imx_vpu_api_dec_push_input_data(ImxVpuApiDecoder *decoder, void cons
 		{
 			memmove(streambuf_bytes, streambuf_bytes + read_offset, fill_level);
 			decoder->stream_buffer_read_offset = 0;
-			decoder->stream_buffer_write_offset -= read_offset;
+			decoder->stream_buffer_write_offset = fill_level;
 			memcpy(streambuf_bytes + decoder->stream_buffer_write_offset, src_data_bytes, data_size);
 			decoder->stream_buffer_write_offset += data_size;
 		}
