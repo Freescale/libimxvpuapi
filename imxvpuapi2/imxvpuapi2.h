@@ -354,6 +354,9 @@ int imx_vpu_api_is_color_format_rgb(ImxVpuApiColorFormat color_format);
 /* Returns 1 if format is a 10-bit format, 0 otherwise. */
 int imx_vpu_api_is_color_format_10bit(ImxVpuApiColorFormat color_format);
 
+/* Returns 1 if format is a tiled format, 0 otherwise. */
+int imx_vpu_api_is_color_format_tiled(ImxVpuApiColorFormat color_format);
+
 
 typedef struct
 {

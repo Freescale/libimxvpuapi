@@ -234,6 +234,24 @@ int imx_vpu_api_is_color_format_10bit(ImxVpuApiColorFormat color_format)
 }
 
 
+int imx_vpu_api_is_color_format_tiled(ImxVpuApiColorFormat color_format)
+{
+	switch (color_format)
+	{
+		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_8BIT:
+		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_10BIT:
+		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x4TILED_8BIT:
+		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x4TILED_10BIT:
+		case IMX_VPU_API_AMPHION_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x128TILED_8BIT:
+		case IMX_VPU_API_AMPHION_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x128TILED_10BIT:
+			return 1;
+
+		default:
+			return 0;
+	}
+}
+
+
 char const * imx_vpu_api_h264_profile_string(ImxVpuApiH264Profile profile)
 {
 	switch (profile)
