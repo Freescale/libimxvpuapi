@@ -2138,6 +2138,15 @@ typedef struct
 	 * P frame. If this is set to 0, intra macroblocks are not used. Not all
 	 * formats use this parameter. */
 	unsigned int min_intra_refresh_mb_count;
+	/* How many GOPs pass until a closed GOP is enforced. If for example this
+	 * is set to 3, then the bitstream is encoded such that no frames from
+	 * GOPs #0 #1 #2 can be referred to be GOPs #3 #4 etc. If this is an h.264
+	 * stream, then there will be an IDR frame between GOPs #2 and #3. A
+	 * closed_gop_interval value of 0 disables such enforced intervals.
+	 * A value of 1 forces each and every GOP to be closed. This value is
+	 * ignored if the codec does not know the notion of a GOP.
+	 * Default value is 0. */
+	unsigned int closed_gop_interval;
 
 	/* Format specific parameters. Consult the individual documentation for more. */
 	union
@@ -2150,7 +2159,7 @@ typedef struct
 	format_specific_open_params;
 
 	/* Reserved bytes for ABI compatibility. */
-	uint8_t reserved[IMX_VPU_API_RESERVED_SIZE];
+	uint8_t reserved[IMX_VPU_API_RESERVED_SIZE - sizeof(unsigned int)];
 }
 ImxVpuApiEncOpenParams;
 

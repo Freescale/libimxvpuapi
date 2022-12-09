@@ -332,6 +332,7 @@ void imx_vpu_api_enc_set_default_open_params(ImxVpuApiCompressionFormat compress
 	open_params->quantization = 0;
 	open_params->gop_size = 16;
 	open_params->min_intra_refresh_mb_count = 0;
+	open_params->closed_gop_interval = 0;
 	open_params->frame_rate_numerator = 25;
 	open_params->frame_rate_denominator = 1;
 

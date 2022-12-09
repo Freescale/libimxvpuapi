@@ -2661,6 +2661,9 @@ struct _ImxVpuApiEncoder
 	uint64_t encoded_frame_pts, encoded_frame_dts;
 	ImxVpuApiFrameType encoded_frame_type;
 	size_t encoded_frame_data_size;
+
+	unsigned long frame_counter;
+	unsigned long interval_between_idr_frames;
 };
 
 #define IMX_VPU_API_ENC_GET_STREAM_VIRT_ADDR(IMXVPUAPIENC, STREAM_PHYS_ADDR) ((IMXVPUAPIENC)->stream_buffer_virtual_address + ((PhysicalAddress)(STREAM_PHYS_ADDR) - (PhysicalAddress)((IMXVPUAPIENC)->stream_buffer_physical_address)))
@@ -2920,6 +2923,7 @@ void imx_vpu_api_enc_set_default_open_params(ImxVpuApiCompressionFormat compress
 	open_params->quantization = 0;
 	open_params->gop_size = 16;
 	open_params->min_intra_refresh_mb_count = 0;
+	open_params->closed_gop_interval = 0;
 	open_params->frame_rate_numerator = 25;
 	open_params->frame_rate_denominator = 1;
 
@@ -3243,6 +3247,10 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 		default:
 			break;
 	}
+
+	/* Closed GOP intervals are emulated by forcing IDR keyframes at specific intervals. */
+	(*encoder)->interval_between_idr_frames = ((unsigned long)(open_params->closed_gop_interval)) * open_params->gop_size;
+	(*encoder)->frame_counter = 0;
 
 
 	/* Now actually open the encoder instance */
@@ -3570,6 +3578,7 @@ void imx_vpu_api_enc_flush(ImxVpuApiEncoder *encoder)
 	encoder->first_frame = TRUE;
 	encoder->staged_raw_frame_set = FALSE;
 	encoder->encoded_frame_available = FALSE;
+	encoder->frame_counter = 0;
 }
 
 
@@ -3656,6 +3665,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
 	BOOL add_header;
 	size_t encoded_data_size;
 	ImxVpuApiFramebufferMetrics *fb_metrics;
+	BOOL forced_idr_for_closed_gop = FALSE;
 
 	assert(encoder != NULL);
 	assert(encoded_frame_size != NULL);
@@ -3685,6 +3695,14 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
 	ret = IMX_VPU_API_ENC_RETURN_CODE_OK;
 	fb_metrics = &(encoder->stream_info.frame_encoding_framebuffer_metrics);
 	*output_code = IMX_VPU_API_ENC_OUTPUT_CODE_NO_OUTPUT_YET_AVAILABLE;
+
+	if (encoder->open_params.compression_format == IMX_VPU_API_COMPRESSION_FORMAT_H264)
+	{
+		forced_idr_for_closed_gop = (encoder->interval_between_idr_frames > 0) &&
+		                            ((encoder->frame_counter % encoder->interval_between_idr_frames) == 0);
+		if (forced_idr_for_closed_gop)
+			IMX_VPU_API_LOG("forcing this frame to be encoded as an IDR frame to produce closed GOP");
+	}
 
 	/* Get the physical address for the raw_frame that shall be encoded. */
 	raw_frame_phys_addr = imx_dma_buffer_get_physical_address(encoder->staged_raw_frame.fb_dma_buffer);
@@ -3733,7 +3751,9 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
 	/* Initialize encoding parameters. */
 	memset(&enc_param, 0, sizeof(enc_param));
 	enc_param.sourceFrame = &source_framebuffer;
-	enc_param.forceIPicture = !!((encoder->staged_raw_frame.frame_types[0] & IMX_VPU_API_FRAME_TYPE_I) || (encoder->staged_raw_frame.frame_types[0] & IMX_VPU_API_FRAME_TYPE_IDR));
+	enc_param.forceIPicture = !!(encoder->staged_raw_frame.frame_types[0] & IMX_VPU_API_FRAME_TYPE_I) ||
+		                      !!(encoder->staged_raw_frame.frame_types[0] & IMX_VPU_API_FRAME_TYPE_IDR) ||
+		                      forced_idr_for_closed_gop;
 	enc_param.skipPicture = 0;
 	enc_param.quantParam = encoder->open_params.quantization;
 	enc_param.enableAutoSkip = 0;
@@ -3892,7 +3912,11 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
 
 
 finish:
+	if (ret == IMX_VPU_API_ENC_RETURN_CODE_OK)
+		encoder->frame_counter++;
+
 	encoder->staged_raw_frame_set = FALSE;
+
 	return ret;
 }
 
