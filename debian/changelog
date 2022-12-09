@@ -1,3 +1,24 @@
+libimxvpuapi (2.2.2) stable; urgency=low
+
+* imx6-coda: Skip incomplete frames instead of just reporting them
+* imx6-coda: Only flush bit buffer when framebuffers were registered
+  This prevents misleading error-level log lines from occurring
+* imx6-coda: Prefer semi planar modes over fully planar ones
+* imx8m-hantro: Reset decoder write_offset to fill_level when moving
+  read_offset
+* Add imx_vpu_api_is_color_format_tiled() function
+* update waf to 2.0.24
+* Add closed_gop_interval field to ImxVpuApiEncOpenParams
+  This allows for enforcing regularly occurring IDR
+  boundaries when encoding to h.264
+* imx8m-hantro: Fix supported decoder color formats and include tiled
+  formats
+* Fix and improve h.264 max level estimation for encoding
+* imx6-coda: Use 2-row alignment in encoder
+* imx6-coda: Fix JPEG encoding quantization parameter handling in encoder
+
+ -- Carlos Rafael Giani <crg7475@mailbox.org>  Tue, 28 Dec 2022 18:21:00 +0200
+
 libimxvpuapi (2.2.1) stable; urgency=low
 
  * Add option to not compile examples
