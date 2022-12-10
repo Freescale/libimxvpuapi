@@ -719,6 +719,10 @@ static BOOL imx_vpu_api_dec_get_new_stream_info(ImxVpuApiDecoder *decoder)
 		case IMX_VPU_API_COLOR_FORMAT_FULLY_PLANAR_YUV420_10BIT:
 		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV420_8BIT:
 		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV420_10BIT:
+		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_8BIT:
+		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_10BIT:
+		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x4TILED_8BIT:
+		case IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x4TILED_10BIT:
 			stream_info->decoded_frame_framebuffer_metrics.uv_stride = stream_info->decoded_frame_framebuffer_metrics.y_stride / 2;
 			stream_info->decoded_frame_framebuffer_metrics.uv_size = stream_info->decoded_frame_framebuffer_metrics.y_size / 4;
 			break;
@@ -885,17 +889,6 @@ static BOOL imx_vpu_api_dec_get_new_stream_info(ImxVpuApiDecoder *decoder)
 	return TRUE;
 }
 
-static ImxVpuApiColorFormat const standard_supported_color_formats[] =
-{
-	IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV420_10BIT,
-	IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_P010_10BIT,
-	IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV420_8BIT,
-	(ImxVpuApiColorFormat)IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_10BIT,
-	(ImxVpuApiColorFormat)IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_8BIT,
-	(ImxVpuApiColorFormat)IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x4TILED_10BIT,
-	(ImxVpuApiColorFormat)IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x4TILED_8BIT
-};
-
 static ImxVpuApiColorFormat const jpeg_supported_color_formats[] =
 {
 	IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV420_8BIT,
@@ -906,6 +899,21 @@ static ImxVpuApiColorFormat const jpeg_supported_color_formats[] =
 	IMX_VPU_API_COLOR_FORMAT_YUV400_8BIT,
 	(ImxVpuApiColorFormat)IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_8BIT,
 	(ImxVpuApiColorFormat)IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x4TILED_8BIT
+};
+
+static ImxVpuApiColorFormat const g1_supported_color_formats[] =
+{
+	IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV420_8BIT,
+	(ImxVpuApiColorFormat)IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_8x4TILED_8BIT
+};
+
+static ImxVpuApiColorFormat const g2_supported_color_formats[] =
+{
+	IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV420_10BIT,
+	IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_P010_10BIT,
+	IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV420_8BIT,
+	(ImxVpuApiColorFormat)IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_10BIT,
+	(ImxVpuApiColorFormat)IMX_VPU_API_HANTRO_COLOR_FORMAT_YUV420_SEMI_PLANAR_4x4TILED_8BIT
 };
 
 static ImxVpuApiCompressionFormat const supported_compression_formats[] =
@@ -966,26 +974,26 @@ ImxVpuApiDecGlobalInfo const * imx_vpu_api_dec_get_global_info(void)
 }
 
 
-static ImxVpuApiCompressionFormatSupportDetails const basic_compression_format_support_details = {
+static ImxVpuApiCompressionFormatSupportDetails const default_g1_compression_format_support_details = {
 	.min_width = 8, .max_width = 4096,
 	.min_height = 8, .max_height = 4096,
-	.supported_color_formats = standard_supported_color_formats,
-	.num_supported_color_formats = sizeof(standard_supported_color_formats) / sizeof(ImxVpuApiColorFormat)
+	.supported_color_formats = g1_supported_color_formats,
+	.num_supported_color_formats = sizeof(g1_supported_color_formats) / sizeof(ImxVpuApiColorFormat)
 };
 
 static ImxVpuApiCompressionFormatSupportDetails const jpeg_compression_format_support_details = {
 	.min_width = 8, .max_width = 4096,
 	.min_height = 8, .max_height = 4096,
 	.supported_color_formats = jpeg_supported_color_formats,
-	.num_supported_color_formats = sizeof(standard_supported_color_formats) / sizeof(ImxVpuApiColorFormat)
+	.num_supported_color_formats = sizeof(jpeg_supported_color_formats) / sizeof(ImxVpuApiColorFormat)
 };
 
 static ImxVpuApiH264SupportDetails const h264_support_details = {
 	.parent = {
 		.min_width = 8, .max_width = 4096,
 		.min_height = 8, .max_height = 4096,
-		.supported_color_formats = standard_supported_color_formats,
-		.num_supported_color_formats = sizeof(standard_supported_color_formats) / sizeof(ImxVpuApiColorFormat)
+		.supported_color_formats = g1_supported_color_formats,
+		.num_supported_color_formats = sizeof(g1_supported_color_formats) / sizeof(ImxVpuApiColorFormat)
 	},
 
 	.max_constrained_baseline_profile_level = IMX_VPU_API_H264_LEVEL_4_1,
@@ -1006,8 +1014,8 @@ static ImxVpuApiH265SupportDetails const h265_support_details = {
 	.parent = {
 		.min_width = 8, .max_width = 4096,
 		.min_height = 8, .max_height = 2304,
-		.supported_color_formats = standard_supported_color_formats,
-		.num_supported_color_formats = sizeof(standard_supported_color_formats) / sizeof(ImxVpuApiColorFormat)
+		.supported_color_formats = g2_supported_color_formats,
+		.num_supported_color_formats = sizeof(g2_supported_color_formats) / sizeof(ImxVpuApiColorFormat)
 	},
 
 	.max_main_profile_level = IMX_VPU_API_H265_LEVEL_5_1,
@@ -1020,8 +1028,8 @@ static ImxVpuApiVP8SupportDetails const vp8_support_details = {
 	.parent = {
 		.min_width = 8, .max_width = 4096,
 		.min_height = 8, .max_height = 2304,
-		.supported_color_formats = standard_supported_color_formats,
-		.num_supported_color_formats = sizeof(standard_supported_color_formats) / sizeof(ImxVpuApiColorFormat)
+		.supported_color_formats = jpeg_supported_color_formats,
+		.num_supported_color_formats = sizeof(jpeg_supported_color_formats) / sizeof(ImxVpuApiColorFormat)
 	},
 
 	.supported_profiles = (1 << IMX_VPU_API_VP8_PROFILE_0)
@@ -1034,8 +1042,8 @@ static ImxVpuApiVP9SupportDetails const vp9_support_details = {
 	.parent = {
 		.min_width = 8, .max_width = 4096,
 		.min_height = 8, .max_height = 2304,
-		.supported_color_formats = standard_supported_color_formats,
-		.num_supported_color_formats = sizeof(standard_supported_color_formats) / sizeof(ImxVpuApiColorFormat)
+		.supported_color_formats = g2_supported_color_formats,
+		.num_supported_color_formats = sizeof(g2_supported_color_formats) / sizeof(ImxVpuApiColorFormat)
 	},
 
 #ifdef IMXVPUAPI_IMX8_SOC_TYPE_MX8MM
@@ -1064,8 +1072,25 @@ ImxVpuApiCompressionFormatSupportDetails const * imx_vpu_api_dec_get_compression
 		case IMX_VPU_API_COMPRESSION_FORMAT_JPEG:
 			return &jpeg_compression_format_support_details;
 
+		case IMX_VPU_API_COMPRESSION_FORMAT_WEBP:
+		case IMX_VPU_API_COMPRESSION_FORMAT_MPEG2:
+		case IMX_VPU_API_COMPRESSION_FORMAT_MPEG4:
+		case IMX_VPU_API_COMPRESSION_FORMAT_H263:
+		case IMX_VPU_API_COMPRESSION_FORMAT_WMV3:
+		case IMX_VPU_API_COMPRESSION_FORMAT_WVC1:
+		case IMX_VPU_API_COMPRESSION_FORMAT_VP6:
+		case IMX_VPU_API_COMPRESSION_FORMAT_VP7:
+		case IMX_VPU_API_COMPRESSION_FORMAT_AVS:
+		case IMX_VPU_API_COMPRESSION_FORMAT_RV30:
+		case IMX_VPU_API_COMPRESSION_FORMAT_RV40:
+		case IMX_VPU_API_COMPRESSION_FORMAT_DIVX3:
+		case IMX_VPU_API_COMPRESSION_FORMAT_DIVX4:
+		case IMX_VPU_API_COMPRESSION_FORMAT_DIVX5:
+		case IMX_VPU_API_COMPRESSION_FORMAT_SORENSON_SPARK:
+			return &default_g1_compression_format_support_details;
+
 		default:
-			return &basic_compression_format_support_details;
+			return NULL;
 	}
 
 	return NULL;
