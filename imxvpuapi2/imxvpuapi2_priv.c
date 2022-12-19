@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <string.h>
 #include <stdint.h>
 #include "imxvpuapi2_priv.h"
@@ -366,4 +367,82 @@ int imx_vpu_api_parse_jpeg_header(void *jpeg_data, size_t jpeg_data_size, BOOL s
 	}
 
 	return found_info;
+}
+
+
+typedef struct
+{
+	ImxVpuApiH264Level level;
+	int max_macroblocks_per_second;
+	int max_num_macroblocks_per_frame;
+	/* bitrates are given in kbps */
+	int max_bitrate_for_baseline_extended_main;
+	int max_bitrate_for_high;
+	int max_bitrate_for_high10;
+}
+H264LevelTableItem;
+
+/* The items in this table are found in the spec ISO/IEC 14496-10 Table A-1 */
+static H264LevelTableItem const h264_level_table[] = {
+	{ IMX_VPU_API_H264_LEVEL_1,   1485,     99,     64,     80,     192    },
+	{ IMX_VPU_API_H264_LEVEL_1B,  1485,     99,     128,    160,    384    },
+	{ IMX_VPU_API_H264_LEVEL_1_1, 3000,     396,    192,    240,    576    },
+	{ IMX_VPU_API_H264_LEVEL_1_2, 6000,     396,    384,    480,    1152   },
+	{ IMX_VPU_API_H264_LEVEL_1_3, 11880,    396,    768,    960,    2304   },
+	{ IMX_VPU_API_H264_LEVEL_2,   11880,    396,    2000,   2500,   6000   },
+	{ IMX_VPU_API_H264_LEVEL_2_1, 19800,    792,    4000,   5000,   12000  },
+	{ IMX_VPU_API_H264_LEVEL_2_2, 20250,    1620,   4000,   5000,   12000  },
+	{ IMX_VPU_API_H264_LEVEL_3,   40500,    1620,   10000,  12500,  30000  },
+	{ IMX_VPU_API_H264_LEVEL_3_1, 108000,   3600,   14000,  17500,  42000  },
+	{ IMX_VPU_API_H264_LEVEL_3_2, 216000,   5120,   20000,  25000,  60000  },
+	{ IMX_VPU_API_H264_LEVEL_4,   245760,   8192,   20000,  25000,  60000  },
+	{ IMX_VPU_API_H264_LEVEL_4_1, 245760,   8192,   50000,  50000,  150000 },
+	{ IMX_VPU_API_H264_LEVEL_4_2, 522240,   8704,   50000,  50000,  150000 },
+	{ IMX_VPU_API_H264_LEVEL_5,   589824,   22080,  135000, 168750, 405000 },
+	{ IMX_VPU_API_H264_LEVEL_5_1, 983040,   36864,  240000, 300000, 720000 },
+	{ IMX_VPU_API_H264_LEVEL_6,   4177920,  139264, 240000, 240000, 240000 },
+	{ IMX_VPU_API_H264_LEVEL_6_1, 8355840,  139264, 480000, 480000, 480000 },
+	{ IMX_VPU_API_H264_LEVEL_6_2, 16711680, 139264, 800000, 800000, 800000 },
+};
+static int const h264_level_table_size = sizeof(h264_level_table) / sizeof(H264LevelTableItem);
+
+
+ImxVpuApiH264Level imx_vpu_api_estimate_max_h264_level(int width, int height, int bitrate, int fps_num, int fps_denom, ImxVpuApiH264Profile profile)
+{
+	int num_mb_per_frame, num_mb_per_second;
+
+	/* One macroblock consists of 16 x 16 pixels */
+	num_mb_per_frame = (width * height) / (16 * 16);
+	num_mb_per_second = num_mb_per_frame * fps_num / fps_denom;
+
+	for (int i = 0; i < h264_level_table_size; ++i)
+	{
+		H264LevelTableItem const *item = &(h264_level_table[i]);
+		int max_bitrate = 0;
+
+		switch (profile)
+		{
+			case IMX_VPU_API_H264_PROFILE_CONSTRAINED_BASELINE:
+			case IMX_VPU_API_H264_PROFILE_BASELINE:
+			case IMX_VPU_API_H264_PROFILE_MAIN:
+				max_bitrate = item->max_bitrate_for_baseline_extended_main;
+				break;
+			case IMX_VPU_API_H264_PROFILE_HIGH:
+				max_bitrate = item->max_bitrate_for_high;
+				break;
+			case IMX_VPU_API_H264_PROFILE_HIGH10:
+				max_bitrate = item->max_bitrate_for_high10;
+				break;
+			default:
+				/* we should never reach this */
+				assert(FALSE);
+		}
+
+		if ((num_mb_per_frame <= item->max_num_macroblocks_per_frame) &&
+		    (num_mb_per_second <= item->max_macroblocks_per_second) &&
+		    (bitrate <= max_bitrate))
+			return item->level;
+	}
+
+	return IMX_VPU_API_H264_LEVEL_UNDEFINED;
 }
