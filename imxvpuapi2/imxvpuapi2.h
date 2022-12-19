@@ -2061,7 +2061,9 @@ typedef struct
 	/* h.264 profile that the input frames shall be encoded to. */
 	ImxVpuApiH264Profile profile;
 
-	/* h.264 level that the input frames shall be encoded to. */
+	/* h.264 level that the input frames shall be encoded to.
+	 * If set to IMX_VPU_API_H264_LEVEL_UNDEFINED, the maximum possible
+	 * level according to the given bitrate and resolution is picked. */
 	ImxVpuApiH264Level level;
 
 	/* If set to 1, the encoder produces access unit delimiters.

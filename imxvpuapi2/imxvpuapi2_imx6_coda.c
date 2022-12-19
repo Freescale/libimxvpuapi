@@ -2946,8 +2946,7 @@ void imx_vpu_api_enc_set_default_open_params(ImxVpuApiCompressionFormat compress
 
 		case IMX_VPU_API_COMPRESSION_FORMAT_H264:
 			open_params->format_specific_open_params.h264_open_params.profile = IMX_VPU_API_H264_PROFILE_CONSTRAINED_BASELINE;
-			/* TODO: level is currently not being used */
-			open_params->format_specific_open_params.h264_open_params.level = IMX_VPU_API_H264_LEVEL_4;
+			open_params->format_specific_open_params.h264_open_params.level = IMX_VPU_API_H264_LEVEL_UNDEFINED;
 			open_params->format_specific_open_params.h264_open_params.enable_access_unit_delimiters = 1;
 			break;
 		default:
@@ -3164,6 +3163,24 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 
 			(*encoder)->stream_info.format_specific_open_params.h264_open_params = open_params->format_specific_open_params.h264_open_params;
 
+			/* Estimate the max level if none is specified. */
+			if (open_params->format_specific_open_params.h264_open_params.level == IMX_VPU_API_H264_LEVEL_UNDEFINED)
+			{
+				ImxVpuApiH264Level level;
+				level = imx_vpu_api_estimate_max_h264_level(
+					fb_metrics->aligned_frame_width, fb_metrics->aligned_frame_height,
+					open_params->bitrate,
+					open_params->frame_rate_numerator,
+					open_params->frame_rate_denominator,
+					IMX_VPU_API_H264_PROFILE_BASELINE /* CODA only supports (constrained) baseline encoding */
+				);
+				IMX_VPU_API_DEBUG(
+					"no h.264 level given; estimated level %s out of width, height, bitrate, framerate",
+					imx_vpu_api_h264_level_string(level)
+				);
+				(*encoder)->stream_info.format_specific_open_params.h264_open_params.level = level;
+			}
+
 			enc_open_param.bitstreamFormat = STD_AVC;
 			enc_open_param.EncStdParam.avcParam.avc_constrainedIntraPredFlag = 0;
 			enc_open_param.EncStdParam.avcParam.avc_disableDeblk = 0;
@@ -3254,7 +3271,11 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 
 
 	/* Now actually open the encoder instance */
-	IMX_VPU_API_LOG("opening encoder, frame size: %u x %u pixel", fb_metrics->actual_frame_width, fb_metrics->actual_frame_height);
+	IMX_VPU_API_LOG(
+		"opening encoder; size of actual frame: %u x %u pixel; size of total aligned frame: %u x %u pixel",
+		fb_metrics->actual_frame_width, fb_metrics->actual_frame_height,
+		fb_metrics->aligned_frame_width, fb_metrics->aligned_frame_height
+	);
 	imx_coda_vpu_load();
 	enc_ret = vpu_EncOpen(&((*encoder)->handle), &enc_open_param);
 	if (enc_ret != RETCODE_SUCCESS)
