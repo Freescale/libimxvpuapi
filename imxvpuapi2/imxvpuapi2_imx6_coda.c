@@ -3019,7 +3019,8 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 	fb_metrics->actual_frame_width = open_params->frame_width;
 	fb_metrics->actual_frame_height = open_params->frame_height;
 	fb_metrics->aligned_frame_width = IMX_VPU_API_ALIGN_VAL_TO(fb_metrics->actual_frame_width, FRAME_LENGTH_ALIGNMENT);
-	fb_metrics->aligned_frame_height = IMX_VPU_API_ALIGN_VAL_TO(fb_metrics->actual_frame_height, FRAME_LENGTH_ALIGNMENT);
+	/* The VPU can actually handle a vertical 2-row alignment. */
+	fb_metrics->aligned_frame_height = IMX_VPU_API_ALIGN_VAL_TO(fb_metrics->actual_frame_height, 2);
 	fb_metrics->y_stride = fb_metrics->aligned_frame_width;
 	fb_metrics->y_size = fb_metrics->y_stride * fb_metrics->aligned_frame_height;
 
