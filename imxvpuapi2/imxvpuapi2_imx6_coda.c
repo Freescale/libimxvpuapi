@@ -3777,7 +3777,11 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
 		                      !!(encoder->staged_raw_frame.frame_types[0] & IMX_VPU_API_FRAME_TYPE_IDR) ||
 		                      forced_idr_for_closed_gop;
 	enc_param.skipPicture = 0;
-	enc_param.quantParam = encoder->open_params.quantization;
+	/* The quantization parameter is already used in the
+	 * set_jpeg_tables() call in imx_vpu_api_enc_open().
+	 * For JPEG, the VPU ignores the quantParam field. */
+	if (encoder->open_params.compression_format != IMX_VPU_API_COMPRESSION_FORMAT_JPEG)
+		enc_param.quantParam = encoder->open_params.quantization;
 	enc_param.enableAutoSkip = 0;
 
 
