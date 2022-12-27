@@ -1978,7 +1978,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_push_encoded_frame(ImxVpuApiDecoder *dec
 	if (!imx_vpu_api_dec_push_input_data(decoder, encoded_frame->data, encoded_frame->data_size))
 		return IMX_VPU_API_DEC_RETURN_CODE_ERROR;
 
-	IMX_VPU_API_DEBUG("staged encoded frame");
+	IMX_VPU_API_LOG("staged encoded frame");
 
 	/* Stage the encoded frame. We cannot insert its details
 	 * into the frame entries array right here, since we don't
@@ -2418,7 +2418,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 			else
 				convert_frame_type(decoder->open_params.compression_format, decoder->dec_output_info.picType, !!(decoder->dec_output_info.interlacedFrame), frame_types);
 
-			IMX_VPU_API_DEBUG("staged frame reported as decoded; unstaging");
+			IMX_VPU_API_LOG("staged frame reported as decoded; unstaging");
 			decoder->staged_encoded_frame_set = FALSE;
 
 			decoder->num_used_framebuffers++;
@@ -3664,7 +3664,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_push_raw_frame(ImxVpuApiEncoder *encoder
 		return IMX_VPU_API_ENC_RETURN_CODE_INVALID_CALL;
 	}
 
-	IMX_VPU_API_DEBUG("staged raw frame");
+	IMX_VPU_API_LOG("staged raw frame");
 
 	/* Stage the raw frame. We cannot use it here right away, since the CODA
 	 * encoder has no separate function to push raw frames into it. Instead,
@@ -3990,7 +3990,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_encoded_frame(ImxVpuApiEncoder *enco
 	write_pointer_end = write_pointer + encoder->encoded_frame_data_size;
 
 	/* h.264 AUD should come before SPS/PPS header data. See the
-	 * code in imx_vpu_enc_open() for details. */
+	 * code in imx_vpu_api_enc_open() for details. */
 	if (encoder->h264_aud_enabled)
 	{
 		if (!check_available_space(write_pointer, write_pointer_end, h264_aud_size, "h.264 AUD"))
