@@ -83,45 +83,6 @@ static char const * codec_state_to_string(CODEC_STATE codec_state)
 }
 
 
-/* We need to know the maximum number of allowed macroblocks per frame
- * per h.264 level for encoding, since the Hantro H1 encoder checks
- * for these. We then check in imx_vpu_api_enc_open() if the number
- * of macroblocks in the frames to be encoded is withing the limits
- * defined here. If not, a lower level is chosen. */
-
-typedef struct
-{
-	ImxVpuApiH264Level level;
-	size_t count;
-}
-H264MaxMacroblockCount;
-
-/* The macroblock count figures are taken from the h.264 specification,
- * table A.1 "level limits". */
-static H264MaxMacroblockCount const h264_max_macroblock_count_table[] =
-{
-	{ IMX_VPU_API_H264_LEVEL_1,   99 },
-	{ IMX_VPU_API_H264_LEVEL_1B,  99 },
-	{ IMX_VPU_API_H264_LEVEL_1_1, 396 },
-	{ IMX_VPU_API_H264_LEVEL_1_2, 396 },
-	{ IMX_VPU_API_H264_LEVEL_1_3, 396 },
-	{ IMX_VPU_API_H264_LEVEL_2,   396 },
-	{ IMX_VPU_API_H264_LEVEL_2_1, 792 },
-	{ IMX_VPU_API_H264_LEVEL_2_2, 1620 },
-	{ IMX_VPU_API_H264_LEVEL_3,   1620 },
-	{ IMX_VPU_API_H264_LEVEL_3_1, 3600 },
-	{ IMX_VPU_API_H264_LEVEL_3_2, 5120 },
-	{ IMX_VPU_API_H264_LEVEL_4,   8192 },
-	{ IMX_VPU_API_H264_LEVEL_4_1, 8192 },
-	{ IMX_VPU_API_H264_LEVEL_4_2, 8704 },
-	{ IMX_VPU_API_H264_LEVEL_5,   22080 },
-	{ IMX_VPU_API_H264_LEVEL_5_1, 36864 }
-	/* Profiles 5.2 to 6.2 are not supported by the Hantro H1 encoder */
-};
-
-static size_t const h264_max_macroblock_count_table_size = sizeof(h264_max_macroblock_count_table) / sizeof(H264MaxMacroblockCount);
-
-
 
 
 /************************************************/
@@ -697,7 +658,6 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 	{
 		case IMX_VPU_API_COMPRESSION_FORMAT_H264:
 		{
-			size_t i, macroblocks_per_frame;
 			ImxVpuApiH264Level level;
 			H264_CONFIG h264_config;
 			OMX_VIDEO_PARAM_AVCTYPE *avc = &(encoder_config->avc);
@@ -707,7 +667,10 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 
 			(*encoder)->stream_info.format_specific_open_params.h264_open_params = open_params->format_specific_open_params.h264_open_params;
 
-			/* Estimate the max level if none is specified. */
+
+			/* Estimate the max level if none is specified. The H1
+			 * encoder requires the level to be set to a valid value. */
+
 			if (open_params->format_specific_open_params.h264_open_params.level == IMX_VPU_API_H264_LEVEL_UNDEFINED)
 			{
 				ImxVpuApiH264Level level;
@@ -724,6 +687,8 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 				);
 				(*encoder)->stream_info.format_specific_open_params.h264_open_params.level = level;
 			}
+
+			level = (*encoder)->stream_info.format_specific_open_params.h264_open_params.level;
 
 
 			/* Make sure SPS and PPS NALUs are prepended to IDR frames to
@@ -790,53 +755,6 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 					goto cleanup;
 			}
 
-
-			/* Configure the h.264 level. */
-
-			level = open_params->format_specific_open_params.h264_open_params.level;
-
-			/* Make sure the level that was specified is actually able to
-			 * handle the number of macroblocks in the input frames. */
-			macroblocks_per_frame = ((open_params->frame_width + 15) / 16) * ((open_params->frame_height + 15) / 16);
-			for (i = 0; i < h264_max_macroblock_count_table_size; ++i)
-			{
-				H264MaxMacroblockCount const *level_mb_count_entry = &(h264_max_macroblock_count_table[i]);
-				/* Look for the matching level entry. */
-				if (level != level_mb_count_entry->level)
-					continue;
-
-				/* Now check if our macroblock count is allowed within that level. */
-				if (macroblocks_per_frame <= level_mb_count_entry->count)
-				{
-					/* Macroblock count is acceptable within this level. We are okay. */
-					break;
-				}
-				else if ((i + 1) < h264_max_macroblock_count_table_size)
-				{
-					/* Try the next level. */
-					level = (level_mb_count_entry + 1)->level;
-				}
-				else
-				{
-					/* We tried all levels, and yet our macroblock count is too high. */
-					IMX_VPU_API_ERROR("frame macroblock count is too high for the encoder; cannot encode");
-					ret = IMX_VPU_API_ENC_RETURN_CODE_FRAMES_TOO_LARGE;
-				}
-			}
-
-			if (open_params->format_specific_open_params.h264_open_params.level != level)
-			{
-				IMX_VPU_API_DEBUG(
-					"adjusted h.264 level from %s to %s due to the frame macroblock count %zu not being supported by the originally specified level",
-					imx_vpu_api_h264_level_string(open_params->format_specific_open_params.h264_open_params.level),
-					imx_vpu_api_h264_level_string(level),
-					macroblocks_per_frame
-				);
-
-				/* Store corrected level into the stream_info h264 params
-				 * to inform the user about the change. */
-				(*encoder)->stream_info.format_specific_open_params.h264_open_params.level = level;
-			}
 
 			switch (level)
 			{
