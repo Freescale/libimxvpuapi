@@ -1868,7 +1868,7 @@ ImxVpuApiDecReturnCodes imx_vpu_api_dec_decode(ImxVpuApiDecoder *decoder, ImxVpu
 				decoder->decoded_frame_reported = FALSE;
 			}
 			else
-				IMX_VPU_API_DEBUG("VPU has no decoded frames to output");
+				IMX_VPU_API_LOG("VPU has no decoded frames to output");
 
 			break;
 

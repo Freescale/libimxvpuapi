@@ -858,7 +858,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 				case IMX_VPU_API_H264_LEVEL_5_1: avc->eLevel = OMX_VIDEO_AVCLevel51; break;
 				default:
 					/* User specified an unknown format. */
-					IMX_VPU_API_ERROR("unknown/unsupported h.264 level");
+					IMX_VPU_API_ERROR("unknown/unsupported h.264 level %s", imx_vpu_api_h264_level_string(level));
 					ret = IMX_VPU_API_ENC_RETURN_CODE_UNSUPPORTED_COMPRESSION_FORMAT_PARAMS;
 					goto cleanup;
 			}
@@ -1183,7 +1183,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_push_raw_frame(ImxVpuApiEncoder *encoder
 		return IMX_VPU_API_ENC_RETURN_CODE_INVALID_CALL;
 	}
 
-	IMX_VPU_API_DEBUG("staged raw frame");
+	IMX_VPU_API_LOG("staged raw frame");
 
 	/* Stage the raw frame. We cannot use it here right away, since the CODA
 	 * encoder has no separate function to push raw frames into it. Instead,
