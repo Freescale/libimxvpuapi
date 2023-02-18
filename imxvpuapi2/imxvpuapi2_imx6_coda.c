@@ -31,7 +31,6 @@
 #define VPU_VP8_MB_PRED_BUFFER_SIZE                 (68*(1920*1088/256))
 #define BITSTREAM_BUFFER_PHYSADDR_ALIGNMENT         (512)
 #define BITSTREAM_BUFFER_SIZE_ALIGNMENT             (1024)
-#define FRAME_LENGTH_ALIGNMENT                      (16)
 #define FRAME_PHYSADDR_ALIGNMENT                    (4096)
 
 /* The decoder's bitstream buffer shares space with other fields,
@@ -1166,8 +1165,9 @@ static BOOL imx_vpu_api_dec_fill_stream_info(ImxVpuApiDecoder *decoder, size_t a
 
 	fb_metrics->actual_frame_width = actual_frame_width;
 	fb_metrics->actual_frame_height = actual_frame_height;
-	fb_metrics->aligned_frame_width = IMX_VPU_API_ALIGN_VAL_TO(fb_metrics->actual_frame_width, FRAME_LENGTH_ALIGNMENT);
-	fb_metrics->aligned_frame_height = IMX_VPU_API_ALIGN_VAL_TO(fb_metrics->actual_frame_height, FRAME_LENGTH_ALIGNMENT);
+	/* These alignments are a combination of the requirements from the VPU and the IPU'S VDOA. */
+	fb_metrics->aligned_frame_width = IMX_VPU_API_ALIGN_VAL_TO(fb_metrics->actual_frame_width, 128);
+	fb_metrics->aligned_frame_height = IMX_VPU_API_ALIGN_VAL_TO(fb_metrics->actual_frame_height, 32);
 	fb_metrics->y_stride = fb_metrics->aligned_frame_width;
 	fb_metrics->y_size = fb_metrics->y_stride * fb_metrics->aligned_frame_height;
 
@@ -3013,7 +3013,8 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 
 	fb_metrics->actual_frame_width = open_params->frame_width;
 	fb_metrics->actual_frame_height = open_params->frame_height;
-	fb_metrics->aligned_frame_width = IMX_VPU_API_ALIGN_VAL_TO(fb_metrics->actual_frame_width, FRAME_LENGTH_ALIGNMENT);
+	/* The encoder requires an 8-pixel aligned width. Otherwise, corrupted frames are produced. */
+	fb_metrics->aligned_frame_width = IMX_VPU_API_ALIGN_VAL_TO(fb_metrics->actual_frame_width, 8);
 	/* The VPU can actually handle a vertical 2-row alignment. */
 	fb_metrics->aligned_frame_height = IMX_VPU_API_ALIGN_VAL_TO(fb_metrics->actual_frame_height, 2);
 	fb_metrics->y_stride = fb_metrics->aligned_frame_width;
