@@ -86,8 +86,9 @@ BOOL imx_vpu_api_imx6_coda_detile_and_copy_frame_with_ipu_vdoa(
 	task.timeout = 0;
 
 	IMX_VPU_API_LOG(
-		"ipu task:  total padded size %zux%zu  actual size %zux%zu  src/dest paddr %" IMX_PHYSICAL_ADDRESS_FORMAT "/%" IMX_PHYSICAL_ADDRESS_FORMAT "  output color format: %s",
+		"ipu task:  total padded input/output size %zux%zu / %zux%zu  actual size %zux%zu  src/dest paddr %" IMX_PHYSICAL_ADDRESS_FORMAT "/%" IMX_PHYSICAL_ADDRESS_FORMAT "  output color format: %s",
 		total_padded_input_width, total_padded_input_height,
+		total_padded_output_width, total_padded_output_height,
 		actual_frame_width, actual_frame_height,
 		src_paddr, dest_paddr,
 		imx_vpu_api_color_format_string(color_format)
