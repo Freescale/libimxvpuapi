@@ -1217,17 +1217,12 @@ static BOOL imx_vpu_api_dec_fill_stream_info(ImxVpuApiDecoder *decoder, size_t a
 		fb_metrics->uv_size *= 2;
 	}
 
-	/* Framebuffer metrics describe the metrics of _output_ framebuffers,
-	 * not FB pool framebuffers. Unlike the former, the latter have
-	 * particular alignment requirements because of the tiled layout.
-	 * See the code in imx_vpu_api_dec_add_framebuffers_to_pool() for
-	 * an explanation why FB pool addresses have to be aligned. */
 	fb_metrics->y_offset = 0;
 	fb_metrics->u_offset = fb_metrics->y_size;
 	fb_metrics->v_offset = fb_metrics->u_offset + fb_metrics->uv_size;
 	decoder->y_offset = 0;
-	decoder->u_offset = IMX_VPU_API_ALIGN_VAL_TO(fb_metrics->y_size, FRAME_PHYSADDR_ALIGNMENT);
-	decoder->v_offset = IMX_VPU_API_ALIGN_VAL_TO(decoder->u_offset + fb_metrics->uv_size, FRAME_PHYSADDR_ALIGNMENT);
+	decoder->u_offset = IMX_VPU_API_ALIGN_VAL_TO(fb_metrics->y_size, 8);
+	decoder->v_offset = IMX_VPU_API_ALIGN_VAL_TO(decoder->u_offset + fb_metrics->uv_size, 8);
 	decoder->output_framebuffer.strideY = fb_metrics->y_stride;
 	decoder->output_framebuffer.strideC = fb_metrics->uv_stride;
 
@@ -1236,7 +1231,7 @@ static BOOL imx_vpu_api_dec_fill_stream_info(ImxVpuApiDecoder *decoder, size_t a
 	 * vectors are located (that's right after the chroma
 	 * planes in the frame). */
 	decoder->mvcol_offset = semi_planar ? fb_metrics->u_offset : fb_metrics->v_offset;
-	decoder->mvcol_offset = IMX_VPU_API_ALIGN_VAL_TO(decoder->mvcol_offset + fb_metrics->uv_size, FRAME_PHYSADDR_ALIGNMENT);
+	decoder->mvcol_offset = IMX_VPU_API_ALIGN_VAL_TO(decoder->mvcol_offset + fb_metrics->uv_size, 8);
 
 	decoder->total_padded_input_width = fb_metrics->y_stride / bytes_per_y_pixel;
 	decoder->total_padded_input_height = (color_format == IMX_VPU_API_COLOR_FORMAT_YUV400_8BIT) ? fb_metrics->aligned_frame_height : ((fb_metrics->u_offset - fb_metrics->y_offset) / fb_metrics->y_stride);
