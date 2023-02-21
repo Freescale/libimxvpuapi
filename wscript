@@ -171,7 +171,7 @@ def options(opt):
 	opt.add_option('--enable-debug', action = 'store_true', default = False, help = 'enable debug build [default: disabled]')
 	opt.add_option('--enable-static', action = 'store_true', default = False, help = 'build static library [default: build shared library]')
 	opt.add_option('--imx-platform', action='store', default='', help='i.MX platform to build for (valid platforms: ' + ' '.join(imx_platforms.keys()) + ')')
-	opt.add_option('--imx-headers', action='store', default='', help='path to where linux/mxcfb.h etc. can be found [default: <sysroot path>/usr/include/imx]')
+	opt.add_option('--imx-headers', action='store', default='', help='path to where linux/ipu.h etc. can be found [default: <sysroot path>/usr/include/imx]')
 	opt.add_option('--sysroot-path', action='store', default='', help='path to the sysroot')
 	opt.add_option('--disable-examples', action = 'store_true', default = False, help = 'do not compile examples [default: build examples]')
 	opt.load('compiler_c')
