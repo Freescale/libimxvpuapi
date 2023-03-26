@@ -10,8 +10,10 @@ The hardware video codec is referred to as the _VPU_.
 Currently, the following platforms are supported (listed with their VPUs):
 
 * i.MX6 (Chips&Media CODA960 codec)
-* i.MX8m (Hantro G1/G2 decoder, no encoder)
-* i.MX8mm (Hantro G1/G2 decoder, Hantro H1 encoder)
+* i.MX8m quad (Hantro G1/G2 decoder, no encoder)
+  it is also sometimes referred to as just "the i.MX8m"
+* i.MX8m mini (Hantro G1/G2 decoder, Hantro H1 encoder)
+* i.MX8m plus (Hantro G1/G2 decoder, Hantro VC8000E encoder)
 
 Not yet supported:
 
@@ -34,22 +36,22 @@ libimxvpuapi depends on [libimxdmabuffer](https://github.com/dv1/libimxdmabuffer
 
 Additional dependencies are specific to the target platform:
 
-* i.MX6: imx-vpu package version 3.10.17 or newer.
-* i.MX8m & i.MX8mm: imx-vpu-hantro 1.8.0 or newer.
+* i.MX6: `imx-vpu` package version 3.10.17 or newer.
+* i.MX8m quad & i.MX8m mini: `imx-vpu-hantro` 1.8.0 or newer.
   Please note that the build scripts assume that this is a version of the
-  imx-vpu-hantro package with fixed header installation destination. Earlier
+  `imx-vpu-hantro` package with fixed header installation destination. Earlier
   versions installed all Hantro headers in the main include directory. Newer
   ones create `hantro_enc` and `hantro_dec`subdirectories. libimxvpuapi
   expects these directories to exist.
-  Also, currently, there is no specific support for the i.MX8m plus.
-  However, building for i.MX8mm produces a version that is also usable
-  on that SoC.
+* i.MX8m plus: `imx-vpu-hantro` 1.8.0 or newer, just like above
+  (since the plus has the same G1 / G2 decoder as the i.MX8m mini),
+  and also `imx-vpu-hantro-vc` 1.1.0 or newer (for the VC8000E encoder).
 
 
 Building and installing
 -----------------------
 
-This project uses the [waf meta build system](https://code.google.com/p/waf/).
+This project uses the [waf meta build system](https://waf.io/).
 To configure , first set the following environment variables to whatever is
 necessary for cross compilation for your platform:
 
@@ -69,12 +71,19 @@ configure call.)
 The arguments are as follows:
 * `PREFIX` defines the installation prefix, that is, where the built binaries
   will be installed.
-* `IMX_PLATFORM` specifies what i.MX platform to build for. Valid values
-  currently are `imx6`, `imx8m`, `imx8mm`.
+* `IMX_PLATFORM` specifies what i.MX platform to build for. See the list below
+  for the valid values.
 * `SYSROOT` is the absolute path to the sysroot for the platform. This is the
   path where `usr/include/imx/mxcfb.h` can be found. In cross compilation
   environments like Yocto or buildroot, this is where the sysroot files for the
   target i.MX platforms are.
+
+Valid `IMX_PLATFORM` values are:
+
+* `imx6` : i.MX6 (all variants)
+* `imx8m` : i.MX8m quad
+* `imx8mm` : i.MX8m mini
+* `imx8mp` : i.MX8m plus
 
 
 Once configuration is complete, run:
@@ -178,4 +187,3 @@ To do
 * Add more encoder options (and evaluate which ones to add)
 * More wiki entries describing format support per i.MX platform / codec
 * RealVideo decoding support
-* VP8 golden frame and altref frame support during encoding

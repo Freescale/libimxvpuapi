@@ -96,11 +96,10 @@ class PlatformIMX6:
 
 
 class PlatformIMX8M:
-	description = 'i.MX8 M with Hantro G1/G2 decoder (optionally also a Hantro H1 encoder)'
+	description = 'i.MX8 M / M mini / M plus with Hantro G1/G2 decoder (optionally also a Hantro H1 or Hantro VC8000E encoder)'
 
-	def __init__(self, soc_type, has_encoder):
+	def __init__(self, soc_type):
 		self.soc_type = soc_type
-		self.has_encoder = has_encoder
 
 	def configure(self, conf):
 		sysroot_path = conf.env['SYSROOT']
@@ -113,12 +112,18 @@ class PlatformIMX8M:
 		conf.check_cc(uselib_store = 'HANTRO_DEC', uselib = 'HANTRO', define_name = '', mandatory = 1, includes = [os.path.join(sysroot_path, 'usr/include/hantro_dec')], header_name = 'dwl.h')
 		conf.check_cc(uselib_store = 'HANTRO_DEC', uselib = 'HANTRO', define_name = '', mandatory = 1, includes = [os.path.join(sysroot_path, 'usr/include/hantro_dec')], header_name = 'codec.h')
 
-		if self.has_encoder:
-			conf.define('IMXVPUAPI2_VPU_HAS_ENCODER', 1)
+		if self.soc_type == 'MX8MM':
+			# i.MX8m mini has the Hantro H1 encoder
+			conf.define('IMXVPUAPI2_VPU_HAS_H1_ENCODER', 1)
 			conf.check_cc(uselib_store = 'HANTRO', uselib = 'HANTRO', define_name = '', mandatory = 1, lib = 'hantro_h1')
 			conf.check_cc(uselib_store = 'HANTRO', uselib = 'HANTRO', define_name = '', mandatory = 1, lib = 'codec_enc')
 			conf.env['DEFINES_HANTRO_ENC'] += ['ENCH1', 'OMX_ENCODER_VIDEO_DOMAIN', 'ENABLE_HANTRO_ENC']
 			conf.check_cc(uselib_store = 'HANTRO_ENC', uselib = 'HANTRO', define_name = '', mandatory = 1, includes = [os.path.join(sysroot_path, 'usr/include/hantro_enc'), os.path.join(sysroot_path, 'usr/include/hantro_enc/headers')], header_name = 'encoder/codec.h')
+		elif self.soc_type == 'MX8MP':
+			# i.MX8m plus has the Hantro VC8000E encoder
+			conf.define('IMXVPUAPI2_VPU_HAS_VC8000E_ENCODER', 1)
+			conf.check_cc(uselib_store = 'HANTRO', uselib = 'HANTRO', define_name = '', mandatory = 1, lib = ['hantro_vc8000e', 'm'])
+			conf.check_cc(uselib_store = 'HANTRO_ENC', uselib = 'HANTRO', define_name = '', mandatory = 1, includes = [os.path.join(sysroot_path, 'usr/include')], header_name = 'hantro_VC8000E_enc/hevcencapi.h')
 
 		with_hantro_codec_error_frame_retval = conf.check_cc(fragment = '''
 			#include "dwl.h"
@@ -146,13 +151,30 @@ class PlatformIMX8M:
 			source = ['imxvpuapi2/imxvpuapi2_imx8m_hantro_decoder.c'],
 			name = 'imx8_decoder'
 		)
-		bld(
-			features = ['c'],
-			includes = ['.'],
-			uselib = ['IMXDMABUFFER', 'C99', 'HANTRO', 'HANTRO_ENC'],
-			source = ['imxvpuapi2/imxvpuapi2_imx8m_hantro_encoder.c'],
-			name = 'imx8_encoder'
-		)
+		if self.soc_type == 'MX8MM':
+			bld(
+				features = ['c'],
+				includes = ['.'],
+				uselib = ['IMXDMABUFFER', 'C99', 'HANTRO', 'HANTRO_ENC'],
+				source = ['imxvpuapi2/imxvpuapi2_imx8m_hantro_h1_encoder.c'],
+				name = 'imx8_encoder'
+			)
+		elif self.soc_type == 'MX8MP':
+			bld(
+				features = ['c'],
+				includes = ['.'],
+				uselib = ['IMXDMABUFFER', 'C99', 'HANTRO', 'HANTRO_ENC'],
+				source = ['imxvpuapi2/imxvpuapi2_imx8m_hantro_vc8000_encoder.c'],
+				name = 'imx8_encoder'
+			)
+		else:
+			bld(
+				features = ['c'],
+				includes = ['.'],
+				uselib = ['IMXDMABUFFER', 'C99'],
+				source = ['imxvpuapi2/imxvpuapi2_imx8m_hantro_dummy_encoder.c'],
+				name = 'imx8_encoder'
+			)
 
 		return {
 			'uselib': ['HANTRO', 'HANTRO_DEC', 'HANTRO_ENC'],
@@ -162,8 +184,9 @@ class PlatformIMX8M:
 
 imx_platforms = {
 	'imx6': PlatformIMX6(),
-	'imx8m': PlatformIMX8M(soc_type = 'MX8M', has_encoder = False),
-	'imx8mm': PlatformIMX8M(soc_type = 'MX8MM', has_encoder = True)
+	'imx8m': PlatformIMX8M(soc_type = 'MX8M'),
+	'imx8mm': PlatformIMX8M(soc_type = 'MX8MM'),
+	'imx8mp': PlatformIMX8M(soc_type = 'MX8MP')
 }
 
 

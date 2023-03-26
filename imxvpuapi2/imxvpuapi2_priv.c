@@ -446,3 +446,9 @@ ImxVpuApiH264Level imx_vpu_api_estimate_max_h264_level(int width, int height, in
 
 	return IMX_VPU_API_H264_LEVEL_UNDEFINED;
 }
+
+
+ImxVpuApiH265Level imx_vpu_api_estimate_max_h265_level(int width, int height, int bitrate, int fps_num, int fps_denom, ImxVpuApiH265Profile profile)
+{
+	// TODO
+}

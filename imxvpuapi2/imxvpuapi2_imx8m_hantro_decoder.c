@@ -923,8 +923,8 @@ static ImxVpuApiCompressionFormat const supported_compression_formats[] =
 	IMX_VPU_API_COMPRESSION_FORMAT_VP8,
 	IMX_VPU_API_COMPRESSION_FORMAT_VP9,
 
-	/* The Hantro decoder on the i.MX8M Mini does not support these extra formats. */
-#ifndef IMXVPUAPI_IMX8_SOC_TYPE_MX8MM
+	/* Only the Hantro decoder on the i.MX8M (non-mini non-plus) supports these extra formats. */
+#ifdef IMXVPUAPI_IMX8_SOC_TYPE_MX8M
 	IMX_VPU_API_COMPRESSION_FORMAT_JPEG,
 	IMX_VPU_API_COMPRESSION_FORMAT_WEBP,
 	IMX_VPU_API_COMPRESSION_FORMAT_MPEG2,
@@ -997,13 +997,18 @@ static ImxVpuApiH264SupportDetails const h264_support_details = {
 	},
 
 	.max_constrained_baseline_profile_level = IMX_VPU_API_H264_LEVEL_4_1,
+#if defined(IMXVPUAPI_IMX8_SOC_TYPE_MX8M)
 	.max_baseline_profile_level = IMX_VPU_API_H264_LEVEL_4_1,
-#ifdef IMXVPUAPI_IMX8_SOC_TYPE_MX8MM
-	.max_main_profile_level = IMX_VPU_API_H264_LEVEL_4_1,
-	.max_high_profile_level = IMX_VPU_API_H264_LEVEL_4_1,
-#else
 	.max_main_profile_level = IMX_VPU_API_H264_LEVEL_5_1,
 	.max_high_profile_level = IMX_VPU_API_H264_LEVEL_5_1,
+#elif defined(IMXVPUAPI_IMX8_SOC_TYPE_MX8MM)
+	.max_baseline_profile_level = IMX_VPU_API_H264_LEVEL_4_1,
+	.max_main_profile_level = IMX_VPU_API_H264_LEVEL_4_1,
+	.max_high_profile_level = IMX_VPU_API_H264_LEVEL_4_1,
+#elif defined(IMXVPUAPI_IMX8_SOC_TYPE_MX8MP)
+	.max_baseline_profile_level = IMX_VPU_API_H264_LEVEL_4_2,
+	.max_main_profile_level = IMX_VPU_API_H264_LEVEL_4_2,
+	.max_high_profile_level = IMX_VPU_API_H264_LEVEL_4_2,
 #endif
 	.max_high10_profile_level = IMX_VPU_API_H264_LEVEL_UNDEFINED,
 
@@ -1046,10 +1051,10 @@ static ImxVpuApiVP9SupportDetails const vp9_support_details = {
 		.num_supported_color_formats = sizeof(g2_supported_color_formats) / sizeof(ImxVpuApiColorFormat)
 	},
 
-#ifdef IMXVPUAPI_IMX8_SOC_TYPE_MX8MM
-	.supported_profiles = (1 << IMX_VPU_API_VP9_PROFILE_0)
-#else
+#if defined(IMXVPUAPI_IMX8_SOC_TYPE_MX8M)
 	.supported_profiles = (1 << IMX_VPU_API_VP9_PROFILE_0) | (1 << IMX_VPU_API_VP9_PROFILE_2)
+#else
+	.supported_profiles = (1 << IMX_VPU_API_VP9_PROFILE_0)
 #endif
 };
 

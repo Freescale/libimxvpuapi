@@ -152,6 +152,7 @@ void imx_vpu_api_insert_divx3_frame_header(uint8_t *header, unsigned int frame_w
 int imx_vpu_api_parse_jpeg_header(void *jpeg_data, size_t jpeg_data_size, BOOL semi_planar_output, unsigned int *width, unsigned int *height, ImxVpuApiColorFormat *color_format);
 
 ImxVpuApiH264Level imx_vpu_api_estimate_max_h264_level(int width, int height, int bitrate, int fps_num, int fps_denom, ImxVpuApiH264Profile profile);
+ImxVpuApiH265Level imx_vpu_api_estimate_max_h265_level(int width, int height, int bitrate, int fps_num, int fps_denom, ImxVpuApiH265Profile profile);
 
 
 #ifdef __cplusplus

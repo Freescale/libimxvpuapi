@@ -655,8 +655,15 @@ typedef struct
 ImxVpuApiH264SupportDetails;
 
 
-/* NOTE: There is no ImxVpuApiH265Profile enum, since there is no h.264
- * encoder available anywhere, and only encoders need this. */
+/* h.265 profiles. Used by the encoder. */
+typedef enum
+{
+	IMX_VPU_API_H265_PROFILE_MAIN = 0,
+	IMX_VPU_API_H265_PROFILE_MAIN10
+}
+ImxVpuApiH265Profile;
+
+char const * imx_vpu_api_h265_profile_string(ImxVpuApiH265Profile profile);
 
 /* h.265 levels, as specified in ITU-T Rec. H.265 table A.6. */
 typedef enum
@@ -680,6 +687,16 @@ ImxVpuApiH265Level;
 
 char const * imx_vpu_api_h265_level_string(ImxVpuApiH265Level level);
 
+/* h.265 tiers. Used by the encoder. */
+typedef enum
+{
+	IMX_VPU_API_H265_TIER_MAIN = 0,
+	IMX_VPU_API_H265_TIER_HIGH
+}
+ImxVpuApiH265Tier;
+
+char const * imx_vpu_api_h265_tier_string(ImxVpuApiH265Tier tier);
+
 /* Flags for further support details. */
 typedef enum
 {
@@ -687,7 +704,11 @@ typedef enum
 	 * only streams without access unit can be processed. */
 	IMX_VPU_API_H265_FLAG_ACCESS_UNITS_SUPPORTED = (1 << 0),
 	/* If set, then h.264 access unit are required for processing. */
-	IMX_VPU_API_H265_FLAG_ACCESS_UNITS_REQUIRED = (1 << 1)
+	IMX_VPU_API_H265_FLAG_ACCESS_UNITS_REQUIRED = (1 << 1),
+	/* Encoder can produce main-tier h.265 data. Unused by the decoder. */
+	IMX_VPU_API_H265_FLAG_SUPPORTS_MAIN_TIER = (1 << 2),
+	/* Encoder can produce high-tier h.265 data. Unused by the decoder. */
+	IMX_VPU_API_H265_FLAG_SUPPORTS_HIGH_TIER = (1 << 3)
 }
 ImxVpuApiH265Flags;
 
@@ -2074,6 +2095,26 @@ typedef struct
 }
 ImxVpuApiEncH264OpenParams;
 
+/* h.265 specific encoder parameters. */
+typedef struct
+{
+	/* h.265 profile that the input frames shall be encoded to. */
+	ImxVpuApiH265Profile profile;
+
+	/* h.265 level that the input frames shall be encoded to. */
+	ImxVpuApiH265Level level;
+
+	/* h.265 tier to use for encoding. */
+	ImxVpuApiH265Tier tier;
+
+	/* If set to 1, the encoder produces access unit delimiters.
+	 * If set to 0, this is disabled. Default value is 0.
+	 * This has no effect if IMX_VPU_API_H265_FLAG_ACCESS_UNITS_SUPPORTED
+	 * is not set in the ImxVpuApiH264SupportDetails structure. */
+	int enable_access_unit_delimiters;
+}
+ImxVpuApiEncH265OpenParams;
+
 typedef enum
 {
 	IMX_VPU_API_ENC_VP8_PARTITION_COUNT_1,
@@ -2156,6 +2197,7 @@ typedef struct
 		ImxVpuApiEncMPEG4OpenParams mpeg4_open_params;
 		ImxVpuApiEncH263OpenParams h263_open_params;
 		ImxVpuApiEncH264OpenParams h264_open_params;
+		ImxVpuApiEncH265OpenParams h265_open_params;
 		ImxVpuApiEncVP8OpenParams vp8_open_params;
 	}
 	format_specific_open_params;
@@ -2200,6 +2242,7 @@ typedef struct
 		ImxVpuApiEncMPEG4OpenParams mpeg4_open_params;
 		ImxVpuApiEncH263OpenParams h263_open_params;
 		ImxVpuApiEncH264OpenParams h264_open_params;
+		ImxVpuApiEncH265OpenParams h265_open_params;
 		ImxVpuApiEncVP8OpenParams vp8_open_params;
 	}
 	format_specific_open_params;
