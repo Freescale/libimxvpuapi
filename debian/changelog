@@ -1,3 +1,26 @@
+libimxvpuapi (2.3.0) stable; urgency=low
+
+* vpu: Implement first working version of VC8000E encoder integration
+  This adds support for the Hanto VC8000E encoder that can be found on
+  the i.MX8m plus. The VC8000E encoder integration is not finished.
+  h.264 encoding works fine. h.265 encoding is not yet done. And,
+  changing framerate mid-stream is currently not supported.
+* Replace mxcfb.h with ipu.h in option description
+  Some BSPs no longer ship with the mxcfb.h header.
+* imx6-coda: Fix ENC_ENABLE_SOF_STUFF check
+  The check was being performed incorrectly, leading to nullbytes
+  being inserted at the end of the SOF0 marker.
+* imx6-coda: Insert JFIF APP0 segment
+  The VPU does not insert this segment on its own. Some programs need
+  JFIF data to be present in JPEG files, so insert APP0 manually.
+* imx6-coda: Fix decoder and encoder alignments
+* imx6-coda: Add more IPU detiler logging
+* imx6-coda: Fix decoder Y/U/V offset alignments
+  As it turns out, these must be aligned to 8-byte boundaries, not to
+  4096 byte ones. The latter caused incorrect offset calculations.
+
+ -- Carlos Rafael Giani <crg7475@mailbox.org>  Tue, 30 Jul 2023 09:33:00 +0200
+
 libimxvpuapi (2.2.2) stable; urgency=low
 
 * imx6-coda: Skip incomplete frames instead of just reporting them
