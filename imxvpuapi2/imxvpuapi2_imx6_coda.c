@@ -2621,8 +2621,20 @@ struct _ImxVpuApiEncoder
 
 	size_t num_framebuffers_to_be_added;
 
+	/* Array of internal framebuffers used by the VPU for the encoding
+	 * process. They store reference frames, partially reconstructed
+	 * frames, etc. They are not to be accessed from the outside.
+	 * The offset and stride value here are potentially different from
+	 * those in stream_info.frame_encoding_framebuffer_metrics, because
+	 * the internal framebuffers have different alignment requirements;
+	 * both width and height must be an integer multiple of 16, while
+	 * input frames have less strict alignment requirements. */
 	unsigned int num_framebuffers;
 	FrameBuffer *internal_framebuffers;
+	size_t internal_fb_u_offset;
+	size_t internal_fb_v_offset;
+	size_t internal_fb_y_stride;
+	size_t internal_fb_uv_stride;
 
 	EncOutputInfo enc_output_info;
 	size_t jpeg_header_size;
@@ -2958,6 +2970,8 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 	RetCode enc_ret;
 	ImxVpuApiFramebufferMetrics *fb_metrics;
 	BOOL semi_planar;
+	size_t internal_fb_aligned_width, internal_fb_aligned_height;
+	size_t internal_fb_y_size, internal_fb_uv_size;
 
 	assert(encoder != NULL);
 	assert(open_params != NULL);
@@ -3020,6 +3034,14 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 	fb_metrics->y_stride = fb_metrics->aligned_frame_width;
 	fb_metrics->y_size = fb_metrics->y_stride * fb_metrics->aligned_frame_height;
 
+	/* Internal VPU encoder framebuffers use different alignments;
+	 * both width and height must be aligned to 16. */
+	internal_fb_aligned_width = IMX_VPU_API_ALIGN_VAL_TO(fb_metrics->actual_frame_width, 16);
+	internal_fb_aligned_height = IMX_VPU_API_ALIGN_VAL_TO(fb_metrics->actual_frame_height, 16);
+	internal_fb_y_size = internal_fb_aligned_width * internal_fb_aligned_height;
+
+	(*encoder)->internal_fb_y_stride = internal_fb_aligned_width;
+
 	semi_planar = imx_vpu_api_is_color_format_semi_planar(open_params->color_format);
 
 	switch (open_params->color_format)
@@ -3028,6 +3050,8 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV420_8BIT:
 			fb_metrics->uv_stride = fb_metrics->y_stride / 2;
 			fb_metrics->uv_size = fb_metrics->y_size / 4;
+			(*encoder)->internal_fb_uv_stride = (*encoder)->internal_fb_y_stride / 2;
+			internal_fb_uv_size = internal_fb_y_size / 4;
 			break;
 
 		case IMX_VPU_API_COLOR_FORMAT_FULLY_PLANAR_YUV422_HORIZONTAL_8BIT:
@@ -3036,17 +3060,23 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV422_VERTICAL_8BIT:
 			fb_metrics->uv_stride = fb_metrics->y_stride / 2;
 			fb_metrics->uv_size = fb_metrics->y_size / 2;
+			(*encoder)->internal_fb_uv_stride = (*encoder)->internal_fb_y_stride / 2;
+			internal_fb_uv_size = internal_fb_y_size / 2;
 			break;
 
 		case IMX_VPU_API_COLOR_FORMAT_FULLY_PLANAR_YUV444_8BIT:
 		case IMX_VPU_API_COLOR_FORMAT_SEMI_PLANAR_YUV444_8BIT:
 			fb_metrics->uv_stride = fb_metrics->y_stride;
 			fb_metrics->uv_size = fb_metrics->y_size;
+			(*encoder)->internal_fb_uv_stride = (*encoder)->internal_fb_y_stride;
+			internal_fb_uv_size = internal_fb_y_size;
 			break;
 
 		case IMX_VPU_API_COLOR_FORMAT_YUV400_8BIT:
 			fb_metrics->uv_stride = fb_metrics->y_stride;
 			fb_metrics->uv_size = 0;
+			(*encoder)->internal_fb_uv_stride = (*encoder)->internal_fb_y_stride;
+			internal_fb_uv_size = 0;
 			break;
 
 		default:
@@ -3061,13 +3091,18 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 	{
 		fb_metrics->uv_stride *= 2;
 		fb_metrics->uv_size *= 2;
+		(*encoder)->internal_fb_uv_stride *= 2;
+		internal_fb_uv_size *= 2;
 	}
 
 	fb_metrics->y_offset = 0;
 	fb_metrics->u_offset = fb_metrics->y_size;
 	fb_metrics->v_offset = fb_metrics->u_offset + fb_metrics->uv_size;
 
-	(*encoder)->stream_info.min_framebuffer_size = (semi_planar ? fb_metrics->u_offset : fb_metrics->v_offset) + fb_metrics->uv_size;
+	(*encoder)->internal_fb_u_offset = internal_fb_y_size;
+	(*encoder)->internal_fb_v_offset = (*encoder)->internal_fb_u_offset + internal_fb_uv_size;
+
+	(*encoder)->stream_info.min_framebuffer_size = (semi_planar ? (*encoder)->internal_fb_u_offset : (*encoder)->internal_fb_v_offset) + internal_fb_uv_size;
 	(*encoder)->stream_info.framebuffer_alignment = FRAME_PHYSADDR_ALIGNMENT;
 
 	(*encoder)->stream_info.frame_rate_numerator = open_params->frame_rate_numerator;
@@ -3268,11 +3303,34 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 
 
 	/* Now actually open the encoder instance */
-	IMX_VPU_API_LOG(
+	IMX_VPU_API_DEBUG(
 		"opening encoder; size of actual frame: %u x %u pixel; size of total aligned frame: %u x %u pixel",
 		fb_metrics->actual_frame_width, fb_metrics->actual_frame_height,
 		fb_metrics->aligned_frame_width, fb_metrics->aligned_frame_height
 	);
+
+	if (semi_planar)
+	{
+		IMX_VPU_API_DEBUG(
+			"UV offset of input frames: %zu  UV offset of internal framebuffers: %zu",
+			fb_metrics->u_offset, (*encoder)->internal_fb_u_offset
+		);
+	}
+	else
+	{
+		IMX_VPU_API_DEBUG(
+			"U / V offsets of input frames: %zu / %zu  U / V offset of internal framebuffers: %zu / %zu",
+			fb_metrics->u_offset, fb_metrics->v_offset,
+			(*encoder)->internal_fb_u_offset, (*encoder)->internal_fb_v_offset
+		);
+	}
+
+	IMX_VPU_API_DEBUG("Y / UV size of input frames: %zu / %zu", fb_metrics->y_size, fb_metrics->uv_size);
+	IMX_VPU_API_DEBUG("Y / UV size of internal framebuffers: %zu / %zu", internal_fb_y_size, internal_fb_uv_size);
+	IMX_VPU_API_DEBUG("Y / UV stride of input frames: %zu / %zu", fb_metrics->y_stride, fb_metrics->uv_stride);
+	IMX_VPU_API_DEBUG("Y / UV stride of internal framebuffers: %zu / %zu", (*encoder)->internal_fb_y_stride, (*encoder)->internal_fb_uv_stride);
+	IMX_VPU_API_DEBUG("minimum framebuffer size: %zu byte(s)", (*encoder)->stream_info.min_framebuffer_size);
+
 	imx_coda_vpu_load();
 	enc_ret = vpu_EncOpen(&((*encoder)->handle), &enc_open_param);
 	if (enc_ret != RETCODE_SUCCESS)
@@ -3491,12 +3549,12 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_add_framebuffers_to_pool(ImxVpuApiEncode
 			goto cleanup;
 		}
 
-		internal_fb->strideY = fb_metrics->y_stride;
-		internal_fb->strideC = fb_metrics->uv_stride;
+		internal_fb->strideY = encoder->internal_fb_y_stride;
+		internal_fb->strideC = encoder->internal_fb_uv_stride;
 		internal_fb->myIndex = i;
-		internal_fb->bufY = (PhysicalAddress)(phys_addr + fb_metrics->y_offset);
-		internal_fb->bufCb = (PhysicalAddress)(phys_addr + fb_metrics->u_offset);
-		internal_fb->bufCr = (PhysicalAddress)(phys_addr + fb_metrics->v_offset);
+		internal_fb->bufY = (PhysicalAddress)(phys_addr);
+		internal_fb->bufCb = (PhysicalAddress)(phys_addr + encoder->internal_fb_u_offset);
+		internal_fb->bufCr = (PhysicalAddress)(phys_addr + encoder->internal_fb_v_offset);
 		/* The encoder does not use MvCol data. */
 		internal_fb->bufMvCol = 0;
 	}
