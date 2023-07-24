@@ -147,6 +147,25 @@ are observed, check if the following workarounds for known problems help:
 This seems to be a bug in imx-vpu-hantro. A workaround is currently not known.
 
 
+DWL and EWL errors
+------------------
+
+On machines with Hantro based VPUs, "DWL" and "EWL" errors may appear. DWL and EWL
+are low level layers used by the Hantro drivers. Errors typically happen when certain
+device nodes are not available. If such errors occur, check for the presence of:
+
+* `/dev/ion` : Used with older imx kernels (<5.15)
+* `/dev/dma_heap/linux,cma-uncached` : Used with newer imx kernels (>=5.15)
+* `/dev/mxc_hantro` : Hantro G1 and G2 decoder ; found on the i.MX8m mini,
+  i.MX8m quad, i.MX8m plus
+* `/dev/mxc_hantro_h1` : Hantro H1 encoder ; found on the i.MX8m mini
+* `/dev/mxc_hantro_vc8000e` : Hantro VC8000E encoder ; found on the i.MX8m plus
+
+If at least one of these are missing, check the kernel configuration. The ION
+and/or the dma-heap CMA allocator needs to be enabled. Also check that the
+Hantro VPU is enabled.
+
+
 Differences to the older libimxvpuapi version
 ---------------------------------------------
 
