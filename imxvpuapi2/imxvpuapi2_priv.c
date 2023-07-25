@@ -52,6 +52,37 @@ uint8_t const jpeg_zigzag_pattern[64] =
 };
 
 
+/* NOTE: The header uses big endian byte ordering. */
+uint8_t const jpeg_jfif_app0_segment[JPEG_JFIF_APP0_SEGMENT_SIZE] =
+{
+	/* APP0 marker. */
+	0xFF, 0xE0,
+	/* 16-bit integer containing length of segment, including the 2 bytes of this
+	 * length integer itself, but excluding the 2 bytes of the APP0 marker. */
+	0x00,
+	(JPEG_JFIF_APP0_SEGMENT_SIZE - 2),
+	/* JFIF identifier with terminating nullbyte. */
+	'J', 'F', 'I', 'F', '\0',
+	/* JFIF version (1.01); first byte = major version, second byte = minor version. */
+	0x01, 0x01,
+	/* Byte specifying what units the pixel density values below use. 0 means that
+	 * they use _no_ units; instead, horizontal/vertical pixel density specify the
+	 * pixel aspect ratio (horizontal:vertical). */
+	0x00,
+	/* Two 16-bit integers containing horizontal and vertical pixel density,
+	 * respectively. Since the unit byte above is set to 0, these two denstity
+	 * values actually specify the pixel aspect ratio instead of a physical density.
+	 * We set both to 1 for a 1:1 density. No actual pixel aspect ratio is available
+	 * anywhere, so we use 1:1 as a default. */
+	0x00, 0x01,
+	0x00, 0x01,
+	/* Two bytes containing width and height of the embedded RGB thumbnail, respectively.
+	 * We don't store a thumbnail in the APP0 segment, so these two are both set to 0. */
+	0x00,
+	0x00
+};
+
+
 /* JPEG marker definitions, needed for JPEG header parsing */
 
 /* Start Of Frame markers, non-differential, Huffman coding */

@@ -3953,7 +3953,10 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
 		switch (encoder->open_params.compression_format)
 		{
 			case IMX_VPU_API_COMPRESSION_FORMAT_JPEG:
-				encoded_data_size += encoder->jpeg_header_size;
+				/* Add the APP0 segment size. The VPU does not write that segment
+				 * on its own, so we have to manually insert it later on, and we
+				 * need room in the header data array for that. */
+				encoded_data_size += encoder->jpeg_header_size + JPEG_JFIF_APP0_SEGMENT_SIZE;
 				break;
 
 			case IMX_VPU_API_COMPRESSION_FORMAT_H264:
@@ -4085,11 +4088,36 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_encoded_frame(ImxVpuApiEncoder *enco
 
 			case IMX_VPU_API_COMPRESSION_FORMAT_JPEG:
 			{
-				if (!check_available_space(write_pointer, write_pointer_end, encoder->jpeg_header_size, "JPEG header"))
+				if (!check_available_space(
+					write_pointer,
+					write_pointer_end,
+					encoder->jpeg_header_size + JPEG_JFIF_APP0_SEGMENT_SIZE,
+					"JPEG header"
+				))
 					return IMX_VPU_API_ENC_RETURN_CODE_ERROR;
 
-				memcpy(write_pointer, encoder->headers.jpeg_header_data, encoder->jpeg_header_size);
-				write_pointer += encoder->jpeg_header_size;
+				/* The VPU generates headers that do not contain a JFIF APP0 segment.
+				 * Some programs require either a JFIF segment or an EXIF segment,
+				 * and do not work correctly if neither are present. For this reason,
+				 * we must insert an APP0 segment here. The VPU-produced JPEG header
+				 * data begins with the JPEG start-of-image (SOI) marker. We copy
+				 * that, and right after the SOI, insert the APP0 segment, which is
+				 * how valid JFIF files are structured. */
+
+				/* Copy the start-of-image (SOI) marker, which consists of the
+				 * first 2 bytes in the VPU JPEG header data. */
+				*write_pointer++ = encoder->headers.jpeg_header_data[0];
+				*write_pointer++ = encoder->headers.jpeg_header_data[1];
+
+				/* Copy the JFIF APP0 segment right after the SOI. */
+				memcpy(write_pointer, jpeg_jfif_app0_segment, JPEG_JFIF_APP0_SEGMENT_SIZE);
+				write_pointer += JPEG_JFIF_APP0_SEGMENT_SIZE;
+
+				/* Now copy the rest of the VPU-produced header data. We
+				 * skip the first 2 bytes since these were copied already. */
+				memcpy(write_pointer, encoder->headers.jpeg_header_data + 2, encoder->jpeg_header_size - 2);
+				write_pointer += encoder->jpeg_header_size - 2;
+
 				break;
 			}
 

@@ -63,6 +63,9 @@ extern ImxVpuApiLoggingFunc imx_vpu_api_cur_logging_fn;
 
 #define WEBP_FRAME_HEADER_SIZE  20
 
+/* JFIF APP0 segment size (16 bytes), including the size (2 bytes) of its marker */
+#define JPEG_JFIF_APP0_SEGMENT_SIZE  (16+2)
+
 
 extern uint8_t const h264_aud[];
 extern size_t const h264_aud_size;
@@ -71,6 +74,7 @@ extern size_t const h264_aud_size;
 extern uint8_t const jpeg_quantization_table_luma[64];
 extern uint8_t const jpeg_quantization_table_chroma[64];
 extern uint8_t const jpeg_zigzag_pattern[64];
+extern uint8_t const jpeg_jfif_app0_segment[JPEG_JFIF_APP0_SEGMENT_SIZE];
 
 
 #define READ_16BIT_BE(BUF, OFS) \
