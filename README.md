@@ -129,7 +129,7 @@ Known issues
 If errors like `imx_vpu_api_dec_decode() failed: timeout` or `VPU blocking: timeout`
 are observed, check if the following workarounds for known problems help:
 
-* Overclocked VPU: The VPU is clocked at 266 MHz by default (according to the
+* Overclocked VPU: The i.MX6 VPU is clocked at 266 MHz by default (according to the
   VPU documentation). Some configurations clock the VPU at 352 MHz, and can
   exhibit VPU timeout problems, particularly during h.264 encoding. Try running
   the VPU at 266 MHz.
@@ -138,13 +138,33 @@ are observed, check if the following workarounds for known problems help:
   the `CONFIG_IMX_IPUV3_CORE` kernel config flag can cause problems with the
   VPU. Disable it, then try again.
 
-* Low-level VPU library bug: imx-vpu versions prior to 5.4.31 also have been
+* Low-level i.MX6 VPU library bug: imx-vpu versions prior to 5.4.31 also have been
   observed to cause VPU timeouts. These seem to be related to the 5.4.31 fix
   described as: "Fix VPU blocked in BWB module".
 
 **VP6 frames decoded upside down by Hantro G1 decoder**
 
 This seems to be a bug in imx-vpu-hantro. A workaround is currently not known.
+
+**imx_vpu_api_dec_add_framebuffers_to_pool() fails on Hantro VPUs, logs show "CODEC_ERROR_UNSPECIFIED"**
+This can happen when too many framebuffers are added. One common situation is when
+libimxvpuapi is used through gstreamer-imx, and downstream has a queue that soaks
+up too many buffers. Example:
+
+    gst-launch-1.0 filesrc location=test-vp8.mkv ! matroskademux ! imxvpudec_vp8 ! queue ! autovideosink
+
+If the video sink takes a while to start, it is possible that the queue in this example
+keeps storing more and more buffers without releasing them. This causes the VPU to
+repeatedly request more framebuffers to decode more frames into. Newer versions of
+imx-vpu-hantro define upper limits to how many framebuffers can be added, and if these
+limits are exceeded, the error occurs.
+
+It is recommended to not hold on to too many framebuffers at once. Keep it below 16
+framebuffers. In the GStreamer case above, it is sufficient to set the `max-size-buffers`
+property of the queue there to 1, since a queue that is right before a video sink is
+meant for decoupling the upstream portion of that pipeline from the video sink. This
+helps with reducing the likelihood of lost frames. More than 1 buffer in the queue is
+not needed for this.
 
 
 DWL and EWL errors
