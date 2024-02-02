@@ -1918,6 +1918,9 @@ void imx_vpu_api_dec_get_skipped_frame_info(ImxVpuApiDecoder *decoder, ImxVpuApi
  *    - If the output code is IMX_VPU_API_ENC_OUTPUT_CODE_NEED_ADDITIONAL_FRAMEBUFFER,
  *      add a framebuffer with imx_vpu_api_enc_add_framebuffers_to_pool(), then
  *      go back to step 3.
+ *    - If the output code is IMX_VPU_API_ENC_OUTPUT_CODE_FRAME_SKIPPED, retrieve
+ *      the details about the skipped frame with imx_vpu_api_enc_get_skipped_frame_info(),
+ *      then go back to step 3.
  * 5. Drain the encoder as explained below.
  * 6. Exit the loop.
  *
@@ -2034,7 +2037,11 @@ typedef enum
 	IMX_VPU_API_ENC_OUTPUT_CODE_MORE_INPUT_DATA_NEEDED,
 	/* DEPRECATED. This output code is not used anymore, and kept here for
 	 * backwards compatibility with existing code. Do not use in new code. */
-	IMX_VPU_API_ENC_OUTPUT_CODE_EOS
+	IMX_VPU_API_ENC_OUTPUT_CODE_EOS,
+	/* Encoder skipped the frame to preserve bitrate. Only used when the
+	 * configured bitrate is nonzero and frameskipping is enabled (see
+	 * ImxVpuApiEncOpenParams). */
+	IMX_VPU_API_ENC_OUTPUT_CODE_FRAME_SKIPPED
 }
 ImxVpuApiEncOutputCodes;
 
@@ -2075,6 +2082,17 @@ typedef struct
 	int enable_annex_t;
 }
 ImxVpuApiEncH263OpenParams;
+
+/* h.264 specific flags for use in ImxVpuApiEncOpenParamsFlags. */
+typedef enum
+{
+	/* If this flag is set, the encoder will use a full video input
+	 * signal range. The valid Y, U, and V values will be 0-255. If
+	 * this is not set, restricted ranges are used: the Y range is
+	 * 16-235, the U and V ranges are 16-240. */
+	IMX_VPU_API_ENC_H264_OPEN_PARAMS_FLAG_FULL_VIDEO_RANGE = (1 << 10)
+}
+ImxVpuApiEncH264OpenParamsFlags;
 
 /* h.264 specific encoder parameters. */
 typedef struct
@@ -2148,6 +2166,19 @@ typedef struct
 }
 ImxVpuApiEncVP8OpenParams;
 
+/* Flags for use in ImxVpuApiEncOpenParamsFlags. */
+typedef enum
+{
+	/* Allow encoder to skip frames in order to maintain the bitrate.
+	 * If this flag is set, and the encoder skips a frame, then the
+	 * ImxVpuApiEncodedFrame result from imx_vpu_api_enc_get_encoded_frame()
+	 * will have its frame_type field set to IMX_VPU_API_FRAME_TYPE_SKIP,
+	 * and the output code of imx_vpu_api_enc_encode() will be set to
+	 * IMX_VPU_API_ENC_OUTPUT_CODE_FRAME_SKIPPED. */
+	IMX_VPU_API_ENC_OPEN_PARAMS_FLAG_ALLOW_FRAMESKIPPING = (1 << 0)
+}
+ImxVpuApiEncOpenParamsFlags;
+
 /* Parameters for opening a enccoder. */
 typedef struct
 {
@@ -2202,8 +2233,21 @@ typedef struct
 	}
 	format_specific_open_params;
 
+	/* If set to a value > 0, then this quantization parameter is used
+	 * for intra frames during CBR encoding. This can be useful for
+	 * tuning the size variations of intra vs predicted frames and smoothen
+	 * out jumps in size. Depending on the transmission channel, intra
+	 * frames that are significantly larger than predicted frames can
+	 * be problematic. If this is set to 0, rate control calculates
+	 * this value on its own.
+	 * This value has no effect when rate control is disabled. */
+	int fixed_intra_quantization;
+
+	/* Bitwise OR combination of flags from ImxVpuApiEncOpenParamsFlags. */
+	uint32_t flags;
+
 	/* Reserved bytes for ABI compatibility. */
-	uint8_t reserved[IMX_VPU_API_RESERVED_SIZE - sizeof(unsigned int)];
+	uint8_t reserved[IMX_VPU_API_RESERVED_SIZE - sizeof(unsigned int) - sizeof(int) - sizeof(uint32_t)];
 }
 ImxVpuApiEncOpenParams;
 
@@ -2644,6 +2688,25 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
  * frame was encoded, or it was called more than once between encoding frames.
  */
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_encoded_frame(ImxVpuApiEncoder *encoder, ImxVpuApiEncodedFrame *encoded_frame);
+
+/* Retrieves information about a skipped frame.
+ *
+ * This should only be called after imx_vpu_api_enc_decode() returned the output
+ * code IMX_VPU_API_ENC_OUTPUT_CODE_FRAME_SKIPPED . Otherwise, this function's
+ * return values are undefined.
+ *
+ * The context/pts/dts values are the ones from the ImxVpuApiRawFrame that
+ * was skipped.
+ *
+ * @param encoder Encoder instance. Must not be NULL.
+ * @param context Pointer to the context that shall be set to the context of the
+ *        skipped frame. Can be NULL if not needed.
+ * @param pts Pointer to the PTS that shall be set to the PTS of the
+ *        skipped frame. Can be NULL if not needed.
+ * @param dts Pointer to the DTS that shall be set to the DTS of the
+ *        skipped frame. Can be NULL if not needed.
+ */
+ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_skipped_frame_info(ImxVpuApiEncoder *encoder, void **context, uint64_t *pts, uint64_t *dts);
 
 
 #ifdef __cplusplus
