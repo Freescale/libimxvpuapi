@@ -123,6 +123,7 @@ struct _ImxVpuApiEncoder
 	 * macroblocks etc. */
 	size_t cyclic_intra_refresh_start;
 	size_t cyclic_intra_refresh_interval;
+	BOOL use_intra_refresh;
 
 	/* How many macroblocks are present in the frame. Macroblocks are 16x16
 	 * pixel blocks. This contains the total amount of macroblocks in a frame,
@@ -443,11 +444,22 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 
 	/* Initialize cyclic intra refresh parameters. See the
 	 * cyclic_intra_refresh_interval documentation at the top for more. */
+
+	(*encoder)->use_intra_refresh = (open_params->flags & IMX_VPU_API_ENC_OPEN_PARAMS_FLAG_USE_INTRA_REFRESH) || (open_params->min_intra_refresh_mb_count != 0);
 	(*encoder)->cyclic_intra_refresh_start = 0;
-	if (open_params->min_intra_refresh_mb_count != 0)
+
+	if ((*encoder)->use_intra_refresh)
 	{
-		(*encoder)->cyclic_intra_refresh_interval = ((*encoder)->num_macroblocks_per_frame / open_params->min_intra_refresh_mb_count);
-		IMX_VPU_API_DEBUG("cyclic intra refresh interval: %zu", (*encoder)->cyclic_intra_refresh_interval);
+		if (open_params->flags & IMX_VPU_API_ENC_OPEN_PARAMS_FLAG_USE_INTRA_REFRESH)
+		{
+			(*encoder)->cyclic_intra_refresh_interval = open_params->gop_size;
+			IMX_VPU_API_DEBUG("using GOP size %u as cyclic intra refresh interval, open_params->gop_size");
+		}
+		else
+		{
+			(*encoder)->cyclic_intra_refresh_interval = ((*encoder)->num_macroblocks_per_frame / open_params->min_intra_refresh_mb_count);
+			IMX_VPU_API_DEBUG("calculated cyclic intra refresh interval %zu out of min_intra_refresh_mb_count %u", (*encoder)->cyclic_intra_refresh_interval, open_params->min_intra_refresh_mb_count);
+		}
 	}
 	else
 	{
@@ -753,7 +765,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
 	 * I d d d I d d d I d d d I d d d ...
 	 *
 	 * etc. */
-	if (encoder->open_params.min_intra_refresh_mb_count != 0)
+	if (encoder->use_intra_refresh)
 	{
 		switch (encoder->encoded_frame_type)
 		{
@@ -1266,7 +1278,7 @@ static ImxVpuApiEncReturnCodes h1_vp8_encode_frame(void *h1_encoder, ImxVpuApiFr
 
 	/* Enforce an I frame between GOPs, unless intra refresh
 	 * is active, since intra refresh replaces I frames). */
-	if ((base->open_params.min_intra_refresh_mb_count == 0) && ((encoder->gop_frame_counter % base->open_params.gop_size) == 0))
+	if (!(base->use_intra_refresh) && ((encoder->gop_frame_counter % base->open_params.gop_size) == 0))
 	{
 		frame_type = IMX_VPU_API_FRAME_TYPE_I;
 		encoder->gop_frame_counter = 0;
@@ -1324,7 +1336,7 @@ static ImxVpuApiEncReturnCodes h1_vp8_encode_frame(void *h1_encoder, ImxVpuApiFr
 
 	/* Update the GOP counter unless cyclic intra refresh is used, since then,
 	 * the concept of a GOP makes no sense (intra refresh replaces I frames). */
-	if ((base->open_params.min_intra_refresh_mb_count == 0) && (encoder->output.codingType != VP8ENC_NOTCODED_FRAME))
+	if (!(base->use_intra_refresh) && (encoder->output.codingType != VP8ENC_NOTCODED_FRAME))
 	{
 		encoder->is_first_frame = FALSE;
 		encoder->gop_frame_counter++;
@@ -1988,7 +2000,7 @@ static ImxVpuApiEncReturnCodes h1_h264_encode_frame(void *h1_encoder, ImxVpuApiF
 
 	/* Enforce an IDR frame between GOPs, unless intra refresh
 	 * is active, since intra refresh replaces IDR frames). */
-	if ((base->open_params.min_intra_refresh_mb_count == 0) && ((encoder->gop_frame_counter % base->open_params.gop_size) == 0))
+	if (!(base->use_intra_refresh) && ((encoder->gop_frame_counter % base->open_params.gop_size) == 0))
 	{
 		frame_type = IMX_VPU_API_FRAME_TYPE_IDR;
 		encoder->gop_frame_counter = 0;
@@ -2043,7 +2055,7 @@ static ImxVpuApiEncReturnCodes h1_h264_encode_frame(void *h1_encoder, ImxVpuApiF
 
 	/* Update the GOP counter unless cyclic intra refresh is used, since then,
 	 * the concept of a GOP makes no sense (intra refresh replaces I/IDR frames). */
-	if ((base->open_params.min_intra_refresh_mb_count == 0) && (encoder_output.codingType != H264ENC_NOTCODED_FRAME))
+	if (!(base->use_intra_refresh) && (encoder_output.codingType != H264ENC_NOTCODED_FRAME))
 	{
 		encoder->is_first_frame = FALSE;
 		encoder->gop_frame_counter++;

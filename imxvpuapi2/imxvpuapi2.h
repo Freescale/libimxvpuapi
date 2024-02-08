@@ -2175,7 +2175,10 @@ typedef enum
 	 * will have its frame_type field set to IMX_VPU_API_FRAME_TYPE_SKIP,
 	 * and the output code of imx_vpu_api_enc_encode() will be set to
 	 * IMX_VPU_API_ENC_OUTPUT_CODE_FRAME_SKIPPED. */
-	IMX_VPU_API_ENC_OPEN_PARAMS_FLAG_ALLOW_FRAMESKIPPING = (1 << 0)
+	IMX_VPU_API_ENC_OPEN_PARAMS_FLAG_ALLOW_FRAMESKIPPING = (1 << 0),
+	/* Use intra refresh as an alternative to the classic I/IDR and
+	 * GOP based encoding. */
+	IMX_VPU_API_ENC_OPEN_PARAMS_FLAG_USE_INTRA_REFRESH = (1 << 1),
 }
 ImxVpuApiEncOpenParamsFlags;
 
@@ -2206,11 +2209,14 @@ typedef struct
 	unsigned int quantization;
 	/* Size for the group of pictures (GOP). Some formats do not know the notion
 	 * of a GOP. In these cases, the gop_size value is used as an interval for I
-	 * frames instead. */
+	 * frames instead. If the IMX_VPU_API_ENC_OPEN_PARAMS_FLAG_USE_INTRA_REFRESH
+	 * flag is set, this is used as a factor by the encoder for deciding how
+	 * many intra macroblocks are encoded per frame. */
 	unsigned int gop_size;
 	/* How many macroblocks at least to encode as intra macroblocks in every
 	 * P frame. If this is set to 0, intra macroblocks are not used. Not all
-	 * formats use this parameter. */
+	 * formats use this parameter.
+	 * DEPRECATED. Use IMX_VPU_API_ENC_OPEN_PARAMS_FLAG_USE_INTRA_REFRESH instead. */
 	unsigned int min_intra_refresh_mb_count;
 	/* How many GOPs pass until a closed GOP is enforced. If for example this
 	 * is set to 3, then the bitstream is encoded such that no frames from
