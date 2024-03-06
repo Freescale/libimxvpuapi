@@ -453,7 +453,7 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 		if (open_params->flags & IMX_VPU_API_ENC_OPEN_PARAMS_FLAG_USE_INTRA_REFRESH)
 		{
 			(*encoder)->cyclic_intra_refresh_interval = open_params->gop_size;
-			IMX_VPU_API_DEBUG("using GOP size %u as cyclic intra refresh interval, open_params->gop_size");
+			IMX_VPU_API_DEBUG("using GOP size %u as cyclic intra refresh interval", open_params->gop_size);
 		}
 		else
 		{
