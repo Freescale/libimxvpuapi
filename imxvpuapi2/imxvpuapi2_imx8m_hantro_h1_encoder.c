@@ -1518,6 +1518,7 @@ typedef struct
 	H264EncIn input;
 	BOOL is_first_frame;
 	unsigned int gop_frame_counter;
+	unsigned int interval_between_idr_frames;
 }
 H1H264Encoder;
 
@@ -1549,6 +1550,9 @@ static ImxVpuApiEncReturnCodes h1_h264_open_encoder(ImxVpuApiEncoder *base, void
 	fb_metrics = &(base->stream_info.frame_encoding_framebuffer_metrics);
 
 	encoder->base = base;
+
+	/* Closed GOP intervals are emulated by forcing IDR keyframes at specific intervals. */
+	encoder->interval_between_idr_frames = open_params->closed_gop_interval * open_params->gop_size;
 
 	base->stream_info.format_specific_open_params.h264_open_params = open_params->format_specific_open_params.h264_open_params;
 
@@ -2004,14 +2008,49 @@ static ImxVpuApiEncReturnCodes h1_h264_encode_frame(void *h1_encoder, ImxVpuApiF
 	encoder->input.ipf = H264ENC_REFERENCE_AND_REFRESH;
 	encoder->input.ltrf = H264ENC_REFERENCE;
 
-	/* Enforce an IDR frame at the start of GOPs, and
+	/* Enforce an I/IDR frame at the start of GOPs, and
 	 * reset the counter, since this is a new GOP. */
 	if ((encoder->gop_frame_counter % base->open_params.gop_size) == 0)
 	{
-		/* ... but if intra refresh is active, don't force an IDR frame. */
+		/* ... but if intra refresh is active, don't force an I/IDR frame. */
 		if (!(base->use_intra_refresh))
-			frame_type = IMX_VPU_API_FRAME_TYPE_IDR;
-		encoder->gop_frame_counter = 0;
+		{
+			if (encoder->interval_between_idr_frames > 0)
+			{
+				/* If a closed GOP interval is used, only use IDR for
+				 * every Nth GOP, with N = closed GOP interval. */
+
+				if ((encoder->gop_frame_counter % encoder->interval_between_idr_frames) == 0)
+				{
+					IMX_VPU_API_LOG("forcing this frame to be encoded as an IDR frame to produce closed GOP");
+					frame_type = IMX_VPU_API_FRAME_TYPE_IDR;
+					encoder->gop_frame_counter = 0;
+				}
+				else if (encoder->gop_frame_counter == 0)
+				{
+					IMX_VPU_API_LOG("forcing this frame to be encoded as an IDR frame since it is the first one");
+					frame_type = IMX_VPU_API_FRAME_TYPE_IDR;
+				}
+				else
+				{
+					frame_type = IMX_VPU_API_FRAME_TYPE_I;
+				}
+			}
+			else
+			{
+				/* If no closed GOP interval is used, treat all GOPs as
+				 * closed, that is, always start them with an IDR frame. */
+
+				frame_type = IMX_VPU_API_FRAME_TYPE_IDR;
+				encoder->gop_frame_counter = 0;
+			}
+		}
+		else
+		{
+			/* Intra refresh is being used, so no IDR frames exist.
+			 * Just reset the GOP counter, but don't actually use it. */
+			encoder->gop_frame_counter = 0;
+		}
 	}
 
 	switch (frame_type)
