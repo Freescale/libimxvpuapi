@@ -2989,6 +2989,15 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_open(ImxVpuApiEncoder **encoder, ImxVpuA
 	}
 
 
+	/* Validate the open params. */
+
+	if (open_params->gop_size == 0)
+	{
+		IMX_VPU_API_ERROR("GOP size must be at least 1");
+		return IMX_VPU_API_ENC_RETURN_CODE_INVALID_PARAMS;
+	}
+
+
 	/* Allocate encoder instance. */
 	*encoder = malloc(sizeof(ImxVpuApiEncoder));
 	assert((*encoder) != NULL);

@@ -2211,7 +2211,9 @@ typedef struct
 	 * of a GOP. In these cases, the gop_size value is used as an interval for I
 	 * frames instead. If the IMX_VPU_API_ENC_OPEN_PARAMS_FLAG_USE_INTRA_REFRESH
 	 * flag is set, this is used as a factor by the encoder for deciding how
-	 * many intra macroblocks are encoded per frame. */
+	 * many intra macroblocks are encoded per frame. Must be at least 1.
+	 * 1 would mean that exactly one picture (the beginning I frame) is present.
+	 * 2 would mean 1 beginning I frame and 1 additional P frame etc. */
 	unsigned int gop_size;
 	/* How many macroblocks at least to encode as intra macroblocks in every
 	 * P frame. If this is set to 0, intra macroblocks are not used. Not all
