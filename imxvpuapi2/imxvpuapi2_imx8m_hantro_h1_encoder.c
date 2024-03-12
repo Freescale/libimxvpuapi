@@ -1285,11 +1285,13 @@ static ImxVpuApiEncReturnCodes h1_vp8_encode_frame(void *h1_encoder, ImxVpuApiFr
 	encoder->input.grf = VP8ENC_NO_REFERENCE_NO_REFRESH;
 	encoder->input.arf = VP8ENC_NO_REFERENCE_NO_REFRESH;
 
-	/* Enforce an I frame between GOPs, unless intra refresh
-	 * is active, since intra refresh replaces I frames). */
-	if (!(base->use_intra_refresh) && ((encoder->gop_frame_counter % base->open_params.gop_size) == 0))
+	/* Enforce an I frame at the start of GOPs, and
+	 * reset the counter, since this is a new GOP. */
+	if ((encoder->gop_frame_counter % base->open_params.gop_size) == 0)
 	{
-		frame_type = IMX_VPU_API_FRAME_TYPE_I;
+		/* ... but if intra refresh is active, don't force an I frame. */
+		if (!(base->use_intra_refresh))
+			frame_type = IMX_VPU_API_FRAME_TYPE_I;
 		encoder->gop_frame_counter = 0;
 	}
 
@@ -1343,13 +1345,8 @@ static ImxVpuApiEncReturnCodes h1_vp8_encode_frame(void *h1_encoder, ImxVpuApiFr
 
 	*encoded_frame_size = (base->must_prepend_header_data ? base->header_data_size : 0) + base->num_bytes_in_stream_buffer;
 
-	/* Update the GOP counter unless cyclic intra refresh is used, since then,
-	 * the concept of a GOP makes no sense (intra refresh replaces I frames). */
-	if (!(base->use_intra_refresh) && (encoder->output.codingType != VP8ENC_NOTCODED_FRAME))
-	{
-		encoder->is_first_frame = FALSE;
-		encoder->gop_frame_counter++;
-	}
+	encoder->gop_frame_counter++;
+	encoder->is_first_frame = FALSE;
 
 	*output_code = IMX_VPU_API_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE;
 
@@ -2007,11 +2004,13 @@ static ImxVpuApiEncReturnCodes h1_h264_encode_frame(void *h1_encoder, ImxVpuApiF
 	encoder->input.ipf = H264ENC_REFERENCE_AND_REFRESH;
 	encoder->input.ltrf = H264ENC_REFERENCE;
 
-	/* Enforce an IDR frame between GOPs, unless intra refresh
-	 * is active, since intra refresh replaces IDR frames). */
-	if (!(base->use_intra_refresh) && ((encoder->gop_frame_counter % base->open_params.gop_size) == 0))
+	/* Enforce an IDR frame at the start of GOPs, and
+	 * reset the counter, since this is a new GOP. */
+	if ((encoder->gop_frame_counter % base->open_params.gop_size) == 0)
 	{
-		frame_type = IMX_VPU_API_FRAME_TYPE_IDR;
+		/* ... but if intra refresh is active, don't force an IDR frame. */
+		if (!(base->use_intra_refresh))
+			frame_type = IMX_VPU_API_FRAME_TYPE_IDR;
 		encoder->gop_frame_counter = 0;
 	}
 
@@ -2062,13 +2061,8 @@ static ImxVpuApiEncReturnCodes h1_h264_encode_frame(void *h1_encoder, ImxVpuApiF
 	base->num_bytes_in_stream_buffer = encoder_output.streamSize;
 	*encoded_frame_size = (base->must_prepend_header_data ? base->header_data_size : 0) + base->num_bytes_in_stream_buffer;
 
-	/* Update the GOP counter unless cyclic intra refresh is used, since then,
-	 * the concept of a GOP makes no sense (intra refresh replaces I/IDR frames). */
-	if (!(base->use_intra_refresh) && (encoder_output.codingType != H264ENC_NOTCODED_FRAME))
-	{
-		encoder->is_first_frame = FALSE;
-		encoder->gop_frame_counter++;
-	}
+	encoder->is_first_frame = FALSE;
+	encoder->gop_frame_counter++;
 
 	*output_code = IMX_VPU_API_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE;
 
