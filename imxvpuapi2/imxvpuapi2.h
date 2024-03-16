@@ -2697,6 +2697,31 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
  */
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_encoded_frame(ImxVpuApiEncoder *encoder, ImxVpuApiEncodedFrame *encoded_frame);
 
+/* Get details about an encoded frame.
+ *
+ * This works just like imx_vpu_api_enc_get_encoded_frame(), with an additional
+ * return value that specifies whether this frame is a sync point, that is,
+ * it can be used as a starting point for decoding. A sync point can be an
+ * I or IDR frame, but also can be the start of an intra refresh interval.
+ *
+ * @param encoder Encoder instance. Must not be NULL.
+ * @param encoded_frame Pointer to ImxVpuApiEncodedFrame structure to fill
+ *        details  the decoded frame into. Must not be NULL. Its data field
+ *        must be set to point to a memory block that the encoded frame data
+ *        will be written into (see above).
+ * @param is_sync_point If non-NULL, points to an integer that is nonzero
+ *        if this is a sync point, and zero otherwise.
+ * @return Return code indicating the outcome. Valid values:
+ *
+ * IMX_VPU_API_ENC_RETURN_CODE_OK: Success.
+ *
+ * IMX_VPU_API_ENC_RETURN_CODE_ERROR: Unspecified error. Consult log output.
+ *
+ * IMX_VPU_API_ENC_RETURN_CODE_INVALID_CALL: Function was called before a
+ * frame was encoded, or it was called more than once between encoding frames.
+ */
+ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_encoded_frame_ext(ImxVpuApiEncoder *encoder, ImxVpuApiEncodedFrame *encoded_frame, int *is_sync_point);
+
 /* Retrieves information about a skipped frame.
  *
  * This should only be called after imx_vpu_api_enc_decode() returned the output

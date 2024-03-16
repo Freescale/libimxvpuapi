@@ -4043,6 +4043,12 @@ static BOOL write_header_data(ImxVpuApiEncoder *encoder, unsigned int header_dat
 
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_encoded_frame(ImxVpuApiEncoder *encoder, ImxVpuApiEncodedFrame *encoded_frame)
 {
+	return imx_vpu_api_enc_get_encoded_frame_ext(encoder, encoded_frame, NULL);
+}
+
+
+ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_encoded_frame_ext(ImxVpuApiEncoder *encoder, ImxVpuApiEncodedFrame *encoded_frame, int *is_sync_point)
+{
 	ImxVpuApiEncReturnCodes ret = IMX_VPU_API_ENC_RETURN_CODE_OK;
 	uint8_t *write_pointer, *write_pointer_end;
 
@@ -4160,6 +4166,21 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_encoded_frame(ImxVpuApiEncoder *enco
 	encoded_frame->context = encoder->encoded_frame_context;
 	encoded_frame->pts = encoder->encoded_frame_pts;
 	encoded_frame->dts = encoder->encoded_frame_dts;
+
+	if (is_sync_point)
+	{
+		/* In h.264, only IDR frames (not I frames) are valid sync points. */
+
+		switch (encoder->encoded_frame_type)
+		{
+			case IMX_VPU_API_COMPRESSION_FORMAT_H264:
+				*is_sync_point = (encoder->encoded_frame_type == IMX_VPU_API_FRAME_TYPE_IDR);
+				break;
+			default:
+				*is_sync_point = (encoder->encoded_frame_type == IMX_VPU_API_FRAME_TYPE_I);
+				break;
+		}
+	}
 
 	encoder->encoded_frame_available = FALSE;
 

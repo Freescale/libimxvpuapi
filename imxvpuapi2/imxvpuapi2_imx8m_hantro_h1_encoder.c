@@ -801,6 +801,12 @@ finish:
 
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_encoded_frame(ImxVpuApiEncoder *encoder, ImxVpuApiEncodedFrame *encoded_frame)
 {
+	return imx_vpu_api_enc_get_encoded_frame_ext(encoder, encoded_frame, NULL);
+}
+
+
+ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_encoded_frame_ext(ImxVpuApiEncoder *encoder, ImxVpuApiEncodedFrame *encoded_frame, int *is_sync_point)
+{
 	assert(encoder != NULL);
 	assert(encoded_frame != NULL);
 	assert(encoded_frame->data != NULL);
