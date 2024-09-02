@@ -126,3 +126,13 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_encoded_frame(ImxVpuApiEncoder *enco
 	IMX_VPU_API_UNUSED_PARAM(encoded_frame);
 	return IMX_VPU_API_ENC_RETURN_CODE_OK;
 }
+
+ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_skipped_frame_info(ImxVpuApiEncoder *encoder, void **context, uint64_t *pts, uint64_t *dts)
+{
+	IMX_VPU_API_UNUSED_PARAM(encoder);
+	IMX_VPU_API_UNUSED_PARAM(context);
+	IMX_VPU_API_UNUSED_PARAM(pts);
+	IMX_VPU_API_UNUSED_PARAM(dts);
+
+	return IMX_VPU_API_ENC_RETURN_CODE_INVALID_CALL;
+}
