@@ -119,11 +119,16 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_encode(ImxVpuApiEncoder *encoder, size_t
 	return IMX_VPU_API_ENC_RETURN_CODE_OK;
 }
 
-
 ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_encoded_frame(ImxVpuApiEncoder *encoder, ImxVpuApiEncodedFrame *encoded_frame)
+{
+	return imx_vpu_api_enc_get_encoded_frame_ext(encoder, encoded_frame, NULL);
+}
+
+ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_encoded_frame_ext(ImxVpuApiEncoder *encoder, ImxVpuApiEncodedFrame *encoded_frame, int *is_sync_point)
 {
 	IMX_VPU_API_UNUSED_PARAM(encoder);
 	IMX_VPU_API_UNUSED_PARAM(encoded_frame);
+	IMX_VPU_API_UNUSED_PARAM(is_sync_point);
 	return IMX_VPU_API_ENC_RETURN_CODE_OK;
 }
 
