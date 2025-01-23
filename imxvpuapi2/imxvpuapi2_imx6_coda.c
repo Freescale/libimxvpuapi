@@ -4196,4 +4196,6 @@ ImxVpuApiEncReturnCodes imx_vpu_api_enc_get_skipped_frame_info(ImxVpuApiEncoder 
 	IMX_VPU_API_UNUSED_PARAM(dts);
 
 	/* TODO: Frameskipping with CODA960 is not supported at this point */
+
+	return IMX_VPU_API_ENC_RETURN_CODE_INVALID_CALL;
 }
