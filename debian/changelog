@@ -1,3 +1,47 @@
+libimxvpuapi (2.3.1) stable; urgency=low
+
+* vpu: Add more options, flags, and frameskipping support to encoder API
+* vpu: Deprecate min_intra_refresh_mb_count and replace it with flag
+  This is more practical, since the macroblock count if anyway usually set
+  to resemble the GOP length, so this might as well be automatically
+  calculated.
+* vpu: encoder: Add GOP size checks
+* vpu: encoder: Add imx_vpu_api_enc_get_encoded_frame_ext()
+  This is a preparation for reworked intra refresh support. In intra
+  refresh encoding, only the first frame is an I/IDR frame; all followup
+  frames are P frames. The start of an intra refresh interval qualifies
+  as a sync point. But since only P frames are present, callers callers
+  can't rely on the frame type to detect sync points. To fix this, the
+  imx_vpu_api_enc_get_encoded_frame_ext() is added to the API to be able
+  to communicate to callers that a sync point was produced.
+* imx8m-hantro: Rewrite encoder to directly use the Hantro H1 API
+  This allows for more fine grained control of the H1 encoder.
+  Most notably, intra refresh works properly, and skipped frames
+  are correctly handled.
+* imx8m-hantro: encoder: Add closed GOP interval support
+* imx8m-hantro: encoder: Rework intra refresh
+  Use codec specific features for intra refresh. For h.264, use the Hantro
+  GDR (Gradual Decoder Refresh) feature, since it also takes care of filling
+  SEI message and SPS/PPS NALUs appropriately. For VP8, implement a manual
+  method. (Intra refresh is not officially supported in VP8 though. See the
+  note about VP8 intra refresh in the comment blocks in this commit.)
+* imx6-coda: return IMX_VPU_API_ENC_RETURN_CODE_INVALID_CALL from
+  imx_vpu_api_enc_get_skipped_frame_info()
+  This keeps the imx6 backend consistent with the API. Previously, that
+  backend's implementation of that function was not returning anything at all.
+* imx8m-hantro: implement imx_vpu_api_enc_get_skipped_frame_info() stubs for
+  all encoders
+  Implement this function for all encoders to fix a linker error in
+  gstreamer-imx.
+  These encoders never return IMX_VPU_API_ENC_OUTPUT_CODE_FRAME_SKIPPED,
+  so we always return IMX_VPU_API_ENC_RETURN_CODE_INVALID_CALL from
+  imx_vpu_api_enc_get_skipped_frame_info().
+* imx8m-hantro: dummy_encoder: implement imx_vpu_api_enc_get_encoded_frame_ext()
+  Linking gstreamer-imx will fail if imx_vpu_api_enc_get_encoded_frame_ext)(
+  is not available.
+
+ -- Carlos Rafael Giani <crg7475@mailbox.org>  Fri, 07 Feb 2025 08:01:00 +0100
+
 libimxvpuapi (2.3.0) stable; urgency=low
 
 * vpu: Implement first working version of VC8000E encoder integration
